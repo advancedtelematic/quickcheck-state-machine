@@ -133,14 +133,13 @@ sequentialProperty
   -> ([cmd ref] -> String)
   -> (cmd ref' -> StateT [ref'] IO resp)
   -> (resp -> Maybe ref')
-  -> [ref']
   -> Property
-sequentialProperty preConds postNext model0 gens shrinker shower runCmd isRef env0 =
+sequentialProperty preConds postNext model0 gens shrinker shower runCmd isRef =
   forAllShrinkShow
     (fst <$> liftGen gens 0)
     (liftShrink shrinker)
     shower $
-    monadicOur env0 . go model0
+    monadicOur [] . go model0
   where
   go :: model -> [cmd ref] -> PropertyM (StateT [ref'] IO) ()
   go _ []           = return ()
@@ -353,9 +352,8 @@ parallelProperty
   -> (cmd ref -> [cmd ref])
   -> (cmd ref' -> StateT [ref'] IO resp)
   -> (resp -> Maybe ref')
-  -> [ref']
   -> Property
-parallelProperty postNext m0 gen shrinker runStep isRef e0
+parallelProperty postNext m0 gen shrinker runStep isRef
   = forAllShrinkShow (liftGenFork gen) (liftShrinkFork shrinker) show
   $ monadicIO
   . \(Fork left prefix right) -> do
@@ -363,7 +361,7 @@ parallelProperty postNext m0 gen shrinker runStep isRef e0
       pre $ scopeCheck $ prefix <> right
       replicateM_ 10 $ do
         kit <- run $ mkHistoryKit 0
-        e <- run $ runMany kit e0 runStep' prefix
+        e <- run $ runMany kit [] runStep' prefix
         run $ withPool 2 $ \pool -> do
           parallel_ pool [ runMany (kit { getProcessId' = 1}) e runStep' left
                          , runMany (kit { getProcessId' = 2}) e runStep' right

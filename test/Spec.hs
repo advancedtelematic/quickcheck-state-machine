@@ -235,7 +235,6 @@ prop_safety prb = sequentialProperty
   show
   (semStep prb)
   isRef
-  defaultEnv
 
 prop_parallel :: Problem -> Property
 prop_parallel prb = parallelProperty
@@ -245,7 +244,6 @@ prop_parallel prb = parallelProperty
   shrink1
   (semStep prb)
   isRef
-  defaultEnv
 
 ------------------------------------------------------------------------
 
