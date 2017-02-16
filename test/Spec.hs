@@ -158,7 +158,7 @@ semStep prb (Inc ref)     = do
       threadDelay =<< randomRIO (0, 200)
       writeIORef ref (i + 1)
     else
-      modifyIORef' ref (+ 1)
+      atomicModifyIORef' ref (\i -> (i + 1, ()))
 
   return IncR
 
@@ -358,8 +358,8 @@ main = hspec $ do
 
   describe "parallelProperty" $ do
 
-    xit "returns a property that passes when there are no race conditions" $ do
+    it "returns a property that passes when there are no race conditions" $ do
       prop_parallel None
 
-    it "always shrinks to one of the minimal counter examples when there's a race condition"
+    xit "always shrinks to one of the minimal counter examples when there's a race condition"
       prop_shrinkForkMinimal
