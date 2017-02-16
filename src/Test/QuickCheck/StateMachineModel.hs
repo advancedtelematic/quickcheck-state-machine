@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveFunctor         #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
 
 module Test.QuickCheck.StateMachineModel where
 
@@ -120,37 +121,41 @@ liftShrink' n0 shrinker = go n0
 monadicOur :: env -> PropertyM (StateT env IO) () -> Property
 monadicOur env0 = monadic $ ioProperty . flip evalStateT env0
 
+data StateMachineModel model cmd resp = StateMachineModel
+  { precondition  :: model -> cmd -> Bool
+  , postcondition :: model -> cmd -> resp -> Bool
+  , transition    :: model -> cmd -> resp -> model
+  , initialModel  :: model
+  }
+
 sequentialProperty
   :: forall cmd ref ref' model resp
   .  Show (cmd ref)
   => RefKit cmd ref
   => RefKit cmd ()
-  => (model -> cmd ref -> Bool)
-  -> (model -> cmd ref -> resp -> Maybe model)
-  -> model
+  => StateMachineModel model (cmd ref) resp
   -> [(Int, Gen (cmd ()))]
   -> (cmd ref -> [cmd ref])
   -> ([cmd ref] -> String)
   -> (cmd ref' -> StateT [ref'] IO resp)
   -> (resp -> Maybe ref')
   -> Property
-sequentialProperty preConds postNext model0 gens shrinker shower runCmd isRef =
+sequentialProperty StateMachineModel {..} gens shrinker shower runCmd isRef =
   forAllShrinkShow
     (fst <$> liftGen gens 0)
     (liftShrink shrinker)
     shower $
-    monadicOur [] . go model0
+    monadicOur [] . go initialModel
   where
   go :: model -> [cmd ref] -> PropertyM (StateT [ref'] IO) ()
   go _ []           = return ()
   go m (cmd : cmds) = do
     let s = map toLower $ takeWhile (/= ' ') $ show cmd
     monitor $ collect s
-    pre $ preConds m cmd
+    pre $ precondition m cmd
     resp <- run $ runCmd' cmd
-    case postNext m cmd resp of
-      Nothing -> assert' ("`" ++ s ++ "_post'") False
-      Just m' -> go m' cmds
+    assert' ("`" ++ s ++ "_post'") (postcondition m cmd resp)
+    go (transition m cmd resp) cmds
     where
     runCmd' = liftSem runCmd isRef
 
@@ -421,7 +426,7 @@ class (Functor cmd, Foldable cmd, Enum ref, Ord ref) => RefKit cmd ref where
     where
     r = toEnum n
 
-  fixManyRefs :: RefKit cmd ref => Int -> [cmd ref] -> [cmd ref] -> [cmd ref]
+  fixManyRefs :: Int -> [cmd ref] -> [cmd ref] -> [cmd ref]
   fixManyRefs _ []       ds = ds
   fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
 

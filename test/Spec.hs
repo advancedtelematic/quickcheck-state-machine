@@ -13,6 +13,7 @@ import           Control.Monad.State
 import           Data.Char
 import           Data.IORef
 import           Data.List
+import           Data.Maybe
 import           System.Random
 import           Test.Hspec
 import           Test.QuickCheck
@@ -225,11 +226,19 @@ postNext _ _ _ = error "postNext: Impossible"
 
 ------------------------------------------------------------------------
 
+smm :: StateMachineModel Model MemStep Response
+smm = StateMachineModel
+  { precondition  = preConds
+  , postcondition = \m cmd resp -> isJust $ postNext m cmd resp
+  , transition    = \m cmd resp -> case postNext m cmd resp of
+      Just m' -> m'
+      Nothing -> error "transition"
+  , initialModel  = initModel
+  }
+
 prop_safety :: Problem -> Property
 prop_safety prb = sequentialProperty
-  preConds
-  postNext
-  initModel
+  smm
   gens
   shrink1
   show
