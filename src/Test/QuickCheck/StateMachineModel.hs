@@ -396,40 +396,36 @@ parallelProperty postNext m0 gen shrinker runStep isRef e0
 
 ------------------------------------------------------------------------
 
-class (Functor cmd, Foldable cmd,
-       Enum ref, Ord ref) => RefKit cmd ref where
+class (Functor cmd, Foldable cmd, Enum ref, Ord ref) => RefKit cmd ref where
+
   returnsRef :: cmd ref -> Bool
 
   usesRefs :: cmd ref -> [ref]
   usesRefs = toList
 
-countRefReturns :: RefKit cmd ref => [cmd ref] -> Int
-countRefReturns = length . filter returnsRef
+  countRefReturns :: [cmd ref] -> Int
+  countRefReturns = length . filter returnsRef
 
-scopeCheck
-  :: forall cmd ref
-  .  RefKit cmd ref
-  => [cmd ref]
-  -> Bool
-scopeCheck = go 0
-  where
-  go :: Int -> [cmd ref] -> Bool
-  go _ []       = True
-  go s (c : cs) = all (\r -> r < toEnum s) (usesRefs c) &&
-    go (if returnsRef c then s + 1 else s) cs
+  scopeCheck :: [cmd ref] -> Bool
+  scopeCheck = go 0
+    where
+    go _ []       = True
+    go s (c : cs) = all (\r -> r < toEnum s) (usesRefs c) &&
+      go (if returnsRef c then s + 1 else s) cs
 
-fixRefs :: RefKit cmd ref => Int -> cmd ref -> [cmd ref] -> [cmd ref]
-fixRefs n c cs
-  | returnsRef c = map (fmap (\ref -> if r < ref then toEnum (fromEnum ref - 1) else ref))
-                 . filter (\ms -> [r] /= usesRefs ms)
-                 $ cs
-  | otherwise    = cs
-  where
-  r = toEnum n
+  fixRefs :: Int -> cmd ref -> [cmd ref] -> [cmd ref]
+  fixRefs n c cs
+    | returnsRef c
+        = map (fmap (\ref -> if r < ref then toEnum (fromEnum ref - 1) else ref))
+        . filter (\ms -> [r] /= usesRefs ms)
+        $ cs
+    | otherwise = cs
+    where
+    r = toEnum n
 
-fixManyRefs :: RefKit cmd ref => Int -> [cmd ref] -> [cmd ref] -> [cmd ref]
-fixManyRefs _ []       ds = ds
-fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
+  fixManyRefs :: RefKit cmd ref => Int -> [cmd ref] -> [cmd ref] -> [cmd ref]
+  fixManyRefs _ []       ds = ds
+  fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
 
 ------------------------------------------------------------------------
 
