@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveFunctor         #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
 
 module Test.QuickCheck.StateMachineModel where
 
@@ -120,38 +121,41 @@ liftShrink' n0 shrinker = go n0
 monadicOur :: env -> PropertyM (StateT env IO) () -> Property
 monadicOur env0 = monadic $ ioProperty . flip evalStateT env0
 
+data StateMachineModel model cmd resp = StateMachineModel
+  { precondition  :: model -> cmd -> Bool
+  , postcondition :: model -> cmd -> resp -> Bool
+  , transition    :: model -> cmd -> resp -> model
+  , initialModel  :: model
+  }
+
 sequentialProperty
   :: forall cmd ref ref' model resp
   .  Show (cmd ref)
   => RefKit cmd ref
   => RefKit cmd ()
-  => (model -> cmd ref -> Bool)
-  -> (model -> cmd ref -> resp -> Maybe model)
-  -> model
+  => StateMachineModel model (cmd ref) resp
   -> [(Int, Gen (cmd ()))]
   -> (cmd ref -> [cmd ref])
   -> ([cmd ref] -> String)
   -> (cmd ref' -> StateT [ref'] IO resp)
   -> (resp -> Maybe ref')
-  -> [ref']
   -> Property
-sequentialProperty preConds postNext model0 gens shrinker shower runCmd isRef env0 =
+sequentialProperty StateMachineModel {..} gens shrinker shower runCmd isRef =
   forAllShrinkShow
     (fst <$> liftGen gens 0)
     (liftShrink shrinker)
     shower $
-    monadicOur env0 . go model0
+    monadicOur [] . go initialModel
   where
   go :: model -> [cmd ref] -> PropertyM (StateT [ref'] IO) ()
   go _ []           = return ()
   go m (cmd : cmds) = do
     let s = map toLower $ takeWhile (/= ' ') $ show cmd
     monitor $ collect s
-    pre $ preConds m cmd
+    pre $ precondition m cmd
     resp <- run $ runCmd' cmd
-    case postNext m cmd resp of
-      Nothing -> assert' ("`" ++ s ++ "_post'") False
-      Just m' -> go m' cmds
+    assert' ("`" ++ s ++ "_post'") (postcondition m cmd resp)
+    go (transition m cmd resp) cmds
     where
     runCmd' = liftSem runCmd isRef
 
@@ -353,9 +357,8 @@ parallelProperty
   -> (cmd ref -> [cmd ref])
   -> (cmd ref' -> StateT [ref'] IO resp)
   -> (resp -> Maybe ref')
-  -> [ref']
   -> Property
-parallelProperty postNext m0 gen shrinker runStep isRef e0
+parallelProperty postNext m0 gen shrinker runStep isRef
   = forAllShrinkShow (liftGenFork gen) (liftShrinkFork shrinker) show
   $ monadicIO
   . \(Fork left prefix right) -> do
@@ -363,7 +366,7 @@ parallelProperty postNext m0 gen shrinker runStep isRef e0
       pre $ scopeCheck $ prefix <> right
       replicateM_ 10 $ do
         kit <- run $ mkHistoryKit 0
-        e <- run $ runMany kit e0 runStep' prefix
+        e <- run $ runMany kit [] runStep' prefix
         run $ withPool 2 $ \pool -> do
           parallel_ pool [ runMany (kit { getProcessId' = 1}) e runStep' left
                          , runMany (kit { getProcessId' = 2}) e runStep' right
@@ -396,40 +399,36 @@ parallelProperty postNext m0 gen shrinker runStep isRef e0
 
 ------------------------------------------------------------------------
 
-class (Functor cmd, Foldable cmd,
-       Enum ref, Ord ref) => RefKit cmd ref where
+class (Functor cmd, Foldable cmd, Enum ref, Ord ref) => RefKit cmd ref where
+
   returnsRef :: cmd ref -> Bool
 
   usesRefs :: cmd ref -> [ref]
   usesRefs = toList
 
-countRefReturns :: RefKit cmd ref => [cmd ref] -> Int
-countRefReturns = length . filter returnsRef
+  countRefReturns :: [cmd ref] -> Int
+  countRefReturns = length . filter returnsRef
 
-scopeCheck
-  :: forall cmd ref
-  .  RefKit cmd ref
-  => [cmd ref]
-  -> Bool
-scopeCheck = go 0
-  where
-  go :: Int -> [cmd ref] -> Bool
-  go _ []       = True
-  go s (c : cs) = all (\r -> r < toEnum s) (usesRefs c) &&
-    go (if returnsRef c then s + 1 else s) cs
+  scopeCheck :: [cmd ref] -> Bool
+  scopeCheck = go 0
+    where
+    go _ []       = True
+    go s (c : cs) = all (\r -> r < toEnum s) (usesRefs c) &&
+      go (if returnsRef c then s + 1 else s) cs
 
-fixRefs :: RefKit cmd ref => Int -> cmd ref -> [cmd ref] -> [cmd ref]
-fixRefs n c cs
-  | returnsRef c = map (fmap (\ref -> if r < ref then toEnum (fromEnum ref - 1) else ref))
-                 . filter (\ms -> [r] /= usesRefs ms)
-                 $ cs
-  | otherwise    = cs
-  where
-  r = toEnum n
+  fixRefs :: Int -> cmd ref -> [cmd ref] -> [cmd ref]
+  fixRefs n c cs
+    | returnsRef c
+        = map (fmap (\ref -> if r < ref then toEnum (fromEnum ref - 1) else ref))
+        . filter (\ms -> [r] /= usesRefs ms)
+        $ cs
+    | otherwise = cs
+    where
+    r = toEnum n
 
-fixManyRefs :: RefKit cmd ref => Int -> [cmd ref] -> [cmd ref] -> [cmd ref]
-fixManyRefs _ []       ds = ds
-fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
+  fixManyRefs :: Int -> [cmd ref] -> [cmd ref] -> [cmd ref]
+  fixManyRefs _ []       ds = ds
+  fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
 
 ------------------------------------------------------------------------
 
