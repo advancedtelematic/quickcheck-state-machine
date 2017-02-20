@@ -38,9 +38,6 @@ data MemStepF ref
 
 type MemStep = MemStepF Ref
 
-newtype Mem = Mem { unMem :: [MemStep] }
-  deriving (Show, Eq, Monoid, Read)
-
 ------------------------------------------------------------------------
 
 type Model = [Int]
@@ -124,24 +121,16 @@ instance Show Response where
 
 ------------------------------------------------------------------------
 
-type OurMonad m = (MonadIO m, MonadState Env m)
-
-type Env = [IORef Int]
-
-defaultEnv :: Env
-defaultEnv = []
-
 data Problem = None | Bug | RaceCondition
   deriving Eq
 
 semStep
-  :: (MonadIO m, MonadState Env m)
-  => Problem
-  -> MemStepF (IORef Int)
-  -> m Response
+  :: (MonadIO m, MonadState Int m)
+  => Problem -> MemStepF (IORef Int) -> m Response
 semStep _   New           = do
-  i   <- length <$> get
-  ref <- liftIO (newIORef 0)
+  i <- get
+  modify (+ 1)
+  ref <- liftIO $ newIORef 0
   return $ NewR i ref
 semStep _   (Read ref)    = ReadR  <$> liftIO (readIORef ref)
 semStep prb (Write ref i) = WriteR <$  liftIO (writeIORef ref i')
@@ -149,17 +138,16 @@ semStep prb (Write ref i) = WriteR <$  liftIO (writeIORef ref i')
   -- Introduce bug:
   i' | i `elem` [5..10] = if prb == Bug then i + 1 else i
      | otherwise        = i
-semStep prb (Inc ref)     = do
-  liftIO $ do
+semStep prb (Inc ref)     = liftIO $ do
 
-    -- Possible race condition:
-    if prb == RaceCondition
-    then do
-      i <- readIORef ref
-      threadDelay =<< randomRIO (0, 200)
-      writeIORef ref (i + 1)
-    else
-      atomicModifyIORef' ref (\i -> (i + 1, ()))
+  -- Possible race condition:
+  if prb == RaceCondition
+  then do
+    i <- readIORef ref
+    threadDelay =<< randomRIO (0, 200)
+    writeIORef ref (i + 1)
+  else
+    atomicModifyIORef' ref (\i -> (i + 1, ()))
 
   return IncR
 
@@ -167,19 +155,25 @@ isRef :: Response -> Maybe (IORef Int)
 isRef (NewR _ ref) = Just ref
 isRef _            = Nothing
 
-debugMem :: Mem -> IO ()
-debugMem m = do
-  putStrLn ""
-  (_, env) <- flip runStateT defaultEnv $ sem m
-  putStrLn ""
-  forM_ (zip [(0 :: Integer)..] env) $ \(i, ref) -> do
+debugMem :: MonadIO io => [MemStep] -> io ()
+debugMem ms = do
+  liftIO $ putStrLn ""
+  env <- semSteps ms
+  liftIO $ putStrLn ""
+  forM_ (zip [(0 :: Integer)..] env) $ \(i, ref) -> liftIO $ do
     v <- readIORef ref
     putStrLn $ "$" ++ show i ++ ": " ++ show v
   where
-  sem :: OurMonad m => Mem -> m ()
-  sem = foldM (\ih ms -> semStep' ms >> return ih) () . unMem
+  semStep'
+    :: (MonadIO m, MonadState Int m)
+    => MemStep -> StateT [IORef Int] m Response
+  semStep' = liftSem (semStep None) isRef
+
+  semSteps :: MonadIO m => [MemStep] -> m [IORef Int]
+  semSteps = flip evalStateT 0 . flip execStateT [] . go
     where
-    semStep' = liftSem (semStep None) isRef
+    go :: (MonadIO m, MonadState Int m) => [MemStep] -> StateT [IORef Int] m ()
+    go = foldM (\ih ms -> liftIO (print ms) >> semStep' ms >> return ih) ()
 
 ------------------------------------------------------------------------
 
@@ -243,6 +237,7 @@ prop_safety prb = sequentialProperty
   shrink1
   show
   (semStep prb)
+  (ioProperty . flip evalStateT 0)
   isRef
 
 prop_parallel :: Problem -> Property
@@ -251,7 +246,7 @@ prop_parallel prb = parallelProperty
   initModel
   gens
   shrink1
-  (semStep prb)
+  (flip evalStateT 0 . semStep prb)
   isRef
 
 ------------------------------------------------------------------------

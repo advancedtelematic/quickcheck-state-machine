@@ -46,14 +46,14 @@ assert' msg False = fail msg
 ------------------------------------------------------------------------
 
 liftSem
-  :: (MonadState [ref] m, RefKit cmd ref')
+  :: (Monad m, RefKit cmd ix)
   => (cmd ref -> m resp)
   -> (resp -> Maybe ref)
-  -> (cmd ref' -> m resp)
+  -> (cmd ix -> StateT [ref] m resp)
 liftSem sem isRef cmd
   | returnsRef cmd = do
       env <- get
-      resp <- sem (fmap (\ref -> env !! fromEnum ref) cmd)
+      resp <- lift $ sem (fmap (\ref -> env !! fromEnum ref) cmd)
       case isRef resp of
         Nothing  -> error "liftSem: response wasn't a ref."
         Just ref -> do
@@ -61,7 +61,7 @@ liftSem sem isRef cmd
           return resp
   | otherwise      = do
       env <- get
-      sem (fmap (\ref -> env !! fromEnum ref) cmd)
+      lift $ sem (fmap (\ref -> env !! fromEnum ref) cmd)
 
 ------------------------------------------------------------------------
 
@@ -118,9 +118,6 @@ liftShrink' n0 shrinker = go n0
 
 ------------------------------------------------------------------------
 
-monadicOur :: env -> PropertyM (StateT env IO) () -> Property
-monadicOur env0 = monadic $ ioProperty . flip evalStateT env0
-
 data StateMachineModel model cmd resp = StateMachineModel
   { precondition  :: model -> cmd -> Bool
   , postcondition :: model -> cmd -> resp -> Bool
@@ -129,25 +126,27 @@ data StateMachineModel model cmd resp = StateMachineModel
   }
 
 sequentialProperty
-  :: forall cmd ref ref' model resp
+  :: forall m cmd ref ref' model resp
   .  Show (cmd ref)
+  => Monad m
   => RefKit cmd ref
   => RefKit cmd ()
   => StateMachineModel model (cmd ref) resp
   -> [(Int, Gen (cmd ()))]
   -> (cmd ref -> [cmd ref])
   -> ([cmd ref] -> String)
-  -> (cmd ref' -> StateT [ref'] IO resp)
+  -> (cmd ref' -> m resp)
+  -> (m Property -> Property)
   -> (resp -> Maybe ref')
   -> Property
-sequentialProperty StateMachineModel {..} gens shrinker shower runCmd isRef =
+sequentialProperty StateMachineModel {..} gens shrinker shower runCmd runM isRef =
   forAllShrinkShow
     (fst <$> liftGen gens 0)
     (liftShrink shrinker)
     shower $
-    monadicOur [] . go initialModel
+    monadic (runM . flip evalStateT []) . go initialModel
   where
-  go :: model -> [cmd ref] -> PropertyM (StateT [ref'] IO) ()
+  go :: model -> [cmd ref] -> PropertyM (StateT [ref'] m) ()
   go _ []           = return ()
   go m (cmd : cmds) = do
     let s = map toLower $ takeWhile (/= ' ') $ show cmd
@@ -329,12 +328,7 @@ mkHistoryKit pid = do
   chan <- newTChanIO
   return $ HistoryKit chan pid
 
-runMany
-  :: HistoryKit cmd resp
-  -> env
-  -> (cmd -> StateT env IO resp)
-  -> [cmd]
-  -> IO env
+runMany :: HistoryKit cmd resp -> env -> (cmd -> StateT env IO resp) -> [cmd] -> IO env
 runMany _   env _    []           = return env
 runMany kit env step (cmd : cmds) = do
   atomically $ writeTChan (getHistoryChannel kit) $
@@ -355,7 +349,7 @@ parallelProperty
   -> model
   -> [(Int, Gen (cmd ()))]
   -> (cmd ref -> [cmd ref])
-  -> (cmd ref' -> StateT [ref'] IO resp)
+  -> (cmd ref' -> IO resp)
   -> (resp -> Maybe ref')
   -> Property
 parallelProperty postNext m0 gen shrinker runStep isRef
