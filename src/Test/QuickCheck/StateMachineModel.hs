@@ -143,8 +143,9 @@ sequentialProperty StateMachineModel {..} gens shrinker shower runCmd runM isRef
   forAllShrinkShow
     (fst <$> liftGen gens 0)
     (liftShrink shrinker)
-    shower $
-    monadic (runM . flip evalStateT []) . go initialModel
+    shower $ \cmds ->
+      collect (length cmds) $
+      monadic (runM . flip evalStateT []) $ go initialModel cmds
   where
   go :: model -> [cmd ref] -> PropertyM (StateT [ref'] m) ()
   go _ []           = return ()
