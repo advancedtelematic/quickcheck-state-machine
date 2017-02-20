@@ -341,24 +341,22 @@ runMany kit env step (cmd : cmds) = do
   runMany kit env' step cmds
 
 parallelProperty
-  :: forall cmd ref ref' resp model
-  .  (Ord (cmd ref), Show (cmd ref))
+  :: forall cmd ix ref resp model
+  .  (Ord (cmd ix), Show (cmd ix))
   => (Eq resp, Show resp)
-  => RefKit cmd ref
+  => RefKit cmd ix
   => RefKit cmd ()
-  => (model -> cmd ref -> resp -> Maybe model)
+  => (model -> cmd ix -> resp -> Maybe model)
   -> model
   -> [(Int, Gen (cmd ()))]
-  -> (cmd ref -> [cmd ref])
-  -> (cmd ref' -> IO resp)
-  -> (resp -> Maybe ref')
+  -> (cmd ix -> [cmd ix])
+  -> (cmd ref -> IO resp)
+  -> (resp -> Maybe ref)
   -> Property
 parallelProperty postNext m0 gen shrinker runStep isRef
   = forAllShrinkShow (liftGenFork gen) (liftShrinkFork shrinker) show
   $ monadicIO
   . \(Fork left prefix right) -> do
-      pre $ scopeCheck $ prefix <> left
-      pre $ scopeCheck $ prefix <> right
       replicateM_ 10 $ do
         kit <- run $ mkHistoryKit 0
         e <- run $ runMany kit [] runStep' prefix
@@ -377,7 +375,7 @@ parallelProperty postNext m0 gen shrinker runStep isRef
             monitor $ counterexample $ show $ pretty $ toForkOfOps hist
           assert' "Couldn't linearise" $ not $ null lin
   where
-  runStep' :: cmd ref -> StateT [ref'] IO resp
+  runStep' :: cmd ix -> StateT [ref] IO resp
   runStep' = liftSem runStep isRef
 
   getChanContents :: forall a. TChan a -> IO [a]
@@ -403,13 +401,6 @@ class (Functor cmd, Foldable cmd, Enum ref, Ord ref) => RefKit cmd ref where
 
   countRefReturns :: [cmd ref] -> Int
   countRefReturns = length . filter returnsRef
-
-  scopeCheck :: [cmd ref] -> Bool
-  scopeCheck = go 0
-    where
-    go _ []       = True
-    go s (c : cs) = all (\r -> r < toEnum s) (usesRefs c) &&
-      go (if returnsRef c then s + 1 else s) cs
 
   fixRefs :: Int -> cmd ref -> [cmd ref] -> [cmd ref]
   fixRefs n c cs

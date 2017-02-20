@@ -251,6 +251,13 @@ prop_parallel prb = parallelProperty
 
 ------------------------------------------------------------------------
 
+scopeCheck :: RefKit cmd ref => [cmd ref] -> Bool
+scopeCheck = go 0
+  where
+  go _ []       = True
+  go s (c : cs) = all (\r -> r < toEnum s) (usesRefs c) &&
+    go (if returnsRef c then s + 1 else s) cs
+
 prop_genScope :: Property
 prop_genScope = forAll (liftGenFork gens) $ \(Fork l p r) ->
   scopeCheck (p ++ l) &&
