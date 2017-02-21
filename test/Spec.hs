@@ -45,21 +45,30 @@ type Model = [Int]
 initModel :: Model
 initModel = []
 
-new_pre :: Model -> Bool
-new_pre _ = True
+preconditions :: Model -> MemStep -> Bool
+preconditions m cmd = case cmd of
+  New             -> True
+  Read  (Ref i)   -> i < length m
+  Write (Ref i) _ -> i < length m
+  Inc   (Ref i)   -> i < length m
 
-new_next :: Model -> () -> IORef Int -> Model
-new_next m _ _ = m ++ [0]
+transitions :: Model -> MemStep -> Response -> Model
+transitions m cmd resp = case cmd of
+  New         -> m ++ [0]
+  Read  _     -> m
+  Write ref i -> update m (unRef ref) i
+  Inc   ref   -> update m (unRef ref) ((m ! ref) + 1)
 
-new_post :: Model -> () -> IORef Int -> Bool
-new_post _ _ _ = True
+postconditions :: Model -> MemStep -> Response -> Bool
+postconditions m cmd resp = case cmd of
+  New         -> True
+  Read  ref   -> let ReadR i = resp in m ! ref == i && m' == m
+  Write ref i -> m' ! ref == i
+  Inc   ref   -> m' ! ref == m ! ref + 1
+  where
+  m' = transitions m cmd resp
 
-
-read_pre :: Model -> Ref -> Bool
-read_pre m (Ref i) = i < length m
-
-read_next :: Model -> Ref -> Int -> Model
-read_next m _ _ = m
+------------------------------------------------------------------------
 
 (!) :: [a] -> Ref -> a
 xs0 ! (Ref i0) = case go xs0 i0 of
@@ -71,38 +80,11 @@ xs0 ! (Ref i0) = case go xs0 i0 of
   go (x : _)  0 = Just x
   go (_ : xs) i = go xs (i - 1)
 
-
-read_post :: Model -> Ref -> Int -> Bool
-read_post m ref r = m ! ref == r && m' == m
-  where
-  m' = read_next m ref r
-
-write_pre :: Model -> Ref -> Bool
-write_pre m (Ref i) = i < length m
-
 update :: [a] -> Int -> a -> [a]
 update []       _ _ = []
 update (_ : xs) 0 y = y : xs
 update (x : xs) i y = x : update xs (i - 1) y
 
-write_next :: Model -> (Ref, Int) -> () -> Model
-write_next m (ref, i) _ = update m (unRef ref) i
-
-write_post :: Model -> (Ref, Int) -> () -> Bool
-write_post m (ref, i) _ = m' ! ref == i
-  where
-  m' = write_next m (ref, i) ()
-
-inc_pre :: Model -> Ref -> Bool
-inc_pre m (Ref i) = i < length m
-
-inc_next :: Model -> Ref -> () -> Model
-inc_next m ref _ = update m (unRef ref) ((m ! ref) + 1)
-
-inc_post :: Model -> Ref -> () -> Bool
-inc_post m ref _ = m' ! ref == m ! ref + 1
-  where
-  m' = inc_next m ref ()
 
 ------------------------------------------------------------------------
 
@@ -197,36 +179,13 @@ instance (Enum ref, Ord ref) => RefKit MemStepF ref where
   returnsRef New = True
   returnsRef _   = False
 
-preConds :: Model -> MemStep -> Bool
-preConds m New           = new_pre   m
-preConds m (Read ref)    = read_pre  m ref
-preConds m (Write ref _) = write_pre m ref
-preConds m (Inc ref)     = inc_pre   m ref
-
-postNext :: Model -> MemStepF Ref -> Response -> Maybe Model
-postNext m New           (NewR _ ref)
-  | new_post m () ref = Just $ new_next m () ref
-  | otherwise         = Nothing
-postNext m (Read ref)    (ReadR i)
-  | read_post m ref i = Just $ read_next m ref i
-  | otherwise         = Nothing
-postNext m (Write ref i) WriteR
-  | write_post m (ref, i) () = Just $ write_next m (ref, i) ()
-  | otherwise         = Nothing
-postNext m (Inc ref)     IncR
-  | inc_post m ref () = Just $ inc_next m ref ()
-  | otherwise         = Nothing
-postNext _ _ _ = error "postNext: Impossible"
-
 ------------------------------------------------------------------------
 
 smm :: StateMachineModel Model MemStep Response
 smm = StateMachineModel
-  { precondition  = preConds
-  , postcondition = \m cmd resp -> isJust $ postNext m cmd resp
-  , transition    = \m cmd resp -> case postNext m cmd resp of
-      Just m' -> m'
-      Nothing -> error "transition"
+  { precondition  = preconditions
+  , postcondition = postconditions
+  , transition    = transitions
   , initialModel  = initModel
   }
 
@@ -242,8 +201,7 @@ prop_safety prb = sequentialProperty
 
 prop_parallel :: Problem -> Property
 prop_parallel prb = parallelProperty
-  postNext
-  initModel
+  smm
   gens
   shrink1
   (flip evalStateT 0 . semStep prb)
