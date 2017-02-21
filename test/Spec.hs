@@ -89,31 +89,25 @@ update (x : xs) i y = x : update xs (i - 1) y
 ------------------------------------------------------------------------
 
 data Response
-  = NewR Int (IORef Int)
+  = NewR (IORef Int)
   | ReadR Int
   | WriteR
   | IncR
   deriving Eq
 
 instance Show Response where
-  show (NewR i _) = '$' : show i
-  show (ReadR i)  = show i
-  show WriteR     = "()"
-  show IncR       = "()"
+  show (NewR _)  = "$"
+  show (ReadR i) = show i
+  show WriteR    = "()"
+  show IncR      = "()"
 
 ------------------------------------------------------------------------
 
 data Problem = None | Bug | RaceCondition
   deriving Eq
 
-semStep
-  :: (MonadIO m, MonadState Int m)
-  => Problem -> MemStepF (IORef Int) -> m Response
-semStep _   New           = do
-  i <- get
-  modify (+ 1)
-  ref <- liftIO $ newIORef 0
-  return $ NewR i ref
+semStep :: MonadIO m => Problem -> MemStepF (IORef Int) -> m Response
+semStep _   New           = NewR   <$> liftIO (newIORef 0)
 semStep _   (Read ref)    = ReadR  <$> liftIO (readIORef ref)
 semStep prb (Write ref i) = WriteR <$  liftIO (writeIORef ref i')
   where
@@ -134,8 +128,8 @@ semStep prb (Inc ref)     = liftIO $ do
   return IncR
 
 isRef :: Response -> Maybe (IORef Int)
-isRef (NewR _ ref) = Just ref
-isRef _            = Nothing
+isRef (NewR ref) = Just ref
+isRef _          = Nothing
 
 debugMem :: MonadIO io => [MemStep] -> io ()
 debugMem ms = do
@@ -196,7 +190,7 @@ prop_safety prb = sequentialProperty
   shrink1
   show
   (semStep prb)
-  (ioProperty . flip evalStateT 0)
+  ioProperty
   isRef
 
 prop_parallel :: Problem -> Property
@@ -204,7 +198,7 @@ prop_parallel prb = parallelProperty
   smm
   gens
   shrink1
-  (flip evalStateT 0 . semStep prb)
+  (semStep prb)
   isRef
 
 ------------------------------------------------------------------------

@@ -1,8 +1,8 @@
-{-# LANGUAGE DeriveFunctor          #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE RecordWildCards        #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 module Test.QuickCheck.StateMachineModel where
 
@@ -20,7 +20,7 @@ import           System.Random                       (randomRIO)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
 import           Test.QuickCheck.Property            (Property (..))
-import           Text.PrettyPrint.ANSI.Leijen        (Pretty, align, dot,
+import           Text.PrettyPrint.ANSI.Leijen        (Pretty, align, dot, empty,
                                                       indent, int, pretty,
                                                       prettyList, text,
                                                       underline, vsep, (<+>))
@@ -263,13 +263,13 @@ findCorrespondingResp pid (ResponseEvent r pid' : es) | pid == pid' = [(r, es)]
 findCorrespondingResp pid (e : es) =
   [ (res, e : es') | (res, es') <- findCorrespondingResp pid es ]
 
-data Operation cmd resp = Operation cmd resp Int
+data Operation cmd resp = Operation cmd resp Int (Maybe Int)
   deriving Show
 
 linearTree :: (Eq cmd, Eq resp) => History cmd resp -> [Rose (Operation cmd resp)]
 linearTree [] = []
 linearTree es =
-  [ Rose (Operation cmd resp pid) (linearTree es')
+  [ Rose (Operation cmd resp pid Nothing) (linearTree es')
   | e@(InvocationEvent cmd pid) <- takeInvocations es
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (/= e) es
   ]
@@ -289,7 +289,7 @@ linearise
 linearise StateMachineModel {..} = map fromRose . filter (postConditionsHold initialModel) . linearTree
   where
   postConditionsHold :: model -> Rose (Operation cmd resp) -> Bool
-  postConditionsHold m (Rose (Operation cmd resp _) roses) =
+  postConditionsHold m (Rose (Operation cmd resp _ _) roses) =
     postcondition m cmd resp && any' (postConditionsHold (transition m cmd resp)) roses
     where
     any' :: (a -> Bool) -> [a] -> Bool
@@ -299,20 +299,29 @@ linearise StateMachineModel {..} = map fromRose . filter (postConditionsHold ini
 ------------------------------------------------------------------------
 
 instance (Show cmd, Show resp) => Pretty (Operation cmd resp) where
-  pretty (Operation cmd resp _) = text (show cmd) <+> text "-->" <+> text (show resp)
-  prettyList                    = vsep . map pretty
+  pretty (Operation cmd resp _ mix) =
+    text (show cmd) <+> text "-->" <+> text (show resp) <> maybe empty int mix
+  prettyList                        = vsep . map pretty
 
-toForkOfOps :: (Eq cmd, Eq resp) => History cmd resp -> Fork [Operation cmd resp]
-toForkOfOps h = Fork (mkOps l) (mkOps p) (mkOps r)
+toForkOfOps
+  :: forall cmd ref resp
+  .  (Eq (cmd ref), Eq resp, RefKit cmd ref)
+  => History (cmd ref) resp -> Fork [Operation (cmd ref) resp]
+toForkOfOps h = Fork (fst $ mkOps n l) p' (fst $ mkOps n r)
   where
   (p, h') = partition (\e -> getProcessId e == 0) h
   (l, r)  = partition (\e -> getProcessId e == 1) h'
 
-  mkOps :: [HistoryEvent cmd resp] -> [Operation cmd resp]
-  mkOps [] = []
-  mkOps (InvocationEvent cmd _ : ResponseEvent resp pid : es)
-    = Operation cmd resp pid : mkOps es
-  mkOps _ = error "mkOps: Impossible."
+  (p', n) = mkOps 0 p
+
+  mkOps :: Int -> [HistoryEvent (cmd ref) resp] -> ([Operation (cmd ref) resp], Int)
+  mkOps n [] = ([], n)
+  mkOps n (InvocationEvent cmd _ : ResponseEvent resp pid : es)
+    | returnsRef cmd = let (ih, n') = mkOps (n + 1) es
+                       in  (Operation cmd resp pid (Just n) : ih, n')
+    | otherwise      = let (ih, n') = mkOps n es
+                       in  (Operation cmd resp pid Nothing  : ih, n')
+  mkOps _ _ = error "mkOps: Impossible."
 
 ------------------------------------------------------------------------
 
