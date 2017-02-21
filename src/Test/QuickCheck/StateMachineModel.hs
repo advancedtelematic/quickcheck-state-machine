@@ -12,7 +12,6 @@ import           Control.Concurrent.STM.TChan        (TChan, newTChanIO,
                                                       tryReadTChan, writeTChan)
 import           Control.Monad.State
 import           Control.Monad.STM                   (STM, atomically)
-import           Data.Char                           (toLower)
 import           Data.Foldable                       (toList)
 import           Data.List                           (partition)
 import           Data.Monoid                         ((<>))
@@ -126,18 +125,18 @@ data StateMachineModel model cmd resp = StateMachineModel
   }
 
 sequentialProperty
-  :: forall m cmd ref ref' model resp
-  .  Show (cmd ref)
+  :: forall m cmd ix ref model resp
+  .  Show (cmd ix)
   => Monad m
-  => RefKit cmd ref
+  => RefKit cmd ix
   => RefKit cmd ()
-  => StateMachineModel model (cmd ref) resp
+  => StateMachineModel model (cmd ix) resp
   -> [(Int, Gen (cmd ()))]
-  -> (cmd ref -> [cmd ref])
-  -> ([cmd ref] -> String)
-  -> (cmd ref' -> m resp)
+  -> (cmd ix -> [cmd ix])
+  -> ([cmd ix] -> String)
+  -> (cmd ref -> m resp)
   -> (m Property -> Property)
-  -> (resp -> Maybe ref')
+  -> (resp -> Maybe ref)
   -> Property
 sequentialProperty StateMachineModel {..} gens shrinker shower runCmd runM isRef =
   forAllShrinkShow
@@ -147,14 +146,14 @@ sequentialProperty StateMachineModel {..} gens shrinker shower runCmd runM isRef
       collect (length cmds) $
       monadic (runM . flip evalStateT []) $ go initialModel cmds
   where
-  go :: model -> [cmd ref] -> PropertyM (StateT [ref'] m) ()
+  go :: model -> [cmd ix] -> PropertyM (StateT [ref] m) ()
   go _ []           = return ()
   go m (cmd : cmds) = do
-    let s = map toLower $ takeWhile (/= ' ') $ show cmd
+    let s = takeWhile (/= ' ') $ show cmd
     monitor $ collect s
     pre $ precondition m cmd
     resp <- run $ runCmd' cmd
-    assert' ("`" ++ s ++ "_post'") (postcondition m cmd resp)
+    assert' ("postcondition for " ++ s) (postcondition m cmd resp)
     go (transition m cmd resp) cmds
     where
     runCmd' = liftSem runCmd isRef
@@ -284,16 +283,14 @@ linearise
   :: forall cmd resp model
   .  Eq cmd
   => Eq resp
-  => model
-  -> (model -> cmd -> resp -> Maybe model)
+  => StateMachineModel model cmd resp
   -> History cmd resp
   -> [[Operation cmd resp]]
-linearise m0 postNext = map fromRose . filter (postConditionsHold m0) . linearTree
+linearise StateMachineModel {..} = map fromRose . filter (postConditionsHold initialModel) . linearTree
   where
   postConditionsHold :: model -> Rose (Operation cmd resp) -> Bool
-  postConditionsHold m (Rose (Operation cmd resp _) roses) = case postNext m cmd resp of
-    Nothing -> False
-    Just m' -> any' (postConditionsHold m') roses
+  postConditionsHold m (Rose (Operation cmd resp _) roses) =
+    postcondition m cmd resp && any' (postConditionsHold (transition m cmd resp)) roses
     where
     any' :: (a -> Bool) -> [a] -> Bool
     any' _ [] = True
@@ -346,14 +343,13 @@ parallelProperty
   => (Eq resp, Show resp)
   => RefKit cmd ix
   => RefKit cmd ()
-  => (model -> cmd ix -> resp -> Maybe model)
-  -> model
+  => StateMachineModel model (cmd ix) resp
   -> [(Int, Gen (cmd ()))]
   -> (cmd ix -> [cmd ix])
   -> (cmd ref -> IO resp)
   -> (resp -> Maybe ref)
   -> Property
-parallelProperty postNext m0 gen shrinker runStep isRef
+parallelProperty smm gen shrinker runStep isRef
   = forAllShrinkShow (liftGenFork gen) (liftShrinkFork shrinker) show
   $ monadicIO
   . \(Fork left prefix right) -> do
@@ -370,7 +366,7 @@ parallelProperty postNext m0 gen shrinker runStep isRef
         if null hist
         then return ()
         else do
-          let lin = linearise m0 postNext hist
+          let lin = linearise smm hist
           when (null lin) $ do
             monitor $ counterexample $ show $ pretty $ toForkOfOps hist
           assert' "Couldn't linearise" $ not $ null lin
