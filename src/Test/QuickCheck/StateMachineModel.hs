@@ -143,20 +143,22 @@ sequentialProperty StateMachineModel {..} gens shrinker shower runCmd runM isRef
     (fst <$> liftGen gens 0)
     (liftShrink shrinker)
     shower $ \cmds ->
-      collect (length cmds) $
-      monadic (runM . flip evalStateT []) $ go initialModel cmds
+      let len = length cmds in
+      classify (len == 0)              "0     commands" $
+      classify (len >= 1  && len < 15) "1-15  commands" $
+      classify (len >= 15 && len < 30) "15-30 commands" $
+      classify (len >= 30)             "30+   commands" $
+        monadic (runM . flip evalStateT []) $ go initialModel cmds
   where
   go :: model -> [cmd ix] -> PropertyM (StateT [ref] m) ()
   go _ []           = return ()
   go m (cmd : cmds) = do
     let s = takeWhile (/= ' ') $ show cmd
-    monitor $ collect s
+    monitor $ label s
     pre $ precondition m cmd
-    resp <- run $ runCmd' cmd
+    resp <- run $ liftSem runCmd isRef cmd
     assert' ("postcondition for " ++ s) (postcondition m cmd resp)
     go (transition m cmd resp) cmds
-    where
-    runCmd' = liftSem runCmd isRef
 
 ------------------------------------------------------------------------
 
