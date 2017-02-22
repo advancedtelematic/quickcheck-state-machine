@@ -140,16 +140,17 @@ debugMem ms = do
     v <- readIORef ref
     putStrLn $ "$" ++ show i ++ ": " ++ show v
   where
-  semStep'
-    :: (MonadIO m, MonadState Int m)
-    => MemStep -> StateT [IORef Int] m Response
-  semStep' = liftSem (semStep None) isRef
-
-  semSteps :: MonadIO m => [MemStep] -> m [IORef Int]
-  semSteps = flip evalStateT 0 . flip execStateT [] . go
+  semSteps :: MonadIO io => [MemStep] -> io [IORef Int]
+  semSteps = flip execStateT [] . go
     where
-    go :: (MonadIO m, MonadState Int m) => [MemStep] -> StateT [IORef Int] m ()
-    go = foldM (\ih ms -> liftIO (print ms) >> semStep' ms >> return ih) ()
+    go :: MonadIO io => [MemStep] -> StateT [IORef Int] io ()
+    go = flip foldM () $ \ih ms -> do
+      liftIO (print ms)
+      semStep' ms
+      return ih
+      where
+      semStep' :: MonadIO io => MemStep -> StateT [IORef Int] io Response
+      semStep' = liftSem (semStep None) isRef
 
 ------------------------------------------------------------------------
 
