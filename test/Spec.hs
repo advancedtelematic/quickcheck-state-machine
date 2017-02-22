@@ -1,8 +1,9 @@
 module Main where
 
 import           Test.Hspec
+import           Test.Hspec.QuickCheck
 
-import           Test.QuickCheck.Example
+import           Test.QuickCheck.StateMachineModel.Example
 
 ------------------------------------------------------------------------
 
@@ -23,16 +24,20 @@ main = hspec $ do
 
   describe "liftShrinkFork" $ do
 
-    it "shrinks into subsequences"
-      prop_shrinkForkSubseq
+    modifyMaxSuccess (const 20) $ do
 
-    it "shrinks into well-scoped programs"
-      prop_shrinkForkScope
+      it "shrinks into subsequences"
+        prop_shrinkForkSubseq
+
+      it "shrinks into well-scoped programs"
+        prop_shrinkForkScope
 
   describe "parallelProperty" $ do
 
-    it "returns a property that passes when there are no race conditions" $ do
-      prop_parallel None
+    modifyMaxSuccess (const 10) $ do
 
-    xit "always shrinks to one of the minimal counter examples when there's a race condition"
-      prop_shrinkForkMinimal
+      xit "returns a property that passes when there are no race conditions" $ do
+        prop_parallel None
+
+      it "always shrinks to one of the minimal counter examples when there's a race condition"
+        prop_shrinkForkMinimal
