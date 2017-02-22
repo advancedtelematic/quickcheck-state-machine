@@ -15,7 +15,8 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Test.QuickCheck.StateMachineModel
+  exposed-modules:     Test.QuickCheck.Example
+                     , Test.QuickCheck.StateMachineModel
   build-depends:       ansi-wl-pprint
                      , base >= 4.7 && < 5
                      , containers

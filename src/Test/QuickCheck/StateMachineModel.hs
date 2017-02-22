@@ -307,12 +307,12 @@ toForkOfOps
   :: forall cmd ref resp
   .  (Eq (cmd ref), Eq resp, RefKit cmd ref)
   => History (cmd ref) resp -> Fork [Operation (cmd ref) resp]
-toForkOfOps h = Fork (fst $ mkOps n l) p' (fst $ mkOps n r)
+toForkOfOps h = Fork (fst $ mkOps n0 l) p' (fst $ mkOps n0 r)
   where
   (p, h') = partition (\e -> getProcessId e == 0) h
   (l, r)  = partition (\e -> getProcessId e == 1) h'
 
-  (p', n) = mkOps 0 p
+  (p', n0) = mkOps 0 p
 
   mkOps :: Int -> [HistoryEvent (cmd ref) resp] -> ([Operation (cmd ref) resp], Int)
   mkOps n [] = ([], n)
