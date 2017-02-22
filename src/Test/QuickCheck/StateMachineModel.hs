@@ -335,16 +335,16 @@ mkHistoryKit pid = do
   chan <- newTChanIO
   return $ HistoryKit chan pid
 
-runMany :: HistoryKit cmd resp -> env -> (cmd -> StateT env IO resp) -> [cmd] -> IO env
-runMany _   env _    []           = return env
-runMany kit env step (cmd : cmds) = do
-  atomically $ writeTChan (getHistoryChannel kit) $
+runMany :: RefKit cmd ix => HistoryKit (cmd ix) resp -> (cmd ref -> IO resp)
+  -> (resp -> Maybe ref) -> [cmd ix] -> StateT [ref] IO ()
+runMany kit step isRef = flip foldM () $ \_ cmd -> do
+  lift $ atomically $ writeTChan (getHistoryChannel kit) $
     InvocationEvent cmd (getProcessId' kit)
-  (resp, env') <- runStateT (step cmd) env
-  threadDelay =<< randomRIO (0, 20)
-  atomically $ writeTChan (getHistoryChannel kit) $
-    ResponseEvent  resp (getProcessId' kit)
-  runMany kit env' step cmds
+  resp <- liftSem step isRef cmd
+  lift $ do
+    threadDelay =<< randomRIO (0, 20)
+    atomically $ writeTChan (getHistoryChannel kit) $
+      ResponseEvent resp (getProcessId' kit)
 
 parallelProperty
   :: forall cmd ix ref resp model
@@ -364,11 +364,12 @@ parallelProperty smm gen shrinker runStep isRef
   . \(Fork left prefix right) -> do
       replicateM_ 10 $ do
         kit <- run $ mkHistoryKit 0
-        e <- run $ runMany kit [] runStep' prefix
+        env <- run $ execStateT (runMany kit runStep isRef prefix) []
         run $ withPool 2 $ \pool -> do
-          parallel_ pool [ runMany (kit { getProcessId' = 1}) e runStep' left
-                         , runMany (kit { getProcessId' = 2}) e runStep' right
-                         ]
+          parallel_ pool
+            [ evalStateT (runMany (kit { getProcessId' = 1}) runStep isRef left)  env
+            , evalStateT (runMany (kit { getProcessId' = 2}) runStep isRef right) env
+            ]
 
         hist <- run $ getChanContents $ getHistoryChannel kit
 
@@ -380,9 +381,6 @@ parallelProperty smm gen shrinker runStep isRef
             monitor $ counterexample $ show $ pretty $ toForkOfOps hist
           assert' "Couldn't linearise" $ not $ null lin
   where
-  runStep' :: cmd ix -> StateT [ref] IO resp
-  runStep' = liftSem runStep isRef
-
   getChanContents :: forall a. TChan a -> IO [a]
   getChanContents chan = do
     xs <- atomically $ go []
