@@ -16,6 +16,7 @@ import           Data.List
 import           Data.Maybe
 import           System.Random
 import           Test.Hspec
+import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
 
@@ -318,10 +319,12 @@ main = hspec $ do
     it "shrinks into well-scoped programs"
       prop_shrinkForkScope
 
-  describe "parallelProperty" $ do
+  describe "parallelProperty" $
 
-    it "returns a property that passes when there are no race conditions" $ do
-      prop_parallel None
+    modifyMaxSuccess (const 30) $ do
 
-    xit "always shrinks to one of the minimal counter examples when there's a race condition"
-      prop_shrinkForkMinimal
+      it "returns a property that passes when there are no race conditions" $
+        prop_parallel None
+
+      it "always shrinks to one of the minimal counter examples when there's a race condition"
+        prop_shrinkForkMinimal

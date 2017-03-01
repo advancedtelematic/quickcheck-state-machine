@@ -280,21 +280,61 @@ linearTree es =
                      | otherwise = xs
 
 linearise
-  :: forall cmd resp model
-  .  Eq cmd
+  :: forall cmd ix resp model
+  .  Eq (cmd ix)
   => Eq resp
-  => StateMachineModel model cmd resp
-  -> History cmd resp
-  -> [[Operation cmd resp]]
-linearise StateMachineModel {..} = map fromRose . filter (postConditionsHold initialModel) . linearTree
+  => Enum ix
+  => RefKit cmd ix
+  => Monoid model
+  => StateMachineModel model (cmd ix) resp
+  -> History (cmd ix) resp
+  -> [[Operation (cmd ix) resp]]
+linearise StateMachineModel {..} = map fromRose . filter (postConditionsHoldPrefix 0 initialModel) . linearTree
   where
-  postConditionsHold :: model -> Rose (Operation cmd resp) -> Bool
-  postConditionsHold m (Rose (Operation cmd resp _ _) roses) =
-    postcondition m cmd resp && any' (postConditionsHold (transition m cmd resp)) roses
-    where
-    any' :: (a -> Bool) -> [a] -> Bool
-    any' _ [] = True
-    any' p xs = any p xs
+  any' :: (a -> Bool) -> [a] -> Bool
+  any' _ [] = True
+  any' p xs = any p xs
+
+  postConditionsHoldPrefix :: Int -> model -> Rose (Operation (cmd ix) resp) -> Bool
+  postConditionsHoldPrefix n m (Rose (Operation cmd resp 0 _) roses) =
+    postcondition m cmd resp && any' (postConditionsHoldPrefix n' (transition m cmd resp)) roses
+      where
+      n' | returnsRef cmd = n + 1
+         | otherwise      = n
+  postConditionsHoldPrefix n m rs = postConditionsHoldBranches n (Fork mempty m mempty) rs
+
+  postConditionsHoldBranches :: Int -> Fork model -> Rose (Operation (cmd ix) resp) -> Bool
+  postConditionsHoldBranches n (Fork m1 m0 m2) (Rose (Operation cmd resp pid _) roses) =
+
+    let m | pid == 1 = m1
+          | pid == 2 = m2
+    in
+
+    case usesRefs cmd of
+      []                     ->
+        postcondition (m0 <> m) cmd resp &&
+          any' (postConditionsHoldBranches n (Fork m1' m0 m2')) roses
+        where
+        m1' | pid == 1  = transition m1 cmd resp
+            | otherwise = m1
+        m2' | pid == 2  = transition m2 cmd resp
+            | otherwise = m2
+
+      [ref] | ref < toEnum n ->
+         postcondition m0 cmd resp &&
+           any' (postConditionsHoldBranches n (Fork m1 (transition m0 cmd resp) m2)) roses
+
+      _     | otherwise      ->
+         postcondition (m0 <> m) cmd resp &&
+           any' (postConditionsHoldBranches n (Fork m1' m0 m2')) roses
+         where
+         m1' | pid == 1  = transition m1 (fmap (decRef n) cmd) resp
+             | otherwise = m1
+         m2' | pid == 2  = transition m2 (fmap (decRef n) cmd) resp
+             | otherwise = m2
+
+         decRef :: Enum ix => Int -> ix -> ix
+         decRef n i = toEnum (fromEnum i - n)
 
 ------------------------------------------------------------------------
 
@@ -352,6 +392,7 @@ parallelProperty
   => (Eq resp, Show resp)
   => RefKit cmd ix
   => RefKit cmd ()
+  => Monoid model
   => StateMachineModel model (cmd ix) resp
   -> [(Int, Gen (cmd ()))]
   -> (cmd ix -> [cmd ix])
