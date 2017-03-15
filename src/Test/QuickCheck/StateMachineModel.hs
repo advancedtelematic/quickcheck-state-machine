@@ -45,9 +45,8 @@ forAllShrinkShow gen shrinker shower pf =
     shrinking shrinker x $ \x' ->
       counterexample (shower x') (pf x')
 
-assert' :: Monad m => String -> Bool -> PropertyM m ()
-assert' _   True  = return ()
-assert' msg False = fail msg
+liftProperty :: Monad m => Property -> PropertyM m ()
+liftProperty prop = MkPropertyM (\k -> liftM (prop .&&.) <$> k ())
 
 ------------------------------------------------------------------------
 
@@ -129,9 +128,19 @@ liftShrink' n0 shrinker = go n0
 
 ------------------------------------------------------------------------
 
+shrinkPair :: (a -> [a]) -> (a, a) -> [(a, a)]
+shrinkPair shrinker = shrinkPair' shrinker shrinker
+
+shrinkPair' :: (a -> [a]) -> (b -> [b]) -> (a, b) -> [(a, b)]
+shrinkPair' shrinkerA shrinkerB (x, y) =
+  [ (x', y) | x' <- shrinkerA x ] ++
+  [ (x, y') | y' <- shrinkerB y ]
+
+------------------------------------------------------------------------
+
 data StateMachineModel model cmd ix = StateMachineModel
   { precondition  :: forall resp. model -> cmd resp ix -> Bool
-  , postcondition :: forall resp. model -> cmd resp ix -> resp -> Bool
+  , postcondition :: forall resp. model -> cmd resp ix -> resp -> Property
   , transition    :: forall resp. model -> cmd resp ix -> resp -> model
   , initialModel  :: model
   }
@@ -168,7 +177,9 @@ sequentialProperty StateMachineModel {..} gens shrinker runCmd runM =
     monitor $ label s
     pre $ precondition m cmd'
     resp <- run $ liftSem runCmd cmd'
-    assert' ("postcondition for " ++ s) (postcondition m cmd' resp)
+    liftProperty $
+      counterexample ("The post-condition for `" ++ s ++ "' failed!") $
+        postcondition m cmd' resp
     go (transition m cmd' resp) cmds
 
 ------------------------------------------------------------------------
@@ -241,16 +252,6 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
 
 ------------------------------------------------------------------------
 
-shrinkPair :: (a -> [a]) -> (a, a) -> [(a, a)]
-shrinkPair shrinker = shrinkPair' shrinker shrinker
-
-shrinkPair' :: (a -> [a]) -> (b -> [b]) -> (a, b) -> [(a, b)]
-shrinkPair' shrinkerA shrinkerB (x, y) =
-  [ (x', y) | x' <- shrinkerA x ] ++
-  [ (x, y') | y' <- shrinkerB y ]
-
-------------------------------------------------------------------------
-
 type History cmd ref = [HistoryEvent (Untyped cmd ref)]
 
 data HistoryEvent cmd
@@ -304,16 +305,25 @@ linearise
   :: forall cmd ix model
   .  StateMachineModel model cmd ix
   -> History cmd ix
-  -> [[Operation cmd ix]]
-linearise StateMachineModel {..} = map fromRose . filter (postConditionsHold initialModel) . linearTree
+  -> Property
+linearise _                      [] = property True
+linearise StateMachineModel {..} xs = go initialModel . linearTree $ xs
   where
-  postConditionsHold :: model -> Rose (Operation cmd ix) -> Bool
-  postConditionsHold m (Rose (Operation cmd resp _ _) roses) =
-    postcondition m cmd resp && any' (postConditionsHold (transition m cmd resp)) roses
-    where
-    any' :: (a -> Bool) -> [a] -> Bool
-    any' _ [] = True
-    any' p xs = any p xs
+  go :: model -> [Rose (Operation cmd ix)] -> Property
+  go _ []       = property False
+  go m (o : os) = step m o .||. go m os
+
+  step :: model -> Rose (Operation cmd ix) -> Property
+  step m (Rose (Operation cmd resp _ _) roses) = postcondition m cmd resp .&&.
+    anyP (step (transition m cmd resp)) roses
+
+  anyP :: (a -> Property) -> [a] -> Property
+  anyP p [] = property True
+  anyP p xs = anyP' p xs
+
+  anyP' :: (a -> Property) -> [a] -> Property
+  anyP' p []       = property False
+  anyP' p (x : xs) = p x .||. anyP' p xs
 
 ------------------------------------------------------------------------
 
@@ -395,13 +405,9 @@ parallelProperty smm gen shrinker runStep
             ]
 
         hist <- run $ getChanContents $ getHistoryChannel kit
-        if null hist
-        then return ()
-        else do
-          let lin = linearise smm hist
-          when (null lin) $ do
-            monitor $ counterexample $ show $ pretty $ toForkOfOps hist
-          assert' "Couldn't linearise" $ not $ null lin
+        liftProperty $ counterexample
+          (("Couldn't linearise:\n\n" ++) $ show $ pretty $ toForkOfOps hist) $
+            linearise smm hist
   where
   getChanContents :: forall a. TChan a -> IO [a]
   getChanContents chan = reverse <$> atomically (go [])

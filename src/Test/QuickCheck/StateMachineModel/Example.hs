@@ -67,12 +67,12 @@ transitions m cmd _ = case cmd of
   Write ref i -> update m (unRef ref) i
   Inc   ref   -> update m (unRef ref) ((m ! ref) + 1)
 
-postconditions :: Model -> MemStep resp  -> resp -> Bool
+postconditions :: Model -> MemStep resp  -> resp -> Property
 postconditions m cmd resp = case cmd of
-  New         -> True
-  Read ref    -> m  ! ref == resp && m' == m
-  Write ref i -> m' ! ref == i
-  Inc   ref   -> m' ! ref == m ! ref + 1
+  New         -> property $ True
+  Read ref    -> m  ! ref === resp .&&. m' == m
+  Write ref i -> property $ m' ! ref == i
+  Inc   ref   -> property $ m' ! ref == m ! ref + 1
   where
   m' = transitions m cmd resp
 
@@ -112,7 +112,7 @@ semStep prb (Inc ref)     = liftIO $ do
   if prb == RaceCondition
   then do
     i <- readIORef ref
-    threadDelay =<< randomRIO (0, 2000)
+    threadDelay =<< randomRIO (0, 5000)
     writeIORef ref (i + 1)
   else
     atomicModifyIORef' ref (\i -> (i + 1, ()))
@@ -239,13 +239,13 @@ shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
 shrinkPropertyHelper prop p = monadicIO $ do
   result <- run $ quickCheckWithResult (stdArgs {chatty = False}) prop
   case result of
-    Failure { output = outputLines } -> do
-      assert' outputLines $ p outputLines
+    Failure { output = outputLines } -> liftProperty $
+      counterexample ("failed: " ++ outputLines) $ p outputLines
     _                                -> return ()
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug)
-  ((== "[New,Write (Ref 0) 5,Read (Ref 0)]") . last . lines)
+  ((== "[New,Write (Ref 0) 5,Read (Ref 0)]") . (!! 1) . lines)
 
 cheat :: Fork [Untyped MemStepF Ref] -> Fork [Untyped MemStepF Ref]
 cheat = fmap (map (\ms -> case ms of
