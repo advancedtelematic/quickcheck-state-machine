@@ -10,43 +10,31 @@
 
 module Test.QuickCheck.StateMachineModel where
 
-import           Control.Concurrent                  (threadDelay)
-import           Control.Concurrent.ParallelIO.Local (parallel_, withPool)
-import           Control.Concurrent.STM.TChan        (TChan, newTChanIO,
-                                                      tryReadTChan, writeTChan)
+import           Control.Concurrent                      (threadDelay)
+import           Control.Concurrent.ParallelIO.Local     (parallel_, withPool)
+import           Control.Concurrent.STM.TChan            (TChan, newTChanIO,
+                                                          tryReadTChan,
+                                                          writeTChan)
 import           Control.Monad.State
-import           Control.Monad.STM                   (STM, atomically)
+import           Control.Monad.STM                       (STM, atomically)
 import           Data.Dynamic
-import           Data.Foldable                       (toList)
-import           Data.List                           (partition)
-import           Data.Maybe                          (fromJust)
-import           Data.Monoid                         ((<>))
-import qualified Data.Set                            as Set
-import           System.Random                       (randomRIO)
+import           Data.Foldable                           (toList)
+import           Data.List                               (partition)
+import           Data.Maybe                              (fromJust)
+import           Data.Monoid                             ((<>))
+import qualified Data.Set                                as Set
+import           System.Random                           (randomRIO)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
-import           Test.QuickCheck.Property            (Property (..))
-import           Text.PrettyPrint.ANSI.Leijen        (Pretty, align, dot, empty,
-                                                      indent, int, pretty,
-                                                      prettyList, text,
-                                                      underline, vsep, (<+>))
+import           Test.QuickCheck.Property                (Property (..))
+import           Text.PrettyPrint.ANSI.Leijen            (Pretty, align, dot,
+                                                          empty, indent, int,
+                                                          pretty, prettyList,
+                                                          text, underline, vsep,
+                                                          (<+>))
 import           Unsafe.Coerce
 
-------------------------------------------------------------------------
-
-forAllShrinkShow
-  :: Testable prop
-  => Gen a -> (a -> [a]) -> (a -> String) -> (a -> prop) -> Property
-forAllShrinkShow gen shrinker shower pf =
-  again $
-  MkProperty $
-  gen >>= \x ->
-    unProperty $
-    shrinking shrinker x $ \x' ->
-      counterexample (shower x') (pf x')
-
-liftProperty :: Monad m => Property -> PropertyM m ()
-liftProperty prop = MkPropertyM (\k -> liftM (prop .&&.) <$> k ())
+import           Test.QuickCheck.StateMachineModel.Utils
 
 ------------------------------------------------------------------------
 
@@ -125,16 +113,6 @@ liftShrink' n0 shrinker = go n0
     [ c' : cs' | (c', cs') <- shrinkPair' shrinker (go n') (c, cs) ]
     where
     n' = if returnsRef c then n + 1 else n
-
-------------------------------------------------------------------------
-
-shrinkPair :: (a -> [a]) -> (a, a) -> [(a, a)]
-shrinkPair shrinker = shrinkPair' shrinker shrinker
-
-shrinkPair' :: (a -> [a]) -> (b -> [b]) -> (a, b) -> [(a, b)]
-shrinkPair' shrinkerA shrinkerB (x, y) =
-  [ (x', y) | x' <- shrinkerA x ] ++
-  [ (x, y') | y' <- shrinkerB y ]
 
 ------------------------------------------------------------------------
 
