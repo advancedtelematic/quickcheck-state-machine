@@ -6,6 +6,7 @@
 {-# LANGUAGE Rank2Types                #-}
 {-# LANGUAGE RecordWildCards           #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
 
 module Test.QuickCheck.StateMachineModel where
@@ -20,9 +21,10 @@ import           Control.Monad.STM                       (STM, atomically)
 import           Data.Dynamic
 import           Data.Foldable                           (toList)
 import           Data.List                               (partition)
-import           Data.Maybe                              (fromJust)
+import           Data.Maybe                              (fromJust, isJust)
 import           Data.Monoid                             ((<>))
 import qualified Data.Set                                as Set
+import           Data.Typeable
 import           System.Random                           (randomRIO)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
@@ -39,7 +41,7 @@ import           Test.QuickCheck.StateMachineModel.Utils
 ------------------------------------------------------------------------
 
 liftSem
-  :: (Monad m, Enum ix, Typeable ref, RefKit (Untyped cmd) ix)
+  :: (Monad m, Enum ix, Typeable ref, RefKit cmd ix)
   => (forall resp. cmd resp ref -> m resp)
   -> (forall resp. (Typeable resp, Show resp) => cmd resp ix -> StateT [ref] m resp)
 liftSem sem cmd = do
@@ -60,7 +62,7 @@ data Untyped f b where
 
 liftGen
   :: forall cmd ref
-  .  RefKit (Untyped cmd) ()
+  .  RefKit cmd ()
   => Enum ref
   => [(Int, Gen (Untyped cmd ()))]
   -> Int
@@ -94,13 +96,13 @@ liftGen gens n = sized $ \sz -> runStateT (go sz) n
 ------------------------------------------------------------------------
 
 liftShrink
-  :: RefKit (Untyped cmd) ref
+  :: RefKit cmd ref
   => (Untyped cmd ref -> [Untyped cmd ref])
   -> ([Untyped cmd ref] -> [[Untyped cmd ref]])
 liftShrink shrinker = liftShrink' 0 shrinker
 
 liftShrink'
-  :: RefKit (Untyped cmd) ref
+  :: RefKit cmd ref
   => Int
   -> (Untyped cmd ref -> [Untyped cmd ref])
   -> ([Untyped cmd ref] -> [[Untyped cmd ref]])
@@ -127,8 +129,8 @@ sequentialProperty
   :: forall m cmd ix ref model
   .  Show (Untyped cmd ix)
   => Monad m
-  => RefKit (Untyped cmd) ix
-  => RefKit (Untyped cmd) ()
+  => RefKit cmd ix
+  => RefKit cmd ()
   => Typeable ref
   => StateMachineModel model cmd ix
   -> [(Int, Gen (Untyped cmd ()))]
@@ -177,7 +179,7 @@ instance Pretty a => Pretty (Fork a) where
 ------------------------------------------------------------------------
 
 liftGenFork
-  :: RefKit (Untyped cmd) ()
+  :: RefKit cmd ()
   => Enum ix
   => [(Int, Gen (Untyped cmd ()))]
   -> Gen (Fork [Untyped cmd ix])
@@ -191,7 +193,7 @@ liftGenFork gens = do
 
 liftShrinkFork
   :: forall cmd ix
-  .  RefKit (Untyped cmd) ix
+  .  RefKit cmd ix
   => Ord (Untyped cmd ix)
   => (Untyped cmd ix -> [Untyped cmd ix])
   -> (Fork [Untyped cmd ix] -> [Fork [Untyped cmd ix]])
@@ -207,7 +209,7 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
 
   where
   shrinkPrefix
-    :: RefKit (Untyped cmd) ix
+    :: RefKit cmd ix
     => Fork [Untyped cmd ix] -> [Fork [Untyped cmd ix]]
   shrinkPrefix = go 0
     where
@@ -304,7 +306,7 @@ instance (Show (Untyped cmd ref)) => Pretty (Operation cmd ref) where
 
 toForkOfOps
   :: forall cmd ref
-  .  (RefKit (Untyped cmd) ref)
+  .  (RefKit cmd ref)
   => History cmd ref -> Fork [Operation cmd ref]
 toForkOfOps h = Fork (fst $ mkOps n0 l) p' (fst $ mkOps n0 r)
   where
@@ -335,7 +337,7 @@ mkHistoryKit pid = do
   return $ HistoryKit chan pid
 
 runMany
-  :: RefKit (Untyped cmd) ix
+  :: RefKit cmd ix
   => Typeable ref
   => HistoryKit cmd ix
   -> (forall resp. cmd resp ref -> IO resp)
@@ -354,8 +356,8 @@ parallelProperty
   .  (Ord (Untyped cmd ix), Show (Untyped cmd ix))
   => Show ix
   => Typeable ref
-  => RefKit (Untyped cmd) ix
-  => RefKit (Untyped cmd) ()
+  => RefKit cmd ix
+  => RefKit cmd ()
   => StateMachineModel model cmd ix
   -> [(Int, Gen (Untyped cmd ()))]
   -> (Untyped cmd ix -> [Untyped cmd ix])
@@ -391,17 +393,20 @@ parallelProperty smm gen shrinker runStep
 
 ------------------------------------------------------------------------
 
-class (Functor cmd, Foldable cmd, Enum ref, Ord ref) => RefKit cmd ref where
+class (Functor (Untyped cmd), Foldable (Untyped cmd), Enum ref, Ord ref) => RefKit cmd ref where
 
-  returnsRef :: cmd ref -> Bool
+  returnsRef :: Untyped cmd ref -> Bool
+  returnsRef (Untyped c) = isJust $ returnsRef' c
 
-  usesRefs :: cmd ref -> [ref]
+  returnsRef' :: cmd resp ref -> Maybe (resp :~: ref)
+
+  usesRefs :: Untyped cmd ref -> [ref]
   usesRefs = toList
 
-  countRefReturns :: [cmd ref] -> Int
+  countRefReturns :: [Untyped cmd ref] -> Int
   countRefReturns = length . filter returnsRef
 
-  fixRefs :: Int -> cmd ref -> [cmd ref] -> [cmd ref]
+  fixRefs :: Int -> Untyped cmd ref -> [Untyped cmd ref] -> [Untyped cmd ref]
   fixRefs n c cs
     | returnsRef c
         = map (fmap (\ref -> if r < ref then toEnum (fromEnum ref - 1) else ref))
@@ -411,7 +416,7 @@ class (Functor cmd, Foldable cmd, Enum ref, Ord ref) => RefKit cmd ref where
     where
     r = toEnum n
 
-  fixManyRefs :: Int -> [cmd ref] -> [cmd ref] -> [cmd ref]
+  fixManyRefs :: Int -> [Untyped cmd ref] -> [Untyped cmd ref] -> [Untyped cmd ref]
   fixManyRefs _ []       ds = ds
   fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
 
@@ -430,6 +435,6 @@ ppForks' :: Show (cmd ref) => [Fork [cmd ref]] -> String
 ppForks' = unlines . map (show . pretty . fmap (prettyList . map show))
 
 debugShrink
-  :: (Show (Untyped cmd ref), RefKit (Untyped cmd) ref, Ord (Untyped cmd ref))
+  :: (Show (Untyped cmd ref), RefKit cmd ref, Ord (Untyped cmd ref))
   => (Untyped cmd ref -> [Untyped cmd ref]) -> Fork [Untyped cmd ref] -> IO ()
 debugShrink shrinker = mapM_ ppFork . liftShrinkFork shrinker
