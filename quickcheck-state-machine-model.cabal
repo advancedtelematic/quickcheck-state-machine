@@ -17,6 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Test.QuickCheck.StateMachineModel
                      , Test.QuickCheck.StateMachineModel.Example
+                     , Test.QuickCheck.StateMachineModel.Utils
   build-depends:       ansi-wl-pprint
                      , base >= 4.7 && < 5
                      , containers
