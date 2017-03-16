@@ -284,24 +284,16 @@ linearise
   .  StateMachineModel model cmd ix
   -> History cmd ix
   -> Property
-linearise _                      [] = property True
-linearise StateMachineModel {..} xs = go initialModel . linearTree $ xs
+linearise _                       [] = property True
+linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ xs0
   where
-  go :: model -> [Rose (Operation cmd ix)] -> Property
-  go _ []       = property False
-  go m (o : os) = step m o .||. go m os
-
   step :: model -> Rose (Operation cmd ix) -> Property
   step m (Rose (Operation cmd resp _ _) roses) = postcondition m cmd resp .&&.
-    anyP (step (transition m cmd resp)) roses
-
-  anyP :: (a -> Property) -> [a] -> Property
-  anyP p [] = property True
-  anyP p xs = anyP' p xs
-
-  anyP' :: (a -> Property) -> [a] -> Property
-  anyP' p []       = property False
-  anyP' p (x : xs) = p x .||. anyP' p xs
+    anyP' (step (transition m cmd resp)) roses
+    where
+    anyP' :: (a -> Property) -> [a] -> Property
+    anyP' _ [] = property True
+    anyP' p xs = anyP p xs
 
 ------------------------------------------------------------------------
 

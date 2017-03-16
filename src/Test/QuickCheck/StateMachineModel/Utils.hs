@@ -7,6 +7,9 @@ import           Test.QuickCheck.Property
 
 ------------------------------------------------------------------------
 
+anyP :: (a -> Property) -> [a] -> Property
+anyP p = foldr (\x ih -> p x .||. ih) (property False)
+
 forAllShrinkShow
   :: Testable prop
   => Gen a -> (a -> [a]) -> (a -> String) -> (a -> prop) -> Property

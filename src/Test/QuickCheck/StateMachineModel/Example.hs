@@ -24,6 +24,7 @@ import           Text.Read
 import           Unsafe.Coerce
 
 import           Test.QuickCheck.StateMachineModel
+import           Test.QuickCheck.StateMachineModel.Utils
 
 ------------------------------------------------------------------------
 
