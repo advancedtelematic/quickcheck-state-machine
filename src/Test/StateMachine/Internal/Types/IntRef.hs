@@ -35,9 +35,9 @@ data IntRef = IntRef Ref Pid
 
 -- | A process id is merely a natural number that keeps track of which
 --   thread the reference comes from. In the sequential case the process
---   id is always 0. Likewise the sequential prefix of a parallel
---   program also has process id 0, while the left suffix has process
---   id 1, and then right suffix has process id 2.
+--   id is always @0@. Likewise the sequential prefix of a parallel
+--   program also has process id @0@, while the left suffix has process
+--   id @1@, and then right suffix has process id @2@.
 newtype Pid = Pid Int
   deriving (Eq, Ord, Show, Read, Num)
 
