@@ -193,7 +193,7 @@ instance Functor (MemStepF resp) where
 deriving instance Functor  (Untyped MemStepF)
 deriving instance Foldable (Untyped MemStepF)
 
-instance (Enum ref, Ord ref) => RefKit MemStepF ref where
+instance RefKit MemStepF where
   returnsRef (Untyped New) = True
   returnsRef _             = False
 
@@ -227,7 +227,7 @@ prop_parallel prb = parallelProperty
 
 ------------------------------------------------------------------------
 
-scopeCheck :: RefKit cmd ref => [Untyped cmd ref] -> Bool
+scopeCheck :: (Enum ref, Ord ref, RefKit cmd) => [Untyped cmd ref] -> Bool
 scopeCheck = go 0
   where
   go _ []       = True
