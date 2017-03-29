@@ -131,11 +131,11 @@ liftShrink' n0 shrinker = go n0
 
 ------------------------------------------------------------------------
 
-data StateMachineModel model cmd ix = StateMachineModel
-  { precondition  :: forall resp. model -> cmd resp ix -> Bool
-  , postcondition :: forall resp. model -> cmd resp ix -> resp -> Property
-  , transition    :: forall resp. model -> cmd resp ix -> resp -> model
-  , initialModel  :: model
+data StateMachineModel model cmd = StateMachineModel
+  { precondition  :: forall ix resp. Ord ix => model ix -> cmd resp ix -> Bool
+  , postcondition :: forall ix resp. (Enum ix, Ord ix) => model ix -> cmd resp ix -> resp -> Property
+  , transition    :: forall ix resp. (Enum ix, Ord ix) => model ix -> cmd resp ix -> resp -> model ix
+  , initialModel  :: forall ix.      model ix
   }
 
 sequentialProperty
@@ -145,7 +145,7 @@ sequentialProperty
   => (Enum ix, Ord ix)
   => RefKit cmd
   => Typeable ref
-  => StateMachineModel model cmd ix
+  => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd ()))]
   -> (Untyped cmd ix -> [Untyped cmd ix])
   -> (forall resp. cmd resp ref -> m resp)
@@ -163,7 +163,7 @@ sequentialProperty StateMachineModel {..} gens shrinker runCmd runM =
       classify (len >= 30)             "30+   commands" $
         monadic (runM . flip evalStateT []) $ go initialModel cmds
   where
-  go :: model -> [Untyped cmd ix] -> PropertyM (StateT [ref] m) ()
+  go :: model ix -> [Untyped cmd ix] -> PropertyM (StateT [ref] m) ()
   go _ []           = return ()
   go m (cmd@(Untyped cmd') : cmds) = do
     let s = takeWhile (/= ' ') $ show cmd
@@ -194,6 +194,7 @@ instance Pretty a => Pretty (Fork a) where
 liftGenFork
   :: RefKit cmd
   => Enum ix
+  => Ord ix
   => [(Int, Gen (Untyped cmd ()))]
   -> Gen (Fork [Untyped cmd ix])
 liftGenFork gens = do
@@ -298,13 +299,14 @@ linearTree es =
 
 linearise
   :: forall cmd ix model
-  .  StateMachineModel model cmd ix
+  .  (Enum ix, Ord ix)
+  => StateMachineModel model cmd
   -> History cmd ix
   -> Property
 linearise _                       [] = property True
 linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ xs0
   where
-  step :: model -> Rose (Operation cmd ix) -> Property
+  step :: model ix -> Rose (Operation cmd ix) -> Property
   step m (Rose (Operation cmd resp _ _) roses) = postcondition m cmd resp .&&.
     anyP' (step (transition m cmd resp)) roses
     where
@@ -373,7 +375,7 @@ parallelProperty
   => (Enum ix, Ord ix, Show ix)
   => Typeable ref
   => RefKit cmd
-  => StateMachineModel model cmd ix
+  => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd ()))]
   -> (Untyped cmd ix -> [Untyped cmd ix])
   -> (forall resp. cmd resp ref -> IO resp)
