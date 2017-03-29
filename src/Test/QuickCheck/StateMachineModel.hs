@@ -20,6 +20,8 @@ import           Control.Monad.State
 import           Control.Monad.STM                       (STM, atomically)
 import           Data.Dynamic
 import           Data.Foldable                           (toList)
+import           Data.Map                                (Map)
+import qualified Data.Map                                as M
 import           Data.List                               (partition)
 import           Data.Maybe                              (fromJust, isJust)
 import           Data.Monoid                             ((<>))
@@ -38,23 +40,25 @@ import           Test.QuickCheck.StateMachineModel.Utils
 
 ------------------------------------------------------------------------
 
+
+
 liftSem
   :: forall cmd resp ix ref m
   .  (Monad m, Enum ix, Typeable ref, RefKit cmd)
   => Typeable resp
   => Show resp
   => (cmd resp ref -> m resp)
-  -> cmd resp ix -> StateT [ref] m resp
+  -> cmd resp ix -> StateT (Map Int ref) m resp
 liftSem sem cmd = do
 
   env <- get
-  Untyped cmd' <- return $ fmap (\ix -> env !! fromEnum ix) $ Untyped cmd
+  Untyped cmd' <- return $ fmap (\ix -> env M.! fromEnum ix) $ Untyped cmd
   let Just (cmd'' :: cmd resp ref) = ccast cmd'
 
   case returnsRef' cmd'' of
     Just Refl -> do
       ref <- lift $ sem cmd''
-      modify (++ [ ref ])
+      modify $ M.insert (M.size env) ref
       return ref
     Nothing -> do
       resp <- lift $ sem cmd''
@@ -64,7 +68,6 @@ ccast
   :: forall a resp cmd ref. (Typeable a, Typeable resp)
   => cmd a ref -> Maybe (cmd resp ref)
 ccast x = fmap (\Refl -> x) (eqT :: Maybe (a :~: resp))
-
 
 ------------------------------------------------------------------------
 
@@ -161,9 +164,9 @@ sequentialProperty StateMachineModel {..} gens shrinker runCmd runM =
       classify (len >= 1  && len < 15) "1-15  commands" $
       classify (len >= 15 && len < 30) "15-30 commands" $
       classify (len >= 30)             "30+   commands" $
-        monadic (runM . flip evalStateT []) $ go initialModel cmds
+        monadic (runM . flip evalStateT M.empty) $ go initialModel cmds
   where
-  go :: model ix -> [Untyped cmd ix] -> PropertyM (StateT [ref] m) ()
+  go :: model ix -> [Untyped cmd ix] -> PropertyM (StateT (Map Int ref) m) ()
   go _ []           = return ()
   go m (cmd@(Untyped cmd') : cmds) = do
     let s = takeWhile (/= ' ') $ show cmd
@@ -359,7 +362,7 @@ runMany
   => (Enum ix, Ord ix)
   => HistoryKit cmd ix
   -> (forall resp. cmd resp ref -> IO resp)
-  -> [Untyped cmd ix] -> StateT [ref] IO ()
+  -> [Untyped cmd ix] -> StateT (Map Int ref) IO ()
 runMany kit step = flip foldM () $ \_ cmd'@(Untyped cmd) -> do
   lift $ atomically $ writeTChan (getHistoryChannel kit) $
     InvocationEvent cmd' (getProcessIdHistory kit)
@@ -386,7 +389,7 @@ parallelProperty smm gen shrinker runStep
   . \(Fork left prefix right) -> do
       replicateM_ 10 $ do
         kit <- run $ mkHistoryKit 0
-        env <- run $ execStateT (runMany kit runStep prefix) []
+        env <- run $ execStateT (runMany kit runStep prefix) M.empty
         run $ withPool 2 $ \pool -> do
           parallel_ pool
             [ evalStateT (runMany (kit { getProcessIdHistory = 1}) runStep left)  env

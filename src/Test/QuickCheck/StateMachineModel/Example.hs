@@ -113,9 +113,9 @@ debugMem ms0 = do
     putStrLn $ "$" ++ show i ++ ": " ++ show v
   where
   semSteps :: MonadIO io => [Untyped MemStep Ref] -> io [IORef Int]
-  semSteps = flip execStateT [] . go
+  semSteps = fmap (map snd . M.toList) . flip execStateT M.empty . go
     where
-    go :: MonadIO io => [Untyped MemStep Ref] -> StateT [IORef Int] io ()
+    go :: MonadIO io => [Untyped MemStep Ref] -> StateT (Map Int (IORef Int)) io ()
     go = flip foldM () $ \_ (Untyped ms) -> do
       liftIO (print ms)
       _ <- semStep' ms
@@ -123,7 +123,7 @@ debugMem ms0 = do
       where
       semStep'
         :: (MonadIO io, Typeable resp, Show resp)
-        => MemStep resp Ref -> StateT [IORef Int] io resp
+        => MemStep resp Ref -> StateT (Map Int (IORef Int)) io resp
       semStep' = liftSem (semStep None)
 
 ------------------------------------------------------------------------
