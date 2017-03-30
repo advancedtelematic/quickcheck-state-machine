@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-orphans      #-}
+
 {-# LANGUAGE DeriveFunctor             #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -20,9 +22,9 @@ import           Control.Monad.State
 import           Control.Monad.STM                       (STM, atomically)
 import           Data.Dynamic
 import           Data.Foldable                           (toList)
+import           Data.List                               (partition)
 import           Data.Map                                (Map)
 import qualified Data.Map                                as M
-import           Data.List                               (partition)
 import           Data.Maybe                              (fromJust, isJust)
 import           Data.Monoid                             ((<>))
 import qualified Data.Set                                as Set
@@ -38,28 +40,58 @@ import           Text.PrettyPrint.ANSI.Leijen            (Pretty, align, dot,
 
 import           Test.QuickCheck.StateMachineModel.Utils
 
+import           Unsafe.Coerce
+
 ------------------------------------------------------------------------
 
-
-
-liftSem
+liftSemSeq
   :: forall cmd resp ix ref m
   .  (Monad m, Enum ix, Typeable ref, RefKit cmd)
   => Typeable resp
+  => Ord ix
   => Show resp
   => (cmd resp ref -> m resp)
-  -> cmd resp ix -> StateT (Map Int ref) m resp
-liftSem sem cmd = do
+  -> cmd resp ix -> StateT (Map ix ref) m resp
+liftSemSeq sem cmd = do
 
   env <- get
-  Untyped cmd' <- return $ fmap (\ix -> env M.! fromEnum ix) $ Untyped cmd
+  Untyped cmd' <- return $ fmap (\ix -> env M.! ix) $ Untyped cmd
   let Just (cmd'' :: cmd resp ref) = ccast cmd'
 
   case returnsRef' cmd'' of
     Just Refl -> do
       ref <- lift $ sem cmd''
-      modify $ M.insert (M.size env) ref
-      return ref
+      let ix :: ix
+          ix = toEnum . length . M.keys $ env
+      modify $ M.insert ix ref
+      return $ unsafeCoerce ix
+    Nothing -> do
+      resp <- lift $ sem cmd''
+      return resp
+
+liftSem
+  :: forall cmd resp ix ref m
+  .  (Monad m, Enum ix, Typeable ref, RefKit cmd)
+  => Typeable resp
+  => Ord (ix, Int)
+  => Show resp
+  => (cmd resp ref -> m resp)
+  -> Int
+  -> cmd resp (ix, Int) -> StateT (Map (ix, Int) ref) m resp
+liftSem sem pid cmd = do
+
+  env <- get
+  Untyped cmd' <- return $ fmap (\ix -> env M.! ix) $ Untyped cmd
+  let Just (cmd'' :: cmd resp ref) = ccast cmd'
+
+  case returnsRef' cmd'' of
+    Just Refl -> do
+      ref <- lift $ sem cmd''
+      let ix :: ix
+          ix = toEnum . length . filter ((== pid) . snd) . M.keys $ env
+      modify $ M.insert (ix, pid) ref
+      return $ unsafeCoerce (ix, pid)
+
     Nothing -> do
       resp <- lift $ sem cmd''
       return resp
@@ -73,6 +105,9 @@ ccast x = fmap (\Refl -> x) (eqT :: Maybe (a :~: resp))
 
 data Untyped f b where
   Untyped :: (Typeable a, Show a) => f a b -> Untyped f b
+
+typed :: Typeable a => Show a => Untyped f b -> f a b
+typed (Untyped f) = fromJust $ ccast f
 
 liftGen
   :: forall cmd ref
@@ -132,6 +167,22 @@ liftShrink' n0 shrinker = go n0
     where
     n' = if returnsRef c then n + 1 else n
 
+liftShrinkPid
+  :: RefKit cmd
+  => (Enum ix, Ord ix)
+  => Int
+  -> (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)])
+  -> ([Untyped cmd (ix, Int)] -> [[Untyped cmd (ix, Int)]])
+liftShrinkPid pid shrinker = go 0
+  where
+  go _ []       = []
+  go n (c : cs) =
+    [ [] ] ++
+    [ fixRefsPid n pid c cs ] ++
+    [ c' : cs' | (c', cs') <- shrinkPair' shrinker (go n') (c, cs) ]
+    where
+    n' = if returnsRef c then n + 1 else n
+
 ------------------------------------------------------------------------
 
 data StateMachineModel model cmd = StateMachineModel
@@ -166,13 +217,13 @@ sequentialProperty StateMachineModel {..} gens shrinker runCmd runM =
       classify (len >= 30)             "30+   commands" $
         monadic (runM . flip evalStateT M.empty) $ go initialModel cmds
   where
-  go :: model ix -> [Untyped cmd ix] -> PropertyM (StateT (Map Int ref) m) ()
+  go :: model ix -> [Untyped cmd ix] -> PropertyM (StateT (Map ix ref) m) ()
   go _ []           = return ()
   go m (cmd@(Untyped cmd') : cmds) = do
     let s = takeWhile (/= ' ') $ show cmd
     monitor $ label s
     pre $ precondition m cmd'
-    resp <- run $ liftSem runCmd cmd'
+    resp <- run $ liftSemSeq runCmd cmd'
     liftProperty $
       counterexample ("The post-condition for `" ++ s ++ "' failed!") $
         postcondition m cmd' resp
@@ -195,16 +246,25 @@ instance Pretty a => Pretty (Fork a) where
 ------------------------------------------------------------------------
 
 liftGenFork
-  :: RefKit cmd
+  :: forall cmd ix
+  .  RefKit cmd
   => Enum ix
+  => Functor (Untyped cmd)
   => Ord ix
   => [(Int, Gen (Untyped cmd ()))]
-  -> Gen (Fork [Untyped cmd ix])
+  -> Gen (Fork [Untyped cmd (ix, Int)])
 liftGenFork gens = do
   (prefix, n) <- liftGen gens 0
   left        <- fst <$> liftGen gens n
   right       <- fst <$> liftGen gens n
-  return $ Fork left prefix right
+  return $ Fork
+    (map (fmap (fixPid n 1)) left)
+    (map (fmap (\ix -> (ix, 0))) prefix)
+    (map (fmap (fixPid n 2)) right)
+  where
+  fixPid :: Int -> Int -> ix -> (ix, Int)
+  fixPid n pid ix | fromEnum ix < n = (ix, 0)
+                | otherwise       = (toEnum (fromEnum ix - n), pid)
 
 ------------------------------------------------------------------------
 
@@ -212,14 +272,16 @@ liftShrinkFork
   :: forall cmd ix
   .  RefKit cmd
   => (Enum ix, Ord ix)
-  => Ord (Untyped cmd ix)
-  => (Untyped cmd ix -> [Untyped cmd ix])
-  -> (Fork [Untyped cmd ix] -> [Fork [Untyped cmd ix]])
+  => Ord (Untyped cmd (ix, Int))
+  => (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)])
+  -> (Fork [Untyped cmd (ix, Int)] -> [Fork [Untyped cmd (ix, Int)]])
 liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
 
   -- Only shrink the branches:
   [ Fork l' p0 r'
-  | (l', r') <- shrinkPair (liftShrink' (countRefReturns p0) shrinker) (l0, r0)
+  | (l', r') <- shrinkPair' (liftShrinkPid 1 shrinker)
+                            (liftShrinkPid 2 shrinker)
+                            (l0, r0)
   ] ++
 
   -- Only shrink the prefix:
@@ -229,22 +291,22 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
   shrinkPrefix
     :: RefKit cmd
     => (Enum ix, Ord ix)
-    => Fork [Untyped cmd ix] -> [Fork [Untyped cmd ix]]
+    => Fork [Untyped cmd (ix, Int)] -> [Fork [Untyped cmd (ix, Int)]]
   shrinkPrefix = go 0
     where
     go _ (Fork _ []       _) = []
     go n (Fork l (p : ps) r) =
       [ Fork l'   []               r'   ] ++
-      [ Fork l''  (fixRefs n p ps) r''  ] ++
+      [ Fork l''  (fixRefsPid n 0 p ps) r''  ] ++
       [ Fork l''' (p' : ps')       r'''
       | (p', Fork l''' ps' r''') <- shrinkPair' shrinker (go n') (p, Fork l ps r)
       ]
       where
-      l'  = fixManyRefs n (p : ps) l
-      r'  = fixManyRefs n (p : ps) r
+      l'  = fixManyRefsPid n 0 (p : ps) l
+      r'  = fixManyRefsPid n 0 (p : ps) r
 
-      l'' = fixRefs n p l
-      r'' = fixRefs n p r
+      l'' = fixRefsPid n 0 p l
+      r'' = fixRefsPid n 0 p r
 
       n'  | returnsRef p = n + 1
           | otherwise    = n
@@ -300,17 +362,40 @@ linearTree es =
   matchInv pid (InvocationEvent _ pid') = pid == pid'
   matchInv _   _                        = False
 
+instance (Enum a, Enum b) => Enum (a, b) where
+
+  toEnum   i      = let (x, y) = cantorsPairingInv i
+                    in (toEnum x, toEnum y)
+    where
+    cantorsPairingInv :: Int -> (Int, Int)
+    cantorsPairingInv z = (x, y)
+      where
+      w :: Int
+      w = floor ((sqrt ((8 :: Double) * fromInteger (toInteger z) + 1) - 1) / 2)
+      t :: Int
+      t = (w * w + w) `div` 2
+      y = z - t
+      x = w - y
+
+  fromEnum (a, b) = cantorsPairing (fromEnum a) (fromEnum b)
+    where
+    cantorsPairing :: Int -> Int -> Int
+    cantorsPairing m n = (m + n) * (m + n + 1) `div` 2 + n
+
 linearise
   :: forall cmd ix model
-  .  (Enum ix, Ord ix)
+  .  (Enum ix, Ord (ix, Int))
+  => Show (model (ix, Int))
+  => Functor (Untyped cmd)
   => StateMachineModel model cmd
-  -> History cmd ix
+  -> History cmd (ix, Int)
   -> Property
 linearise _                       [] = property True
 linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ xs0
   where
-  step :: model ix -> Rose (Operation cmd ix) -> Property
-  step m (Rose (Operation cmd resp _ _) roses) = postcondition m cmd resp .&&.
+  step :: model (ix, Int) -> Rose (Operation cmd (ix, Int)) -> Property
+  step m (Rose (Operation cmd resp _ _) roses) =
+    postcondition m cmd resp .&&.
     anyP' (step (transition m cmd resp)) roses
     where
     anyP' :: (a -> Property) -> [a] -> Property
@@ -360,13 +445,13 @@ runMany
   :: RefKit cmd
   => Typeable ref
   => (Enum ix, Ord ix)
-  => HistoryKit cmd ix
+  => HistoryKit cmd (ix, Int)
   -> (forall resp. cmd resp ref -> IO resp)
-  -> [Untyped cmd ix] -> StateT (Map Int ref) IO ()
+  -> [Untyped cmd (ix, Int)] -> StateT (Map (ix, Int) ref) IO ()
 runMany kit step = flip foldM () $ \_ cmd'@(Untyped cmd) -> do
   lift $ atomically $ writeTChan (getHistoryChannel kit) $
     InvocationEvent cmd' (getProcessIdHistory kit)
-  resp <- liftSem step cmd
+  resp <- liftSem step (getProcessIdHistory kit) cmd
   lift $ do
     threadDelay =<< randomRIO (0, 20)
     atomically $ writeTChan (getHistoryChannel kit) $
@@ -374,13 +459,14 @@ runMany kit step = flip foldM () $ \_ cmd'@(Untyped cmd) -> do
 
 parallelProperty
   :: forall cmd ix ref model
-  .  (Ord (Untyped cmd ix), Show (Untyped cmd ix))
+  .  (Ord (Untyped cmd (ix, Int)), Show (Untyped cmd (ix, Int)))
   => (Enum ix, Ord ix, Show ix)
   => Typeable ref
+  => Show (model (ix, Int))
   => RefKit cmd
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd ()))]
-  -> (Untyped cmd ix -> [Untyped cmd ix])
+  -> (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)])
   -> (forall resp. cmd resp ref -> IO resp)
   -> Property
 parallelProperty smm gen shrinker runStep
@@ -438,11 +524,33 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
     where
     r = toEnum n
 
+  fixRefsPid
+    :: forall ix
+    .  (Enum ix, Ord ix)
+    => Int -> Int -> Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)] -> [Untyped cmd (ix, Int)]
+  fixRefsPid n pid c cs
+    | returnsRef c
+        = map (fmap (\(ix, pid') -> if pid == pid' && toEnum n < ix
+                                    then (toEnum (fromEnum ix - 1), pid')
+                                    else (ix, pid')))
+        . filter (\ms -> [r] /= usesRefs ms)
+        $ cs
+    | otherwise = cs
+    where
+    r :: (ix, Int)
+    r = (toEnum n, pid)
+
   fixManyRefs
     :: (Enum ref, Ord ref)
     => Int -> [Untyped cmd ref] -> [Untyped cmd ref] -> [Untyped cmd ref]
   fixManyRefs _ []       ds = ds
   fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
+
+  fixManyRefsPid
+    :: (Enum ix, Ord ix)
+    => Int -> Int -> [Untyped cmd (ix, Int)] -> [Untyped cmd (ix, Int)] -> [Untyped cmd (ix, Int)]
+  fixManyRefsPid _ _   []       ds = ds
+  fixManyRefsPid n pid (c : cs) ds = fixManyRefsPid n pid cs (fixRefsPid n pid c ds)
 
 ------------------------------------------------------------------------
 
@@ -459,6 +567,6 @@ ppForks' :: Show (cmd ref) => [Fork [cmd ref]] -> String
 ppForks' = unlines . map (show . pretty . fmap (prettyList . map show))
 
 debugShrink
-  :: (Show (Untyped cmd ref), RefKit cmd, Ord (Untyped cmd ref), Enum ref, Ord ref)
-  => (Untyped cmd ref -> [Untyped cmd ref]) -> Fork [Untyped cmd ref] -> IO ()
+  :: (Show (Untyped cmd (ix, Int)), RefKit cmd, Ord (Untyped cmd (ix, Int)), Enum ix, Ord ix)
+  => (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)]) -> Fork [Untyped cmd (ix, Int)] -> IO ()
 debugShrink shrinker = mapM_ ppFork . liftShrinkFork shrinker
