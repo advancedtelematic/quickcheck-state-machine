@@ -44,31 +44,6 @@ import           Unsafe.Coerce
 
 ------------------------------------------------------------------------
 
-liftSemSeq
-  :: forall cmd resp ix ref m
-  .  (Monad m, Enum ix, Typeable ref, RefKit cmd)
-  => Typeable resp
-  => Ord ix
-  => Show resp
-  => (cmd resp ref -> m resp)
-  -> cmd resp ix -> StateT (Map ix ref) m resp
-liftSemSeq sem cmd = do
-
-  env <- get
-  Untyped cmd' <- return $ fmap (\ix -> env M.! ix) $ Untyped cmd
-  let Just (cmd'' :: cmd resp ref) = ccast cmd'
-
-  case returnsRef' cmd'' of
-    Just Refl -> do
-      ref <- lift $ sem cmd''
-      let ix :: ix
-          ix = toEnum . length . M.keys $ env
-      modify $ M.insert ix ref
-      return $ unsafeCoerce ix
-    Nothing -> do
-      resp <- lift $ sem cmd''
-      return resp
-
 liftSem
   :: forall cmd resp ix ref m
   .  (Monad m, Enum ix, Typeable ref, RefKit cmd)
@@ -198,6 +173,7 @@ sequentialProperty
   => Monad m
   => (Enum ix, Ord ix)
   => RefKit cmd
+  => Functor (Untyped cmd)
   => Typeable ref
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd ()))]
@@ -217,13 +193,14 @@ sequentialProperty StateMachineModel {..} gens shrinker runCmd runM =
       classify (len >= 30)             "30+   commands" $
         monadic (runM . flip evalStateT M.empty) $ go initialModel cmds
   where
-  go :: model ix -> [Untyped cmd ix] -> PropertyM (StateT (Map ix ref) m) ()
+  go :: model (ix, Int) -> [Untyped cmd ix] -> PropertyM (StateT (Map (ix, Int) ref) m) ()
   go _ []           = return ()
-  go m (cmd@(Untyped cmd') : cmds) = do
+  go m (cmd : cmds) = do
     let s = takeWhile (/= ' ') $ show cmd
     monitor $ label s
+    Untyped cmd' <- return $ fmap (\ix -> (ix, 0)) cmd
     pre $ precondition m cmd'
-    resp <- run $ liftSemSeq runCmd cmd'
+    resp <- run $ liftSem runCmd 0 cmd'
     liftProperty $
       counterexample ("The post-condition for `" ++ s ++ "' failed!") $
         postcondition m cmd' resp
