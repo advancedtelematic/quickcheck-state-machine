@@ -36,7 +36,7 @@ main = hspec $ do
 
     modifyMaxSuccess (const 10) $ do
 
-      xit "returns a property that passes when there are no race conditions" $ do
+      it "returns a property that passes when there are no race conditions" $ do
         prop_parallel None
 
       it "always shrinks to one of the minimal counter examples when there's a race condition"

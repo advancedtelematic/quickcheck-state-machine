@@ -11,12 +11,14 @@
 module Test.QuickCheck.StateMachineModel.Example where
 
 import           Control.Applicative
-import           Control.Concurrent                (threadDelay)
+import           Control.Concurrent                      (threadDelay)
 import           Control.Monad.State
 import           Data.Char
 import           Data.Dynamic
 import           Data.IORef
 import           Data.List
+import           Data.Map                                (Map)
+import qualified Data.Map                                as M
 import           System.Random
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
@@ -34,72 +36,54 @@ newtype Ref = Ref Int
 unRef :: Ref -> Int
 unRef (Ref i) = i
 
-data MemStepF :: * -> * -> * where
-  New   ::               MemStepF ref ref
-  Read  :: ref ->        MemStepF Int ref
-  Write :: ref -> Int -> MemStepF ()  ref
-  Inc   :: ref ->        MemStepF ()  ref
+data MemStep :: * -> * -> * where
+  New   ::               MemStep ref ref
+  Read  :: ref ->        MemStep Int ref
+  Write :: ref -> Int -> MemStep ()  ref
+  Inc   :: ref ->        MemStep ()  ref
 
-deriving instance Show ref => Show (MemStepF resp ref)
-deriving instance Eq   ref => Eq   (MemStepF resp ref)
-deriving instance Ord  ref => Ord  (MemStepF resp ref)
-deriving instance Foldable (MemStepF resp)
-
-type MemStep resp = MemStepF resp Ref
+deriving instance Show ref => Show (MemStep resp ref)
+deriving instance Eq   ref => Eq   (MemStep resp ref)
+deriving instance Ord  ref => Ord  (MemStep resp ref)
+deriving instance Foldable (MemStep resp)
 
 ------------------------------------------------------------------------
 
-type Model = [Int]
+newtype Model ref = Model (Map ref Int)
+  deriving Show
 
-initModel :: Model
-initModel = []
+initModel :: Model ref
+initModel = Model M.empty
 
-preconditions :: Model -> MemStep resp -> Bool
-preconditions m cmd = case cmd of
-  New             -> True
-  Read  (Ref i)   -> i < length m
-  Write (Ref i) _ -> i < length m
-  Inc   (Ref i)   -> i < length m
+preconditions :: Ord ref => Model ref -> MemStep resp ref -> Bool
+preconditions (Model m) cmd = case cmd of
+  New         -> True
+  Read  ref   -> M.member ref m
+  Write ref _ -> M.member ref m
+  Inc   ref   -> M.member ref m
 
-transitions :: Model -> MemStep resp -> resp -> Model
-transitions m cmd _ = case cmd of
-  New         -> m ++ [0]
-  Read  _     -> m
-  Write ref i -> update m (unRef ref) i
-  Inc   ref   -> update m (unRef ref) ((m ! ref) + 1)
+transitions :: (Enum ref, Ord ref) => Model ref -> MemStep resp ref -> resp -> Model ref
+transitions (Model m) cmd ix = case cmd of
+  New         -> Model (M.insert ix 0 m)
+  Read  _     -> Model m
+  Write ref i -> Model (M.insert ref i m)
+  Inc   ref   -> Model (M.insert ref (m M.! ref + 1) m)
 
-postconditions :: Model -> MemStep resp  -> resp -> Property
-postconditions m cmd resp = case cmd of
+postconditions :: (Enum ref, Ord ref) => Model ref -> MemStep resp ref -> resp -> Property
+postconditions (Model m) cmd resp = case cmd of
   New         -> property $ True
-  Read ref    -> m  ! ref === resp .&&. m' == m
-  Write ref i -> property $ m' ! ref == i
-  Inc   ref   -> property $ m' ! ref == m ! ref + 1
+  Read  ref   -> property $ m  M.! ref == resp
+  Write ref i -> property $ m' M.! ref == i
+  Inc   ref   -> property $ m' M.! ref == m M.! ref + 1
   where
-  m' = transitions m cmd resp
-
-------------------------------------------------------------------------
-
-(!) :: [a] -> Ref -> a
-xs0 ! (Ref i0) = case go xs0 i0 of
-  Nothing -> error $ "!: " ++ show (length xs0, i0)
-  Just x  -> x
-  where
-  go :: [a] -> Int -> Maybe a
-  go []       _ = Nothing
-  go (x : _)  0 = Just x
-  go (_ : xs) i = go xs (i - 1)
-
-update :: [a] -> Int -> a -> [a]
-update []       _ _ = []
-update (_ : xs) 0 y = y : xs
-update (x : xs) i y = x : update xs (i - 1) y
+  Model m' = transitions (Model m) cmd resp
 
 ------------------------------------------------------------------------
 
 data Problem = None | Bug | RaceCondition
   deriving Eq
 
-semStep :: MonadIO m => Problem -> MemStepF resp (IORef Int) -> m resp
+semStep :: MonadIO m => Problem -> MemStep resp (IORef Int) -> m resp
 semStep _   New           = liftIO (newIORef 0)
 semStep _   (Read  ref)   = liftIO (readIORef ref)
 semStep prb (Write ref i) = liftIO (writeIORef ref i')
@@ -120,7 +104,7 @@ semStep prb (Inc ref)     = liftIO $ do
 
 ------------------------------------------------------------------------
 
-debugMem :: MonadIO io => [Untyped MemStepF Ref] -> io ()
+debugMem :: MonadIO io => [Untyped MemStep (Ref, Int)] -> io ()
 debugMem ms0 = do
   liftIO $ putStrLn ""
   env <- semSteps ms0
@@ -129,10 +113,11 @@ debugMem ms0 = do
     v <- readIORef ref
     putStrLn $ "$" ++ show i ++ ": " ++ show v
   where
-  semSteps :: MonadIO io => [Untyped MemStepF Ref] -> io [IORef Int]
-  semSteps = flip execStateT [] . go
+  semSteps :: MonadIO io => [Untyped MemStep (Ref, Int)] -> io [IORef Int]
+  semSteps = fmap M.elems . flip execStateT M.empty . go
     where
-    go :: MonadIO io => [Untyped MemStepF Ref] -> StateT [IORef Int] io ()
+    go :: MonadIO io => [Untyped MemStep (Ref, Int)]
+       -> StateT (Map (Ref, Int) (IORef Int)) io ()
     go = flip foldM () $ \_ (Untyped ms) -> do
       liftIO (print ms)
       _ <- semStep' ms
@@ -140,12 +125,12 @@ debugMem ms0 = do
       where
       semStep'
         :: (MonadIO io, Typeable resp, Show resp)
-        => MemStep resp -> StateT [IORef Int] io resp
-      semStep' = liftSem (semStep None)
+        => MemStep resp (Ref, Int) -> StateT (Map (Ref, Int) (IORef Int)) io resp
+      semStep' = liftSem (semStep None) 0
 
 ------------------------------------------------------------------------
 
-gens :: [(Int, Gen (Untyped MemStepF ()))]
+gens :: [(Int, Gen (Untyped MemStep ()))]
 gens =
   [ (1, return . Untyped $ New)
   , (5, return . Untyped $ Read ())
@@ -155,17 +140,20 @@ gens =
 
 ------------------------------------------------------------------------
 
-shrink1 :: Untyped MemStepF ref -> [Untyped MemStepF ref ]
+shrink1 :: Untyped MemStep ref -> [Untyped MemStep ref ]
 shrink1 (Untyped (Write ref i)) = [ Untyped (Write ref i') | i' <- shrink i ]
 shrink1 _                       = []
 
+shrink1Mono :: Untyped MemStep (Ref, Int) -> [Untyped MemStep (Ref, Int) ]
+shrink1Mono = shrink1
+
 ------------------------------------------------------------------------
 
-instance Show ref => Show (Untyped MemStepF ref) where
+instance Show ref => Show (Untyped MemStep ref) where
   show (Untyped c) = show c
 
 -- https://ghc.haskell.org/trac/ghc/ticket/8128
-instance (Read ref, Typeable ref, Show ref) => Read (Untyped MemStepF ref) where
+instance (Read ref, Typeable ref, Show ref) => Read (Untyped MemStep ref) where
 
   readPrec = parens $ do
     Ident ident <- parens lexP
@@ -178,22 +166,22 @@ instance (Read ref, Typeable ref, Show ref) => Read (Untyped MemStepF ref) where
 
   readListPrec = readListPrecDefault
 
-instance (Eq ref, Typeable ref) => Eq (Untyped MemStepF ref) where
+instance (Eq ref, Typeable ref) => Eq (Untyped MemStep ref) where
   Untyped c1 == Untyped c2 = Just c1 == cast c2
 
-instance (Ord ref, Typeable ref) => Ord (Untyped MemStepF ref) where
+instance (Ord ref, Typeable ref) => Ord (Untyped MemStep ref) where
   Untyped c1 <= Untyped c2 = Just c1 <= cast c2
 
-instance Functor (MemStepF resp) where
+instance Functor (MemStep resp) where
   fmap _ New           = unsafeCoerce New -- XXX: Hmm?
   fmap f (Read  ref)   = Read  (f ref)
   fmap f (Write ref i) = Write (f ref) i
   fmap f (Inc   ref)   = Inc   (f ref)
 
-deriving instance Functor  (Untyped MemStepF)
-deriving instance Foldable (Untyped MemStepF)
+deriving instance Functor  (Untyped MemStep)
+deriving instance Foldable (Untyped MemStep)
 
-instance RefKit MemStepF where
+instance RefKit MemStep where
   returnsRef (Untyped New) = True
   returnsRef _             = False
 
@@ -202,7 +190,7 @@ instance RefKit MemStepF where
 
 ------------------------------------------------------------------------
 
-smm :: StateMachineModel Model MemStepF Ref
+smm :: StateMachineModel Model MemStep
 smm = StateMachineModel
   { precondition  = preconditions
   , postcondition = postconditions
@@ -214,7 +202,7 @@ prop_safety :: Problem -> Property
 prop_safety prb = sequentialProperty
   smm
   gens
-  shrink1
+  shrink1Mono
   (semStep prb)
   ioProperty
 
@@ -222,22 +210,29 @@ prop_parallel :: Problem -> Property
 prop_parallel prb = parallelProperty
   smm
   gens
-  shrink1
+  shrink1Mono
   (semStep prb)
 
 ------------------------------------------------------------------------
 
-scopeCheck :: (Enum ref, Ord ref, RefKit cmd) => [Untyped cmd ref] -> Bool
-scopeCheck = go 0
+scopeCheck
+  :: (Enum ix, Ord ix, RefKit cmd)
+  => [(Int, Untyped cmd (ix, Int))] -> Bool
+scopeCheck = go 0 []
   where
-  go _ []       = True
-  go s (c : cs) = all (\r -> r < toEnum s) (usesRefs c) &&
-    go (if returnsRef c then s + 1 else s) cs
+  go _ _    []              = True
+  go s refs ((pid, c) : cs) = all (\r -> r `elem` refs) (usesRefs c) &&
+    go s' refs' cs
+    where
+    (s', refs')
+      | returnsRef c = (s + 1, (toEnum s, pid) : refs)
+      | otherwise    = (s,                       refs)
 
 prop_genScope :: Property
 prop_genScope = forAll (liftGenFork gens) $ \(Fork l p r) ->
-  scopeCheck (p ++ l) &&
-  scopeCheck (p ++ (r :: [Untyped MemStepF Ref]))
+  let p' = zip (repeat 0) p in
+  scopeCheck (p' ++ zip (repeat 1) l) &&
+  scopeCheck (p' ++ zip (repeat 2) (r :: [Untyped MemStep (Ref, Int)]))
 
 shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
 shrinkPropertyHelper prop p = monadicIO $ do
@@ -249,9 +244,9 @@ shrinkPropertyHelper prop p = monadicIO $ do
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug)
-  ((== "[New,Write (Ref 0) 5,Read (Ref 0)]") . (!! 1) . lines)
+  ((== "[New,Write (Ref 0,0) 5,Read (Ref 0,0)]") . (!! 1) . lines)
 
-cheat :: Fork [Untyped MemStepF Ref] -> Fork [Untyped MemStepF Ref]
+cheat :: Fork [Untyped MemStep ref] -> Fork [Untyped MemStep ref]
 cheat = fmap (map (\ms -> case ms of
                       Untyped (Write ref _) -> Untyped (Write ref 0)
                       _                     -> ms))
@@ -261,16 +256,20 @@ prop_shrinkForkSubseq = forAll (liftGenFork gens) $ \f@(Fork l p r) ->
   all (\(Fork l' p' r') -> noRefs l' `isSubsequenceOf` noRefs l &&
                            noRefs p' `isSubsequenceOf` noRefs p &&
                            noRefs r' `isSubsequenceOf` noRefs r)
-      (liftShrinkFork shrink1 (cheat f))
+      (liftShrinkFork shrink1Mono (cheat f))
 
   where
   noRefs = fmap (const ())
 
 prop_shrinkForkScope :: Property
 prop_shrinkForkScope = forAll (liftGenFork gens) $ \f ->
-  all (\(Fork l' p' r') -> scopeCheck (p' ++ l') &&
-                           scopeCheck (p' ++ (r' :: [Untyped MemStepF Ref])))
-      (liftShrinkFork shrink1 f)
+  all (\(Fork l p r) ->
+         let p' = zip (repeat 0) p
+             l' = zip (repeat 1) l
+             r' = zip (repeat 2) r
+         in scopeCheck (p' ++ l') &&
+            scopeCheck (p' ++ r'))
+      (liftShrinkFork shrink1Mono f)
 
 ------------------------------------------------------------------------
 
@@ -279,10 +278,10 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   let f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f || f `elem` minimal
   where
-  hasMinimalShrink :: Fork [Untyped MemStepF Ref] -> Bool
+  hasMinimalShrink :: Fork [Untyped MemStep (Ref, Int)] -> Bool
   hasMinimalShrink
     = anyRose (`elem` minimal)
-    . rose (liftShrinkFork shrink1)
+    . rose (liftShrinkFork shrink1Mono)
     where
     anyRose :: (a -> Bool) -> Rose a -> Bool
     anyRose p (Rose x xs) = p x || any (anyRose p) xs
@@ -292,7 +291,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       where
       go x = Rose x $ map go $ more x
 
-  minimal :: [Fork [Untyped MemStepF Ref]]
+  minimal :: [Fork [Untyped MemStep (Ref, Int)]]
   minimal  = minimal' ++ map mirrored minimal'
     where
     minimal' = [m0, m1, m2, m3]
@@ -300,18 +299,18 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
     mirrored :: Fork a -> Fork a
     mirrored (Fork l p r) = Fork r p l
 
-    m0 = Fork [Untyped (Write (Ref 0) 0), Untyped (Read (Ref 0))]
+    m0 = Fork [Untyped (Write (Ref 0, 0) 0), Untyped (Read (Ref 0, 0))]
               [Untyped New]
-              [Untyped (Inc (Ref 0))]
+              [Untyped (Inc (Ref 0, 0))]
 
-    m1 = Fork [Untyped (Write (Ref 0) 0)]
+    m1 = Fork [Untyped (Write (Ref 0, 0) 0)]
               [Untyped New]
-              [Untyped (Inc (Ref 0)), Untyped (Read (Ref 0))]
+              [Untyped (Inc (Ref 0, 0)), Untyped (Read (Ref 0, 0))]
 
-    m2 = Fork [Untyped (Inc (Ref 0)), Untyped (Read (Ref 0))]
+    m2 = Fork [Untyped (Inc (Ref 0, 0)), Untyped (Read (Ref 0, 0))]
               [Untyped New]
-              [Untyped (Inc (Ref 0))]
+              [Untyped (Inc (Ref 0, 0))]
 
-    m3 = Fork [Untyped (Inc (Ref 0))]
+    m3 = Fork [Untyped (Inc (Ref 0, 0))]
               [Untyped New]
-              [Untyped (Inc (Ref 0)), Untyped (Read (Ref 0))]
+              [Untyped (Inc (Ref 0, 0)), Untyped (Read (Ref 0, 0))]
