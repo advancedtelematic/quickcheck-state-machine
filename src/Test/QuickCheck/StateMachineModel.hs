@@ -264,7 +264,7 @@ liftGenFork gens = do
   where
   fixPid :: Int -> Int -> ix -> (ix, Int)
   fixPid n pid ix | fromEnum ix < n = (ix, 0)
-                | otherwise       = (toEnum (fromEnum ix - n), pid)
+                  | otherwise       = (toEnum (fromEnum ix - n), pid)
 
 ------------------------------------------------------------------------
 
@@ -517,7 +517,7 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
     => Int -> Untyped cmd ref -> [Untyped cmd ref] -> [Untyped cmd ref]
   fixRefs n c cs
     | returnsRef c
-        = map (fmap (\ref -> if r < ref then toEnum (fromEnum ref - 1) else ref))
+        = map (fmap (\ref -> if r < ref then pred ref else ref))
         . filter (\ms -> [r] /= usesRefs ms)
         $ cs
     | otherwise = cs
@@ -531,7 +531,7 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
   fixRefsPid n pid c cs
     | returnsRef c
         = map (fmap (\(ix, pid') -> if pid == pid' && toEnum n < ix
-                                    then (toEnum (fromEnum ix - 1), pid')
+                                    then (pred ix, pid')
                                     else (ix, pid')))
         . filter (\ms -> [r] /= usesRefs ms)
         $ cs

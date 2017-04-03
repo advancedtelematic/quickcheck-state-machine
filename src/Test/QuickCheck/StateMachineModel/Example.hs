@@ -64,7 +64,7 @@ preconditions (Model m) cmd = case cmd of
 
 transitions :: (Enum ref, Ord ref) => Model ref -> MemStep resp ref -> resp -> Model ref
 transitions (Model m) cmd ix = case cmd of
-  New         -> Model (M.insert ix 0 m) -- (toEnum $ length $ M.keys m) 0 m)
+  New         -> Model (M.insert ix 0 m)
   Read  _     -> Model m
   Write ref i -> Model (M.insert ref i m)
   Inc   ref   -> Model (M.insert ref (m M.! ref + 1) m)
@@ -114,7 +114,7 @@ debugMem ms0 = do
     putStrLn $ "$" ++ show i ++ ": " ++ show v
   where
   semSteps :: MonadIO io => [Untyped MemStep Ref] -> io [IORef Int]
-  semSteps = fmap (map snd . M.toList) . flip execStateT M.empty . go
+  semSteps = fmap M.elems . flip execStateT M.empty . go
     where
     go :: MonadIO io => [Untyped MemStep Ref] -> StateT (Map Ref (IORef Int)) io ()
     go = flip foldM () $ \_ (Untyped ms) -> do
