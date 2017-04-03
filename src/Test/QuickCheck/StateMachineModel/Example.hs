@@ -104,7 +104,7 @@ semStep prb (Inc ref)     = liftIO $ do
 
 ------------------------------------------------------------------------
 
-debugMem :: MonadIO io => [Untyped MemStep Ref] -> io ()
+debugMem :: MonadIO io => [Untyped MemStep (Ref, Int)] -> io ()
 debugMem ms0 = do
   liftIO $ putStrLn ""
   env <- semSteps ms0
@@ -113,10 +113,11 @@ debugMem ms0 = do
     v <- readIORef ref
     putStrLn $ "$" ++ show i ++ ": " ++ show v
   where
-  semSteps :: MonadIO io => [Untyped MemStep Ref] -> io [IORef Int]
+  semSteps :: MonadIO io => [Untyped MemStep (Ref, Int)] -> io [IORef Int]
   semSteps = fmap M.elems . flip execStateT M.empty . go
     where
-    go :: MonadIO io => [Untyped MemStep Ref] -> StateT (Map Ref (IORef Int)) io ()
+    go :: MonadIO io => [Untyped MemStep (Ref, Int)]
+       -> StateT (Map (Ref, Int) (IORef Int)) io ()
     go = flip foldM () $ \_ (Untyped ms) -> do
       liftIO (print ms)
       _ <- semStep' ms
@@ -124,8 +125,8 @@ debugMem ms0 = do
       where
       semStep'
         :: (MonadIO io, Typeable resp, Show resp)
-        => MemStep resp Ref -> StateT (Map Ref (IORef Int)) io resp
-      semStep' = liftSemSeq (semStep None)
+        => MemStep resp (Ref, Int) -> StateT (Map (Ref, Int) (IORef Int)) io resp
+      semStep' = liftSem (semStep None) 0
 
 ------------------------------------------------------------------------
 
@@ -145,9 +146,6 @@ shrink1 _                       = []
 
 shrink1Mono :: Untyped MemStep (Ref, Int) -> [Untyped MemStep (Ref, Int) ]
 shrink1Mono = shrink1
-
-shrink1SeqMono :: Untyped MemStep Ref -> [Untyped MemStep Ref ]
-shrink1SeqMono = shrink1
 
 ------------------------------------------------------------------------
 
@@ -204,7 +202,7 @@ prop_safety :: Problem -> Property
 prop_safety prb = sequentialProperty
   smm
   gens
-  shrink1SeqMono
+  shrink1Mono
   (semStep prb)
   ioProperty
 
@@ -247,7 +245,7 @@ shrinkPropertyHelper prop p = monadicIO $ do
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug)
-  ((== "[New,Write (Ref 0) 5,Read (Ref 0)]") . (!! 1) . lines)
+  ((== "[New,Write (Ref 0,0) 5,Read (Ref 0,0)]") . (!! 1) . lines)
 
 cheat :: Fork [Untyped MemStep ref] -> Fork [Untyped MemStep ref]
 cheat = fmap (map (\ms -> case ms of

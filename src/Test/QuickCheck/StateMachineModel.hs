@@ -85,15 +85,16 @@ typed :: Typeable a => Show a => Untyped f b -> f a b
 typed (Untyped f) = fromJust $ ccast f
 
 liftGen
-  :: forall cmd ref
+  :: forall cmd ix
   .  RefKit cmd
-  => Enum ref
+  => Enum ix
   => [(Int, Gen (Untyped cmd ()))]
   -> Int
-  -> Gen ([Untyped cmd ref], Int)
-liftGen gens n = sized $ \sz -> runStateT (go sz) n
+  -> Int
+  -> Gen ([Untyped cmd (ix, Int)], Int)
+liftGen gens pid n = sized $ \sz -> runStateT (go sz) n
   where
-  go :: Int -> StateT Int Gen [Untyped cmd ref]
+  go :: Int -> StateT Int Gen [Untyped cmd (ix, Int)]
   go 0  = return []
   go sz = do
     scope <- get
@@ -114,46 +115,23 @@ liftGen gens n = sized $ \sz -> runStateT (go sz) n
       then
         return $ fmap (error "impossible: no refs used") cmd : ih
       else do
-        ref <- toEnum <$> lift (choose (0, scope - 1))
-        return $ fmap (const ref) cmd : ih
+        ix <- toEnum <$> lift (choose (0, scope - 1))
+        return $ fmap (const (ix, pid)) cmd : ih
 
 ------------------------------------------------------------------------
 
 liftShrink
   :: RefKit cmd
-  => (Enum ref, Ord ref)
-  => (Untyped cmd ref -> [Untyped cmd ref])
-  -> ([Untyped cmd ref] -> [[Untyped cmd ref]])
-liftShrink shrinker = liftShrink' 0 shrinker
-
-liftShrink'
-  :: RefKit cmd
-  => (Enum ref, Ord ref)
-  => Int
-  -> (Untyped cmd ref -> [Untyped cmd ref])
-  -> ([Untyped cmd ref] -> [[Untyped cmd ref]])
-liftShrink' n0 shrinker = go n0
-  where
-  go _ []       = []
-  go n (c : cs) =
-    [ [] ] ++
-    [ fixRefs n c cs ] ++
-    [ c' : cs' | (c', cs') <- shrinkPair' shrinker (go n') (c, cs) ]
-    where
-    n' = if returnsRef c then n + 1 else n
-
-liftShrinkPid
-  :: RefKit cmd
   => (Enum ix, Ord ix)
   => Int
   -> (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)])
   -> ([Untyped cmd (ix, Int)] -> [[Untyped cmd (ix, Int)]])
-liftShrinkPid pid shrinker = go 0
+liftShrink pid shrinker = go 0
   where
   go _ []       = []
   go n (c : cs) =
     [ [] ] ++
-    [ fixRefsPid n pid c cs ] ++
+    [ fixRefs n pid c cs ] ++
     [ c' : cs' | (c', cs') <- shrinkPair' shrinker (go n') (c, cs) ]
     where
     n' = if returnsRef c then n + 1 else n
@@ -169,7 +147,7 @@ data StateMachineModel model cmd = StateMachineModel
 
 sequentialProperty
   :: forall m cmd ix ref model
-  .  Show (Untyped cmd ix)
+  .  Show (Untyped cmd (ix, Int))
   => Monad m
   => (Enum ix, Ord ix)
   => RefKit cmd
@@ -177,14 +155,14 @@ sequentialProperty
   => Typeable ref
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd ()))]
-  -> (Untyped cmd ix -> [Untyped cmd ix])
+  -> (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)])
   -> (forall resp. cmd resp ref -> m resp)
   -> (m Property -> Property)
   -> Property
 sequentialProperty StateMachineModel {..} gens shrinker runCmd runM =
   forAllShrink
-    (fst <$> liftGen gens 0)
-    (liftShrink shrinker)
+    (fst <$> liftGen gens 0 0)
+    (liftShrink 0 shrinker)
     $ \cmds ->
       let len = length cmds in
       classify (len == 0)              "0     commands" $
@@ -193,12 +171,12 @@ sequentialProperty StateMachineModel {..} gens shrinker runCmd runM =
       classify (len >= 30)             "30+   commands" $
         monadic (runM . flip evalStateT M.empty) $ go initialModel cmds
   where
-  go :: model (ix, Int) -> [Untyped cmd ix] -> PropertyM (StateT (Map (ix, Int) ref) m) ()
-  go _ []           = return ()
-  go m (cmd : cmds) = do
+  go :: model (ix, Int) -> [Untyped cmd (ix, Int)]
+     -> PropertyM (StateT (Map (ix, Int) ref) m) ()
+  go _ []                          = return ()
+  go m (cmd@(Untyped cmd') : cmds) = do
     let s = takeWhile (/= ' ') $ show cmd
     monitor $ label s
-    Untyped cmd' <- return $ fmap (\ix -> (ix, 0)) cmd
     pre $ precondition m cmd'
     resp <- run $ liftSem runCmd 0 cmd'
     liftProperty $
@@ -231,17 +209,17 @@ liftGenFork
   => [(Int, Gen (Untyped cmd ()))]
   -> Gen (Fork [Untyped cmd (ix, Int)])
 liftGenFork gens = do
-  (prefix, n) <- liftGen gens 0
-  left        <- fst <$> liftGen gens n
-  right       <- fst <$> liftGen gens n
+  (prefix, n) <- liftGen gens 0 0
+  left        <- fst <$> liftGen gens 1 n
+  right       <- fst <$> liftGen gens 2 n
   return $ Fork
-    (map (fmap (fixPid n 1)) left)
-    (map (fmap (\ix -> (ix, 0))) prefix)
-    (map (fmap (fixPid n 2)) right)
+    (map (fmap (fixPid n)) left)
+    prefix
+    (map (fmap (fixPid n)) right)
   where
-  fixPid :: Int -> Int -> ix -> (ix, Int)
-  fixPid n pid ix | fromEnum ix < n = (ix, 0)
-                  | otherwise       = (toEnum (fromEnum ix - n), pid)
+  fixPid :: Int -> (ix, Int) -> (ix, Int)
+  fixPid n (ix, pid) | fromEnum ix < n = (ix, 0)
+                     | otherwise       = (toEnum (fromEnum ix - n), pid)
 
 ------------------------------------------------------------------------
 
@@ -256,8 +234,8 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
 
   -- Only shrink the branches:
   [ Fork l' p0 r'
-  | (l', r') <- shrinkPair' (liftShrinkPid 1 shrinker)
-                            (liftShrinkPid 2 shrinker)
+  | (l', r') <- shrinkPair' (liftShrink 1 shrinker)
+                            (liftShrink 2 shrinker)
                             (l0, r0)
   ] ++
 
@@ -274,16 +252,16 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
     go _ (Fork _ []       _) = []
     go n (Fork l (p : ps) r) =
       [ Fork l'   []               r'   ] ++
-      [ Fork l''  (fixRefsPid n 0 p ps) r''  ] ++
+      [ Fork l''  (fixRefs n 0 p ps) r''  ] ++
       [ Fork l''' (p' : ps')       r'''
       | (p', Fork l''' ps' r''') <- shrinkPair' shrinker (go n') (p, Fork l ps r)
       ]
       where
-      l'  = fixManyRefsPid n 0 (p : ps) l
-      r'  = fixManyRefsPid n 0 (p : ps) r
+      l'  = fixManyRefs n 0 (p : ps) l
+      r'  = fixManyRefs n 0 (p : ps) r
 
-      l'' = fixRefsPid n 0 p l
-      r'' = fixRefsPid n 0 p r
+      l'' = fixRefs n 0 p l
+      r'' = fixRefs n 0 p r
 
       n'  | returnsRef p = n + 1
           | otherwise    = n
@@ -490,22 +468,10 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
   countRefReturns = length . filter returnsRef
 
   fixRefs
-    :: (Enum ref, Ord ref)
-    => Int -> Untyped cmd ref -> [Untyped cmd ref] -> [Untyped cmd ref]
-  fixRefs n c cs
-    | returnsRef c
-        = map (fmap (\ref -> if r < ref then pred ref else ref))
-        . filter (\ms -> [r] /= usesRefs ms)
-        $ cs
-    | otherwise = cs
-    where
-    r = toEnum n
-
-  fixRefsPid
     :: forall ix
     .  (Enum ix, Ord ix)
     => Int -> Int -> Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)] -> [Untyped cmd (ix, Int)]
-  fixRefsPid n pid c cs
+  fixRefs n pid c cs
     | returnsRef c
         = map (fmap (\(ix, pid') -> if pid == pid' && toEnum n < ix
                                     then (pred ix, pid')
@@ -518,16 +484,10 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
     r = (toEnum n, pid)
 
   fixManyRefs
-    :: (Enum ref, Ord ref)
-    => Int -> [Untyped cmd ref] -> [Untyped cmd ref] -> [Untyped cmd ref]
-  fixManyRefs _ []       ds = ds
-  fixManyRefs n (c : cs) ds = fixManyRefs n cs (fixRefs n c ds)
-
-  fixManyRefsPid
     :: (Enum ix, Ord ix)
     => Int -> Int -> [Untyped cmd (ix, Int)] -> [Untyped cmd (ix, Int)] -> [Untyped cmd (ix, Int)]
-  fixManyRefsPid _ _   []       ds = ds
-  fixManyRefsPid n pid (c : cs) ds = fixManyRefsPid n pid cs (fixRefsPid n pid c ds)
+  fixManyRefs _ _   []       ds = ds
+  fixManyRefs n pid (c : cs) ds = fixManyRefs n pid cs (fixRefs n pid c ds)
 
 ------------------------------------------------------------------------
 
