@@ -63,7 +63,7 @@ liftSem sem pid cmd = do
     Just Refl -> do
       ref <- lift $ sem cmd''
       let ix :: ix
-          ix = toEnum . length . filter ((== pid) . snd) . M.keys $ env
+          ix = toEnum . length . M.keys $ env
       modify $ M.insert (ix, pid) ref
       return $ unsafeCoerce (ix, pid)
 
@@ -126,7 +126,16 @@ liftShrink
   => Int
   -> (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)])
   -> ([Untyped cmd (ix, Int)] -> [[Untyped cmd (ix, Int)]])
-liftShrink pid shrinker = go 0
+liftShrink pid shrinker = liftShrink' 0 pid shrinker
+
+liftShrink'
+  :: RefKit cmd
+  => (Enum ix, Ord ix)
+  => Int
+  -> Int
+  -> (Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)])
+  -> ([Untyped cmd (ix, Int)] -> [[Untyped cmd (ix, Int)]])
+liftShrink' n0 pid shrinker = go n0
   where
   go _ []       = []
   go n (c : cs) =
@@ -219,7 +228,7 @@ liftGenFork gens = do
   where
   fixPid :: Int -> (ix, Int) -> (ix, Int)
   fixPid n (ix, pid) | fromEnum ix < n = (ix, 0)
-                     | otherwise       = (toEnum (fromEnum ix - n), pid)
+                     | otherwise       = (ix, pid)
 
 ------------------------------------------------------------------------
 
@@ -234,8 +243,8 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
 
   -- Only shrink the branches:
   [ Fork l' p0 r'
-  | (l', r') <- shrinkPair' (liftShrink 1 shrinker)
-                            (liftShrink 2 shrinker)
+  | (l', r') <- shrinkPair' (liftShrink' (countRefReturns p0) 1 shrinker)
+                            (liftShrink' (countRefReturns p0) 2 shrinker)
                             (l0, r0)
   ] ++
 
@@ -251,9 +260,9 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) = Set.toList $ Set.fromList $
     where
     go _ (Fork _ []       _) = []
     go n (Fork l (p : ps) r) =
-      [ Fork l'   []               r'   ] ++
+      [ Fork l'   []                 r'   ] ++
       [ Fork l''  (fixRefs n 0 p ps) r''  ] ++
-      [ Fork l''' (p' : ps')       r'''
+      [ Fork l''' (p' : ps')         r'''
       | (p', Fork l''' ps' r''') <- shrinkPair' shrinker (go n') (p, Fork l ps r)
       ]
       where
@@ -473,7 +482,7 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
     => Int -> Int -> Untyped cmd (ix, Int) -> [Untyped cmd (ix, Int)] -> [Untyped cmd (ix, Int)]
   fixRefs n pid c cs
     | returnsRef c
-        = map (fmap (\(ix, pid') -> if pid == pid' && toEnum n < ix
+        = map (fmap (\(ix, pid') -> if toEnum n < ix
                                     then (pred ix, pid')
                                     else (ix, pid')))
         . filter (\ms -> [r] /= usesRefs ms)

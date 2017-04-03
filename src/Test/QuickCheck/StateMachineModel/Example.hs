@@ -218,16 +218,15 @@ prop_parallel prb = parallelProperty
 scopeCheck
   :: (Enum ix, Ord ix, RefKit cmd)
   => [(Int, Untyped cmd (ix, Int))] -> Bool
-scopeCheck = go 0 0 []
+scopeCheck = go 0 []
   where
-  go _ _      _    []              = True
-  go s oldPid refs ((pid, c) : cs) = all (\r -> r `elem` refs) (usesRefs c) &&
-    go s' oldPid' refs' cs
+  go _ _    []              = True
+  go s refs ((pid, c) : cs) = all (\r -> r `elem` refs) (usesRefs c) &&
+    go s' refs' cs
     where
-    (s', oldPid', refs')
-      | returnsRef c && pid == oldPid = (s + 1, oldPid, (toEnum s, pid) : refs)
-      | returnsRef c && pid /= oldPid = (1,     pid,    (toEnum 0, pid) : refs)
-      | otherwise                     = (s,     oldPid,           refs)
+    (s', refs')
+      | returnsRef c = (s + 1, (toEnum s, pid) : refs)
+      | otherwise    = (s,                       refs)
 
 prop_genScope :: Property
 prop_genScope = forAll (liftGenFork gens) $ \(Fork l p r) ->
