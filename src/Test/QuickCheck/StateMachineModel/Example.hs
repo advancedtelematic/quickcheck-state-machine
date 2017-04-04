@@ -62,14 +62,14 @@ preconditions (Model m) cmd = case cmd of
   Write ref _ -> M.member ref m
   Inc   ref   -> M.member ref m
 
-transitions :: (Enum ref, Ord ref) => Model ref -> MemStep resp ref -> resp -> Model ref
+transitions :: Ord ref => Model ref -> MemStep resp ref -> resp -> Model ref
 transitions (Model m) cmd ix = case cmd of
   New         -> Model (M.insert ix 0 m)
   Read  _     -> Model m
   Write ref i -> Model (M.insert ref i m)
   Inc   ref   -> Model (M.insert ref (m M.! ref + 1) m)
 
-postconditions :: (Enum ref, Ord ref) => Model ref -> MemStep resp ref -> resp -> Property
+postconditions :: Ord ref => Model ref -> MemStep resp ref -> resp -> Property
 postconditions (Model m) cmd resp = case cmd of
   New         -> property $ True
   Read  ref   -> property $ m  M.! ref == resp
@@ -104,7 +104,7 @@ semStep prb (Inc ref)     = liftIO $ do
 
 ------------------------------------------------------------------------
 
-debugMem :: MonadIO io => [Untyped MemStep (Ref, Int)] -> io ()
+debugMem :: MonadIO io => [Untyped MemStep (Ref, Pid)] -> io ()
 debugMem ms0 = do
   liftIO $ putStrLn ""
   env <- semSteps ms0
@@ -113,11 +113,11 @@ debugMem ms0 = do
     v <- readIORef ref
     putStrLn $ "$" ++ show i ++ ": " ++ show v
   where
-  semSteps :: MonadIO io => [Untyped MemStep (Ref, Int)] -> io [IORef Int]
+  semSteps :: MonadIO io => [Untyped MemStep (Ref, Pid)] -> io [IORef Int]
   semSteps = fmap M.elems . flip execStateT M.empty . go
     where
-    go :: MonadIO io => [Untyped MemStep (Ref, Int)]
-       -> StateT (Map (Ref, Int) (IORef Int)) io ()
+    go :: MonadIO io => [Untyped MemStep (Ref, Pid)]
+       -> StateT (Map (Ref, Pid) (IORef Int)) io ()
     go = flip foldM () $ \_ (Untyped ms) -> do
       liftIO (print ms)
       _ <- semStep' ms
@@ -125,7 +125,7 @@ debugMem ms0 = do
       where
       semStep'
         :: (MonadIO io, Typeable resp, Show resp)
-        => MemStep resp (Ref, Int) -> StateT (Map (Ref, Int) (IORef Int)) io resp
+        => MemStep resp (Ref, Pid) -> StateT (Map (Ref, Pid) (IORef Int)) io resp
       semStep' = liftSem (semStep None) 0
 
 ------------------------------------------------------------------------
@@ -144,7 +144,7 @@ shrink1 :: Untyped MemStep ref -> [Untyped MemStep ref ]
 shrink1 (Untyped (Write ref i)) = [ Untyped (Write ref i') | i' <- shrink i ]
 shrink1 _                       = []
 
-shrink1Mono :: Untyped MemStep (Ref, Int) -> [Untyped MemStep (Ref, Int) ]
+shrink1Mono :: Untyped MemStep (Ref, Pid) -> [Untyped MemStep (Ref, Pid) ]
 shrink1Mono = shrink1
 
 ------------------------------------------------------------------------
@@ -217,7 +217,7 @@ prop_parallel prb = parallelProperty
 
 scopeCheck
   :: (Enum ix, Ord ix, RefKit cmd)
-  => [(Int, Untyped cmd (ix, Int))] -> Bool
+  => [(Pid, Untyped cmd (ix, Pid))] -> Bool
 scopeCheck = go 0 []
   where
   go _ _    []              = True
@@ -232,7 +232,7 @@ prop_genScope :: Property
 prop_genScope = forAll (liftGenFork gens) $ \(Fork l p r) ->
   let p' = zip (repeat 0) p in
   scopeCheck (p' ++ zip (repeat 1) l) &&
-  scopeCheck (p' ++ zip (repeat 2) (r :: [Untyped MemStep (Ref, Int)]))
+  scopeCheck (p' ++ zip (repeat 2) (r :: [Untyped MemStep (Ref, Pid)]))
 
 shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
 shrinkPropertyHelper prop p = monadicIO $ do
@@ -244,7 +244,7 @@ shrinkPropertyHelper prop p = monadicIO $ do
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug)
-  ((== "[New,Write (Ref 0,0) 5,Read (Ref 0,0)]") . (!! 1) . lines)
+  ((== "[New,Write (Ref 0,Pid 0) 5,Read (Ref 0,Pid 0)]") . (!! 1) . lines)
 
 cheat :: Fork [Untyped MemStep ref] -> Fork [Untyped MemStep ref]
 cheat = fmap (map (\ms -> case ms of
@@ -278,7 +278,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   let f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f || f `elem` minimal
   where
-  hasMinimalShrink :: Fork [Untyped MemStep (Ref, Int)] -> Bool
+  hasMinimalShrink :: Fork [Untyped MemStep (Ref, Pid)] -> Bool
   hasMinimalShrink
     = anyRose (`elem` minimal)
     . rose (liftShrinkFork shrink1Mono)
@@ -291,7 +291,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       where
       go x = Rose x $ map go $ more x
 
-  minimal :: [Fork [Untyped MemStep (Ref, Int)]]
+  minimal :: [Fork [Untyped MemStep (Ref, Pid)]]
   minimal  = minimal' ++ map mirrored minimal'
     where
     minimal' = [m0, m1, m2, m3]
