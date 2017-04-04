@@ -62,14 +62,14 @@ preconditions (Model m) cmd = case cmd of
   Write ref _ -> M.member ref m
   Inc   ref   -> M.member ref m
 
-transitions :: (Enum ref, Ord ref) => Model ref -> MemStep resp ref -> resp -> Model ref
+transitions :: Ord ref => Model ref -> MemStep resp ref -> resp -> Model ref
 transitions (Model m) cmd ix = case cmd of
   New         -> Model (M.insert ix 0 m)
   Read  _     -> Model m
   Write ref i -> Model (M.insert ref i m)
   Inc   ref   -> Model (M.insert ref (m M.! ref + 1) m)
 
-postconditions :: (Enum ref, Ord ref) => Model ref -> MemStep resp ref -> resp -> Property
+postconditions :: Ord ref => Model ref -> MemStep resp ref -> resp -> Property
 postconditions (Model m) cmd resp = case cmd of
   New         -> property $ True
   Read  ref   -> property $ m  M.! ref == resp

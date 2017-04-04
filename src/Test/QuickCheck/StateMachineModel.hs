@@ -149,8 +149,8 @@ liftShrink' n0 pid shrinker = go n0
 
 data StateMachineModel model cmd = StateMachineModel
   { precondition  :: forall ix resp. Ord ix => model ix -> cmd resp ix -> Bool
-  , postcondition :: forall ix resp. (Enum ix, Ord ix) => model ix -> cmd resp ix -> resp -> Property
-  , transition    :: forall ix resp. (Enum ix, Ord ix) => model ix -> cmd resp ix -> resp -> model ix
+  , postcondition :: forall ix resp. Ord ix => model ix -> cmd resp ix -> resp -> Property
+  , transition    :: forall ix resp. Ord ix => model ix -> cmd resp ix -> resp -> model ix
   , initialModel  :: forall ix.      model ix
   }
 
@@ -325,26 +325,6 @@ linearTree es =
   -- Hmm, is this enough?
   matchInv pid (InvocationEvent _ pid') = pid == pid'
   matchInv _   _                        = False
-
-instance (Enum a, Enum b) => Enum (a, b) where
-
-  toEnum   i      = let (x, y) = cantorsPairingInv i
-                    in (toEnum x, toEnum y)
-    where
-    cantorsPairingInv :: Int -> (Int, Int)
-    cantorsPairingInv z = (x, y)
-      where
-      w :: Int
-      w = floor ((sqrt ((8 :: Double) * fromInteger (toInteger z) + 1) - 1) / 2)
-      t :: Int
-      t = (w * w + w) `div` 2
-      y = z - t
-      x = w - y
-
-  fromEnum (a, b) = cantorsPairing (fromEnum a) (fromEnum b)
-    where
-    cantorsPairing :: Int -> Int -> Int
-    cantorsPairing m n = (m + n) * (m + n + 1) `div` 2 + n
 
 linearise
   :: forall cmd ix model
