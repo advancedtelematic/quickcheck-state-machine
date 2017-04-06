@@ -12,6 +12,7 @@
 
 module Test.QuickCheck.StateMachineModel where
 
+import           Control.Arrow                           (first)
 import           Control.Concurrent                      (threadDelay)
 import           Control.Concurrent.ParallelIO.Local     (parallel_, withPool)
 import           Control.Concurrent.STM.TChan            (TChan, newTChanIO,
@@ -460,14 +461,14 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
 
   fixRefs
     :: forall ix
-    .  (Enum ix, Ord ix)
+    .  Enum ix
     => Int -> Pid -> Untyped cmd (ix, Pid) -> [Untyped cmd (ix, Pid)] -> [Untyped cmd (ix, Pid)]
   fixRefs n pid c cs
     | returnsRef c
-        = map (fmap (\(ix, pid') -> if toEnum n < ix
+        = map (fmap (\(ix, pid') -> if n < fromEnum ix
                                     then (pred ix, pid')
                                     else (ix, pid')))
-        . filter (\ms -> [r] /= usesRefs ms)
+        . filter (\ms -> [(n, pid)] /= map (first fromEnum) (usesRefs ms))
         $ cs
     | otherwise = cs
     where
@@ -475,7 +476,7 @@ class (Functor (Untyped cmd), Foldable (Untyped cmd)) => RefKit cmd where
     r = (toEnum n, pid)
 
   fixManyRefs
-    :: (Enum ix, Ord ix)
+    :: Enum ix
     => Int -> Pid -> [Untyped cmd (ix, Pid)] -> [Untyped cmd (ix, Pid)] -> [Untyped cmd (ix, Pid)]
   fixManyRefs _ _   []       ds = ds
   fixManyRefs n pid (c : cs) ds = fixManyRefs n pid cs (fixRefs n pid c ds)
