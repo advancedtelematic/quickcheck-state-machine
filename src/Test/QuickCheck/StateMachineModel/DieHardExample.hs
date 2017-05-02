@@ -56,22 +56,22 @@ transitions (State big small) BigIntoSmall _ =
 postconditions :: State refs -> Step resp refs -> Response_ refs resp -> Property
 postconditions s _ _ = property (bigJug s /= 4)
 
-smm :: StateMachineModel' State Step
-smm = StateMachineModel' preconditions postconditions transitions initState
+smm :: StateMachineModel State Step
+smm = StateMachineModel preconditions postconditions transitions initState
 
 ------------------------------------------------------------------------
 
-gens :: [(Int, Gen (Untyped' Step (IxRefs ())))]
+gens :: [(Int, Gen (Untyped Step (IxRefs ())))]
 gens =
-  [ (1, return . Untyped' $ FillBig)
-  , (1, return . Untyped' $ FillSmall)
-  , (1, return . Untyped' $ EmptyBig)
-  , (1, return . Untyped' $ EmptySmall)
-  , (1, return . Untyped' $ SmallIntoBig)
-  , (1, return . Untyped' $ BigIntoSmall)
+  [ (1, return . Untyped $ FillBig)
+  , (1, return . Untyped $ FillSmall)
+  , (1, return . Untyped $ EmptyBig)
+  , (1, return . Untyped $ EmptySmall)
+  , (1, return . Untyped $ SmallIntoBig)
+  , (1, return . Untyped $ BigIntoSmall)
   ]
 
-shrink1 :: Untyped'' Step refs -> [Untyped'' Step refs ]
+shrink1 :: Untyped' Step refs -> [Untyped' Step refs ]
 shrink1 _ = []
 
 ------------------------------------------------------------------------
@@ -87,13 +87,13 @@ semStep BigIntoSmall = return ()
 ------------------------------------------------------------------------
 
 prop_dieSafety :: Property
-prop_dieSafety = sequentialProperty'
+prop_dieSafety = sequentialProperty
   smm
   gens
   shrink1
   returns
   semStep
-  ixfor'
+  ixfor
   ioProperty
 
 ------------------------------------------------------------------------
@@ -106,15 +106,15 @@ returns EmptySmall   = SResponse
 returns SmallIntoBig = SResponse
 returns BigIntoSmall = SResponse
 
-ixfor' :: Applicative f => Proxy q -> Step resp p
+ixfor :: Applicative f => Proxy q -> Step resp p
   -> (forall x. Sing x -> p @@ x -> f (q @@ x))
   -> f (Step resp q)
-ixfor' _ FillBig      _ = pure FillBig
-ixfor' _ FillSmall    _ = pure FillSmall
-ixfor' _ EmptyBig     _ = pure EmptyBig
-ixfor' _ EmptySmall   _ = pure EmptySmall
-ixfor' _ SmallIntoBig _ = pure SmallIntoBig
-ixfor' _ BigIntoSmall _ = pure BigIntoSmall
+ixfor _ FillBig      _ = pure FillBig
+ixfor _ FillSmall    _ = pure FillSmall
+ixfor _ EmptyBig     _ = pure EmptyBig
+ixfor _ EmptySmall   _ = pure EmptySmall
+ixfor _ SmallIntoBig _ = pure SmallIntoBig
+ixfor _ BigIntoSmall _ = pure BigIntoSmall
 
 deriving instance Eq (Step resp (ConstSym1 IntRef))
 
@@ -126,13 +126,13 @@ instance IxFunctor1 Step where
   ifmap1 _ SmallIntoBig = SmallIntoBig
   ifmap1 _ BigIntoSmall = BigIntoSmall
 
-instance IxFoldable (Untyped'' Step) where
+instance IxFoldable (Untyped' Step) where
   ifoldMap _ = undefined
 
-instance Show (Untyped'' Step (ConstSym1 IntRef)) where
-  show (Untyped'' FillBig      _) = "FillBig"
-  show (Untyped'' FillSmall    _) = "FillSmall"
-  show (Untyped'' EmptyBig     _) = "EmptyBig"
-  show (Untyped'' EmptySmall   _) = "EmptySmall"
-  show (Untyped'' SmallIntoBig _) = "SmallIntoBig"
-  show (Untyped'' BigIntoSmall _) = "BigIntoSmall"
+instance Show (Untyped' Step (ConstSym1 IntRef)) where
+  show (Untyped' FillBig      _) = "FillBig"
+  show (Untyped' FillSmall    _) = "FillSmall"
+  show (Untyped' EmptyBig     _) = "EmptyBig"
+  show (Untyped' EmptySmall   _) = "EmptySmall"
+  show (Untyped' SmallIntoBig _) = "SmallIntoBig"
+  show (Untyped' BigIntoSmall _) = "BigIntoSmall"
