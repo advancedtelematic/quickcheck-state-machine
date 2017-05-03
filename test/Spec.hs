@@ -10,9 +10,13 @@ import           Test.QuickCheck.StateMachineModel.Example
 main :: IO ()
 main = hspec $ do
 
-  describe "liftGenFork" $
+  describe "liftGenFork" $ do
+
     it "generates well-scoped programs"
       prop_genScope
+
+    it "generates well-scoped parallel programs"
+      prop_genForkScope
 
   describe "sequentialProperty" $ do
 
@@ -29,7 +33,7 @@ main = hspec $ do
       it "shrinks into subsequences"
         prop_shrinkForkSubseq
 
-      it "shrinks into well-scoped programs"
+      it "prop_shrinkForkScope"
         prop_shrinkForkScope
 
   describe "parallelProperty" $ do
