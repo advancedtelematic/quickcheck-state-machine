@@ -21,20 +21,17 @@ module Test.QuickCheck.StateMachineModel where
 import           Control.Concurrent                      (threadDelay)
 import           Control.Concurrent.ParallelIO.Local     (parallel_, withPool)
 import           Control.Concurrent.STM.TChan            (TChan, newTChanIO,
-                                                          tryReadTChan,
                                                           writeTChan)
 import           Control.Monad.State
-import           Control.Monad.STM                       (STM, atomically)
-import           Data.Constraint.Forall
+import           Control.Monad.STM                       (atomically)
 import           Data.Dynamic
-import           Data.Foldable                           (toList)
 import           Data.Functor.Compose                    (Compose (..),
                                                           getCompose)
 import           Data.Kind
 import           Data.List                               (partition)
 import           Data.Map                                (Map)
 import qualified Data.Map                                as M
-import           Data.Maybe                              (fromJust, isJust)
+import           Data.Maybe                              (fromJust)
 import           Data.Monoid                             ((<>))
 import           Data.Set                                (Set)
 import qualified Data.Set                                as S
@@ -45,16 +42,14 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
 import           Test.QuickCheck.Property                (Property (..))
 import           Text.PrettyPrint.ANSI.Leijen            (Pretty, align, dot,
-                                                          empty, indent, int,
-                                                          pretty, prettyList,
-                                                          text, underline, vsep,
+                                                          indent, int, pretty,
+                                                          prettyList, text,
+                                                          underline, vsep,
                                                           (<+>))
 
 import           Test.QuickCheck.StateMachineModel.IxMap (IxMap)
 import qualified Test.QuickCheck.StateMachineModel.IxMap as IxM
 import           Test.QuickCheck.StateMachineModel.Utils
-
-import           Unsafe.Coerce
 
 ------------------------------------------------------------------------
 
@@ -98,11 +93,6 @@ data Operation cmd refs = forall resp.
    Typeable resp,
    Typeable (Response_ refs resp)) =>
   Operation (cmd resp refs) (Response_ refs resp) Pid
-
-
-data Pair a :: (TyFun i *) -> *
-
-type instance Apply (Pair a) i = (Sing i, a)
 
 data IxRefs ix :: (TyFun ix *) -> *
 
@@ -210,10 +200,10 @@ liftShrink returns shrinker = go
   go []       = []
   go (c : cs) =
     [ [] ] ++
-    [ fixRefs c cs returns ] ++
+    [ removeCommands c cs returns ] ++
     [ c' : cs' | (c', cs') <- shrinkPair' shrinker go (c, cs) ]
 
-fixRefs
+removeCommands
   :: forall
      (ix :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
@@ -222,7 +212,7 @@ fixRefs
   -> [Untyped' cmd (ConstSym1 IntRef)]
   -> (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> [Untyped' cmd (ConstSym1 IntRef)]
-fixRefs (Untyped' cmd0 miref0) cmds0 returns =
+removeCommands (Untyped' cmd0 miref0) cmds0 returns =
   case returns cmd0 of
     SResponse    -> cmds0
     SReference _ -> go cmds0 (S.singleton miref0)
@@ -382,22 +372,22 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
   shrinkPrefix (Fork _ []       _) = []
   shrinkPrefix (Fork l (p : ps) r) =
       [ Fork l'   []                      r'   ] ++
-      [ Fork l''  (fixRefs p ps returns) r''  ] ++
+      [ Fork l''  (removeCommands p ps returns) r''  ] ++
       [ Fork l''' (p' : ps')              r'''
       | (p', Fork l''' ps' r''') <- shrinkPair' shrinker shrinkPrefix (p, Fork l ps r)
       ]
       where
-      l'  = fixManyRefs (p : ps) l
-      r'  = fixManyRefs (p : ps) r
+      l'  = removeManyCommands (p : ps) l
+      r'  = removeManyCommands (p : ps) r
 
-      l'' = fixRefs p l returns
-      r'' = fixRefs p r returns
+      l'' = removeCommands p l returns
+      r'' = removeCommands p r returns
 
-      fixManyRefs
+      removeManyCommands
         :: [Untyped' cmd (ConstSym1 IntRef)] -> [Untyped' cmd (ConstSym1 IntRef)]
         -> [Untyped' cmd (ConstSym1 IntRef)]
-      fixManyRefs []       ds = ds
-      fixManyRefs (c : cs) ds = fixManyRefs cs (fixRefs c ds returns)
+      removeManyCommands []       ds = ds
+      removeManyCommands (c : cs) ds = removeManyCommands cs (removeCommands c ds returns)
 
 ------------------------------------------------------------------------
 
@@ -484,8 +474,9 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
 
   mkOps :: [HistoryEvent (Untyped' cmd refs)] -> [Operation cmd refs]
   mkOps [] = []
-  mkOps (InvocationEvent (Untyped' cmd miref) _ : ResponseEvent resp pid : es)
+  mkOps (InvocationEvent (Untyped' cmd _) _ : ResponseEvent resp pid : es)
     = Operation cmd (fromJust $ fromDynamic resp) pid : mkOps es
+  mkOps _  = error "mkOps: Impossible."
 
 ------------------------------------------------------------------------
 
@@ -523,7 +514,6 @@ parallelProperty
      (cmd   :: Response ix -> (TyFun ix * -> *) -> *)
      (refs  :: TyFun ix * -> *)
      (model :: (TyFun ix * -> *) -> *)
-     (m     :: * -> *)
   .  IxFunctor1 cmd
   => IxFoldable (Untyped' cmd)
   => Show (Untyped' cmd (ConstSym1 IntRef))
@@ -567,11 +557,9 @@ parallelProperty smm gen shrinker returns runStep ifor
 canonical'
   :: forall
      (ix   :: *)
-     (resp :: Response ix)
-     (refs :: TyFun ix * -> *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  SDecide ix
-  => (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
+  => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> (forall f p q resp. Applicative f
         => Proxy q
         -> cmd resp p
@@ -599,11 +587,9 @@ canonical' returns ixfor im = flip runState im . go
 canonical
   :: forall
      (ix   :: *)
-     (resp :: Response ix)
-     (refs :: TyFun ix * -> *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  SDecide ix
-  => (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
+  => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> (forall f p q resp. Applicative f
         => Proxy q
         -> cmd resp p
@@ -616,11 +602,9 @@ canonical returns ixfor = fst . canonical' returns ixfor IxM.empty
 canonicalFork
   :: forall
      (ix   :: *)
-     (resp :: Response ix)
-     (refs :: TyFun ix * -> *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  SDecide ix
-  => (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
+  => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> (forall f p q resp. Applicative f
         => Proxy q
         -> cmd resp p
@@ -637,12 +621,10 @@ canonicalFork returns ixfor (Fork l p r) = Fork l' p' r'
 alphaEq
   :: forall
      (ix   :: *)
-     (resp :: Response ix)
-     (refs :: TyFun ix * -> *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  SDecide ix
   => Eq (Untyped' cmd (ConstSym1 IntRef))
-  => (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
+  => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> (forall f p q resp. Applicative f
         => Proxy q
         -> cmd resp p
@@ -657,12 +639,10 @@ alphaEq returns ixfor c0 c1
 alphaEqFork
   :: forall
      (ix   :: *)
-     (resp :: Response ix)
-     (refs :: TyFun ix * -> *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  SDecide ix
   => Eq (Untyped' cmd (ConstSym1 IntRef))
-  => (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
+  => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> (forall f p q resp. Applicative f
         => Proxy q
         -> cmd resp p

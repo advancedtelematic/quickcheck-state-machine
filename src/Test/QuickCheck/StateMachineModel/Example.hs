@@ -18,7 +18,6 @@
 
 module Test.QuickCheck.StateMachineModel.Example where
 
-import           Control.Applicative
 import           Control.Concurrent                      (threadDelay)
 import           Control.Monad.State
 import           Data.Char
@@ -33,13 +32,10 @@ import           Data.Singletons.Prelude                 hiding ((:-), Map)
 import           System.Random
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
-import           Text.Read
 import           Text.ParserCombinators.ReadP            (string)
-import           Unsafe.Coerce
+import           Text.Read
 
 import           Test.QuickCheck.StateMachineModel
-import           Test.QuickCheck.StateMachineModel.IxMap (IxMap)
-import qualified Test.QuickCheck.StateMachineModel.IxMap as IxM
 import           Test.QuickCheck.StateMachineModel.Utils
 
 ------------------------------------------------------------------------
@@ -163,18 +159,6 @@ shrink1 _                               = []
 
 ------------------------------------------------------------------------
 
-instance Read (Untyped MemStep (ConstSym1 IntRef)) where
-  readPrec = parens $ do
-    Ident ident <- parens lexP
-    case ident of
-      "New"   -> return $ Untyped New
-      "Read"  -> Untyped . Read  <$> readPrec
-      "Write" -> Untyped <$> (Write <$> readPrec <*> readPrec)
-      "Inc"   -> Untyped . Inc <$> readPrec
-      _        -> empty
-
-  readListPrec = readListPrecDefault
-
 instance Read (Untyped' MemStep (ConstSym1 IntRef)) where
   readPrec = parens $ choice
     [ Untyped' <$ key "Untyped'" <*> parens (New <$ key " New") <*> readPrec
@@ -291,45 +275,35 @@ usesRefs (Copy  ref)   = [Ex STuple0 ref]
 scopeCheck
   :: forall
      (ix   :: *)
-     (refs :: TyFun ix * -> *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  Ord       ix
-  => SingKind  ix
-  => DemoteRep ix ~ ix
-  => (forall resp. cmd resp (ConstSym1 IntRef) -> SResponse ix resp)
+  .  (forall resp. cmd resp (ConstSym1 IntRef) -> SResponse ix resp)
   -> (forall resp. cmd resp (ConstSym1 IntRef) -> [Ex (ConstSym1 IntRef)])
   -> [(Pid, Untyped' cmd (ConstSym1 IntRef))]
   -> Bool
-scopeCheck returns uses = go []
+scopeCheck returns' uses' = go []
   where
   go :: [IntRef] -> [(Pid, Untyped' cmd (ConstSym1 IntRef))] -> Bool
-  go _    []                              = True
-  go refs ((pid, Untyped' c miref) : cs) = case returns c of
-    SReference ix ->
-      let refs' = miref : refs
-      in
-      -- ref' == miref &&
-      all (\(Ex _ ref) -> ref `elem` refs) (uses c) &&
+  go _    []                           = True
+  go refs ((_, Untyped' c miref) : cs) = case returns' c of
+    SReference _  ->
+      let refs' = miref : refs in
+      all (\(Ex _ ref) -> ref `elem` refs) (uses' c) &&
       go refs' cs
     SResponse     ->
-      all (\(Ex _ ref) -> ref `elem` refs) (uses c) &&
+      all (\(Ex _ ref) -> ref `elem` refs) (uses' c) &&
       go refs cs
 
 scopeCheckFork'
   :: forall
      (ix   :: *)
-     (refs :: TyFun ix * -> *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  Ord       ix
-  => SingKind  ix
-  => DemoteRep ix ~ ix
-  => (forall resp. cmd resp (ConstSym1 IntRef) -> SResponse ix resp)
+  .  (forall resp. cmd resp (ConstSym1 IntRef) -> SResponse ix resp)
   -> (forall resp. cmd resp (ConstSym1 IntRef) -> [Ex (ConstSym1 IntRef)])
   -> Fork [Untyped' cmd (ConstSym1 IntRef)] -> Bool
-scopeCheckFork' returns uses (Fork l p r) =
+scopeCheckFork' returns' uses' (Fork l p r) =
   let p' = zip (repeat 0) p in
-  scopeCheck returns uses (p' ++ zip (repeat 1) l) &&
-  scopeCheck returns uses (p' ++ zip (repeat 2) r)
+  scopeCheck returns' uses' (p' ++ zip (repeat 1) l) &&
+  scopeCheck returns' uses' (p' ++ zip (repeat 2) r)
 
 scopeCheckFork :: Fork [Untyped' MemStep (ConstSym1 IntRef)] -> Bool
 scopeCheckFork = scopeCheckFork' returns usesRefs
@@ -363,7 +337,7 @@ prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns
 cheat :: Fork [Untyped' MemStep (ConstSym1 refs)] -> Fork [Untyped' MemStep (ConstSym1 refs)]
 cheat = fmap (map (\ms -> case ms of
   Untyped' (Write ref _) () -> Untyped' (Write ref 0) ()
-  _                           -> ms))
+  _                         -> ms))
 
 prop_shrinkForkSubseq :: Property
 prop_shrinkForkSubseq = forAll (liftGenFork gens returns ixfor) $ \f@(Fork l p r) ->

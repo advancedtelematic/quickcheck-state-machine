@@ -16,8 +16,7 @@
 
 module Test.QuickCheck.StateMachineModel.Utils where
 
-import           Control.Concurrent.STM.TChan (TChan, newTChanIO, tryReadTChan,
-                                               writeTChan)
+import           Control.Concurrent.STM.TChan (TChan, tryReadTChan)
 import           Control.Monad
 import           Control.Monad.STM            (STM, atomically)
 import           Data.Constraint
@@ -98,10 +97,10 @@ data Ex (p :: TyFun a * -> *) = forall (x :: a). Ex (Sing x) (p @@ x)
 class IxFunctor (f :: (TyFun ix * -> *) -> *) where
   ifmap :: (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> f p -> f q
 
-class IxFunctor1 (f :: k -> (ix ~> *) -> *) where
+class IxFunctor1 (f :: k -> (TyFun ix * -> *) -> *) where
   ifmap1 :: (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> forall j. f j p -> f j q
 
-class IxFoldable (t :: (ix ~> *) -> *) where
+class IxFoldable (t :: (TyFun ix * -> *) -> *) where
 
   ifoldMap :: Monoid m => (forall i. Sing (i :: ix) -> p @@ i -> m) -> t p -> m
 
@@ -114,8 +113,8 @@ class IxFoldable (t :: (ix ~> *) -> *) where
 iany
   :: forall
      (ix :: *)
-     (t  :: (ix ~> *) -> *)
-     (p  :: ix ~> *)
+     (t  :: (TyFun ix * -> *) -> *)
+     (p  :: TyFun ix * -> *)
   .  IxFoldable t
   => (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t p -> Bool
 iany p = ifoldr (\i x ih -> p i x || ih) False
@@ -123,13 +122,13 @@ iany p = ifoldr (\i x ih -> p i x || ih) False
 iall
   :: forall
      (ix :: *)
-     (t  :: (ix ~> *) -> *)
-     (p  :: ix ~> *)
+     (t  :: (TyFun ix * -> *) -> *)
+     (p  :: TyFun ix * -> *)
   .  IxFoldable t
   => (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t p -> Bool
 iall p = ifoldr (\i x ih -> p i x && ih) True
 
-class (IxFunctor t, IxFoldable t) => IxTraversable (t :: (i ~> *) -> *) where
+class (IxFunctor t, IxFoldable t) => IxTraversable (t :: (TyFun ix * -> *) -> *) where
   itraverse :: Applicative f => Proxy q
     -> (forall x. Sing x -> p @@ x -> f (q @@ x))
     -> t p -> t q
