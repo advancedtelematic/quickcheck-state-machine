@@ -6,7 +6,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators      #-}
 
-module Test.QuickCheck.StateMachineModel.DieHardExample where
+module DieHard where
 
 import           Data.Singletons.Prelude
 import           Test.QuickCheck

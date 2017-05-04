@@ -1,0 +1,5 @@
+resolver: lts-8.13
+packages:
+  - '.'
+  - '..'
+dump-logs: all
