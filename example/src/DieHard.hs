@@ -54,7 +54,7 @@ transitions (State big small) BigIntoSmall _ =
           , smallJug = small' }
 
 postconditions :: State refs -> Step resp refs -> Response_ refs resp -> Property
-postconditions s _ _ = property (bigJug s /= 4)
+postconditions s c r = property (bigJug (transitions s c r) /= 4)
 
 smm :: StateMachineModel State Step
 smm = StateMachineModel preconditions postconditions transitions initState
