@@ -21,7 +21,9 @@ test-suite quickcheck-state-machine-model-example-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
+  other-modules:       MutableReferenceSpec
   build-depends:       base
+                     , hspec
                      , quickcheck-state-machine-model-example
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
