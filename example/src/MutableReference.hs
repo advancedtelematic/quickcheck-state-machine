@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
-module Test.QuickCheck.StateMachineModel.Example where
+module MutableReference where
 
 import           Control.Concurrent                      (threadDelay)
 import           Control.Monad.State
