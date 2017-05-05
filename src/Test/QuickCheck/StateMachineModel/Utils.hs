@@ -53,6 +53,17 @@ forAllShrinkShow gen shrinker shower pf =
 liftProperty :: Monad m => Property -> PropertyM m ()
 liftProperty prop = MkPropertyM (\k -> liftM (prop .&&.) <$> k ())
 
+shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
+shrinkPropertyHelper prop p = shrinkPropertyHelper' prop (property . p)
+
+shrinkPropertyHelper' :: Property -> (String -> Property) -> Property
+shrinkPropertyHelper' prop p = monadicIO $ do
+  result <- run $ quickCheckWithResult (stdArgs {chatty = False}) prop
+  case result of
+    Failure { output = outputLines } -> liftProperty $
+      counterexample ("failed: " ++ outputLines) $ p outputLines
+    _                                -> return ()
+
 shrinkPair :: (a -> [a]) -> (a, a) -> [(a, a)]
 shrinkPair shrinker = shrinkPair' shrinker shrinker
 

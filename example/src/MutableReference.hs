@@ -318,14 +318,6 @@ prop_genForkScope = forAll
   (liftGenFork gens returns ixfor)
   scopeCheckFork
 
-shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
-shrinkPropertyHelper prop p = monadicIO $ do
-  result <- run $ quickCheckWithResult (stdArgs {chatty = False}) prop
-  case result of
-    Failure { output = outputLines } -> liftProperty $
-      counterexample ("failed: " ++ outputLines) $ p outputLines
-    _                                -> return ()
-
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns ixfor
   [ Untyped' New    (IntRef (Ref 0) (Pid 0))
