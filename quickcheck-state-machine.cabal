@@ -1,8 +1,8 @@
-name:                quickcheck-state-machine-model
+name:                quickcheck-state-machine
 version:             0.1.0.0
 -- synopsis:
 -- description:
-homepage:            https://github.com/advancedtelematic/quickcheck-state-machine-model#readme
+homepage:            https://github.com/advancedtelematic/quickcheck-state-machine#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Stevan Andjelkovic
@@ -15,9 +15,13 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Test.QuickCheck.StateMachineModel
-                     , Test.QuickCheck.StateMachineModel.IxMap
-                     , Test.QuickCheck.StateMachineModel.Utils
+  exposed-modules:     Test.StateMachine
+                     , Test.StateMachine.Internal.Parallel
+                     , Test.StateMachine.Internal.Sequential
+                     , Test.StateMachine.Internal.IxMap
+                     , Test.StateMachine.Types
+                     , Test.StateMachine.Types.AlphaEquality
+                     , Test.StateMachine.Utils
   build-depends:       ansi-wl-pprint
                      , base >= 4.7 && < 5
                      , containers
@@ -30,7 +34,7 @@ library
                      , stm
   default-language:    Haskell2010
 
-test-suite quickcheck-state-machine-model-test
+test-suite quickcheck-state-machine-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
@@ -38,11 +42,11 @@ test-suite quickcheck-state-machine-model-test
                      , hspec
                      , mtl
                      , QuickCheck
-                     , quickcheck-state-machine-model
+                     , quickcheck-state-machine
                      , random
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
 source-repository head
   type:     git
-  location: https://github.com/advancedtelematic/quickcheck-state-machine-model
+  location: https://github.com/advancedtelematic/quickcheck-state-machine

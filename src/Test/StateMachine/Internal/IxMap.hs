@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeInType          #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Test.QuickCheck.StateMachineModel.IxMap where
+module Test.StateMachine.Internal.IxMap where
 
 import           Data.Kind
 import           Data.Map                (Map)
