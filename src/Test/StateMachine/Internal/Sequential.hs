@@ -55,7 +55,7 @@ liftGen
         -> cmd resp p
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
-  -> Gen ([Untyped' cmd (ConstSym1 IntRef)], Map ix Int)
+  -> Gen ([Untyped' cmd ConstIntRef], Map ix Int)
 liftGen gens pid ns returns ixfor = sized $ \sz -> runStateT (go sz) ns
   where
 
@@ -63,14 +63,14 @@ liftGen gens pid ns returns ixfor = sized $ \sz -> runStateT (go sz) ns
     :: Map ix Int
     -> forall (x :: ix). Sing x
     -> refs @@ x
-    -> Compose Gen Maybe (ConstSym1 IntRef @@ x)
+    -> Compose Gen Maybe (ConstIntRef @@ x)
   translate scopes i _ = Compose $ case M.lookup (fromSing i) scopes of
     Nothing -> return Nothing
     Just u  -> do
       v <- choose (0, max 0 (u - 1))
       return . Just $ IntRef (Ref v) pid
 
-  go :: Int -> StateT (Map ix Int) Gen [Untyped' cmd (ConstSym1 IntRef)]
+  go :: Int -> StateT (Map ix Int) Gen [Untyped' cmd ConstIntRef]
   go 0  = return []
   go sz = do
 
@@ -78,7 +78,7 @@ liftGen gens pid ns returns ixfor = sized $ \sz -> runStateT (go sz) ns
 
     Untyped cmd <- lift . genFromMaybe $ do
       Untyped cmd <- frequency gens
-      cmd' <- getCompose $ ixfor (Proxy :: Proxy (ConstSym1 IntRef)) cmd (translate scopes)
+      cmd' <- getCompose $ ixfor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
       return $ Untyped <$> cmd'
 
     ixref <- case returns cmd of
@@ -98,8 +98,8 @@ liftShrink
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  IxFoldable (Untyped' cmd)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> Shrinker (Untyped' cmd (ConstSym1 IntRef))
-  -> Shrinker [Untyped' cmd (ConstSym1 IntRef)]
+  -> Shrinker (Untyped' cmd ConstIntRef)
+  -> Shrinker [Untyped' cmd ConstIntRef]
 liftShrink returns shrinker = go
   where
   go []       = []
@@ -113,16 +113,16 @@ removeCommands
      (ix :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  IxFoldable (Untyped' cmd)
-  => Untyped' cmd (ConstSym1 IntRef)
-  -> [Untyped' cmd (ConstSym1 IntRef)]
+  => Untyped' cmd ConstIntRef
+  -> [Untyped' cmd ConstIntRef]
   -> (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> [Untyped' cmd (ConstSym1 IntRef)]
+  -> [Untyped' cmd ConstIntRef]
 removeCommands (Untyped' cmd0 miref0) cmds0 returns =
   case returns cmd0 of
     SResponse    -> cmds0
     SReference _ -> go cmds0 (S.singleton miref0)
   where
-  go :: [Untyped' cmd (ConstSym1 IntRef)] -> Set IntRef -> [Untyped' cmd (ConstSym1 IntRef)]
+  go :: [Untyped' cmd ConstIntRef] -> Set IntRef -> [Untyped' cmd ConstIntRef]
   go []                                  _       = []
   go (cmd@(Untyped' cmd' miref) : cmds) removed =
     case returns cmd' of
@@ -131,7 +131,7 @@ removeCommands (Untyped' cmd0 miref0) cmds0 returns =
       SResponse    | cmd `uses` removed ->       go cmds removed
                    | otherwise          -> cmd : go cmds removed
 
-uses :: IxFoldable (cmd resp) => cmd resp (ConstSym1 IntRef) -> Set IntRef -> Bool
+uses :: IxFoldable (cmd resp) => cmd resp ConstIntRef -> Set IntRef -> Bool
 uses cmd xs = iany (\_ iref -> iref `S.member` xs) cmd
 
 ------------------------------------------------------------------------
@@ -148,9 +148,9 @@ liftSem
   => IxFunctor1 cmd
   => (forall resp'. cmd resp' refs -> m (Response_ refs resp'))
   -> (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
-  -> cmd resp (ConstSym1 IntRef)
-  -> MayResponse_ (ConstSym1 IntRef) resp
-  -> StateT (IxMap ix IntRef refs) m (Response_ (ConstSym1 IntRef) resp)
+  -> cmd resp ConstIntRef
+  -> MayResponse_ ConstIntRef resp
+  -> StateT (IxMap ix IntRef refs) m (Response_ ConstIntRef resp)
 liftSem sem returns cmd iref = do
 
   env <- get

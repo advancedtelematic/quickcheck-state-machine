@@ -49,7 +49,7 @@ sequentialProperty
      (m     :: * -> *)
   .  Monad m
   => IxFunctor1 cmd
-  => Show (Untyped' cmd (ConstSym1 IntRef))
+  => Show (Untyped' cmd ConstIntRef)
   => IxFoldable (Untyped' cmd)
   => Ord       ix
   => SDecide   ix
@@ -79,7 +79,7 @@ sequentialProperty StateMachineModel {..} gens shrinker returns sem ixFor runM =
       classify (len >= 30)             "30+   commands" $
         monadic (runM . flip evalStateT IxM.empty) $ go initialModel cmds
   where
-  go :: model (ConstSym1 IntRef) -> [Untyped' cmd (ConstSym1 IntRef)]
+  go :: model ConstIntRef -> [Untyped' cmd ConstIntRef]
      -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
   go _ []                                 = return ()
   go m (cmd@(Untyped' cmd' miref) : cmds) = do
@@ -102,9 +102,9 @@ parallelProperty
      (model :: (TyFun ix * -> *) -> *)
   .  IxFunctor1 cmd
   => IxFoldable (Untyped' cmd)
-  => Show (Untyped' cmd (ConstSym1 IntRef))
+  => Show (Untyped' cmd ConstIntRef)
   => ShowCmd cmd
-  => Ord (Untyped' cmd (ConstSym1 IntRef))
+  => Ord (Untyped' cmd ConstIntRef)
   => Ord       ix
   => SDecide   ix
   => SingKind  ix

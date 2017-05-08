@@ -39,15 +39,15 @@ canonical'
         -> cmd resp p
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
-  -> IxMap ix IntRef (ConstSym1 IntRef)
-  -> [Untyped' cmd (ConstSym1 IntRef)]
-  -> ([Untyped' cmd (ConstSym1 IntRef)], IxMap ix IntRef (ConstSym1 IntRef))
+  -> IxMap ix IntRef ConstIntRef
+  -> [Untyped' cmd ConstIntRef]
+  -> ([Untyped' cmd ConstIntRef], IxMap ix IntRef ConstIntRef)
 canonical' returns ixfor im = flip runState im . go
   where
-  go :: [Untyped' cmd (ConstSym1 IntRef)]
-     -> State (IxMap ix IntRef (ConstSym1 IntRef)) [Untyped' cmd (ConstSym1 IntRef)]
+  go :: [Untyped' cmd ConstIntRef]
+     -> State (IxMap ix IntRef ConstIntRef) [Untyped' cmd ConstIntRef]
   go xs = forM xs $ \(Untyped' cmd ref) -> do
-    cmd' <- ixfor (Proxy :: Proxy (ConstSym1 IntRef)) cmd $ \ ix iref -> do
+    cmd' <- ixfor (Proxy :: Proxy ConstIntRef) cmd $ \ ix iref -> do
       (IxM.! (ix, iref)) <$> Control.Monad.State.get
     ref' <- case returns cmd of
       SResponse -> return ()
@@ -69,8 +69,8 @@ canonical
         -> cmd resp p
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
-  -> [Untyped' cmd (ConstSym1 IntRef)]
-  -> [Untyped' cmd (ConstSym1 IntRef)]
+  -> [Untyped' cmd ConstIntRef]
+  -> [Untyped' cmd ConstIntRef]
 canonical returns ixfor = fst . canonical' returns ixfor IxM.empty
 
 canonicalFork
@@ -84,8 +84,8 @@ canonicalFork
         -> cmd resp p
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
-  -> Fork [Untyped' cmd (ConstSym1 IntRef)]
-  -> Fork [Untyped' cmd (ConstSym1 IntRef)]
+  -> Fork [Untyped' cmd ConstIntRef]
+  -> Fork [Untyped' cmd ConstIntRef]
 canonicalFork returns ixfor (Fork l p r) = Fork l' p' r'
   where
   (p', im') = canonical' returns ixfor IxM.empty p
@@ -97,15 +97,15 @@ alphaEq
      (ix   :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  SDecide ix
-  => Eq (Untyped' cmd (ConstSym1 IntRef))
+  => Eq (Untyped' cmd ConstIntRef)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> (forall f p q resp. Applicative f
         => Proxy q
         -> cmd resp p
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
-  -> [Untyped' cmd (ConstSym1 IntRef)]
-  -> [Untyped' cmd (ConstSym1 IntRef)]
+  -> [Untyped' cmd ConstIntRef]
+  -> [Untyped' cmd ConstIntRef]
   -> Bool
 alphaEq returns ixfor c0 c1
   = canonical returns ixfor c0 == canonical returns ixfor c1
@@ -115,15 +115,15 @@ alphaEqFork
      (ix   :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  SDecide ix
-  => Eq (Untyped' cmd (ConstSym1 IntRef))
+  => Eq (Untyped' cmd ConstIntRef)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> (forall f p q resp. Applicative f
         => Proxy q
         -> cmd resp p
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
-  -> Fork [Untyped' cmd (ConstSym1 IntRef)]
-  -> Fork [Untyped' cmd (ConstSym1 IntRef)]
+  -> Fork [Untyped' cmd ConstIntRef]
+  -> Fork [Untyped' cmd ConstIntRef]
   -> Bool
 alphaEqFork returns ixfor f1 f2
   = canonicalFork returns ixfor f1 == canonicalFork returns ixfor f2

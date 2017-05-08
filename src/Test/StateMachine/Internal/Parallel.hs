@@ -73,7 +73,7 @@ liftGenFork
         -> cmd resp p
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
-  -> Gen (Fork [Untyped' cmd (ConstSym1 IntRef)])
+  -> Gen (Fork [Untyped' cmd ConstIntRef])
 liftGenFork gens returns ixFor = do
   (prefix, ns) <- liftGen gens 0 M.empty returns ixFor
   left         <- fst <$> liftGen gens 1 ns returns ixFor
@@ -97,10 +97,10 @@ liftShrinkFork
      (ix   :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  IxFoldable (Untyped' cmd)
-  => Ord (Untyped' cmd (ConstSym1 IntRef))
+  => Ord (Untyped' cmd ConstIntRef)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> Shrinker (Untyped' cmd (ConstSym1 IntRef))
-  -> Shrinker (Fork [Untyped' cmd (ConstSym1 IntRef)])
+  -> Shrinker (Untyped' cmd ConstIntRef)
+  -> Shrinker (Fork [Untyped' cmd ConstIntRef])
 liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
 
   -- Only shrink the branches:
@@ -115,7 +115,7 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
 
   where
   shrinkPrefix
-    :: Fork [Untyped' cmd (ConstSym1 IntRef)] -> [Fork [Untyped' cmd (ConstSym1 IntRef)]]
+    :: Fork [Untyped' cmd ConstIntRef] -> [Fork [Untyped' cmd ConstIntRef]]
   shrinkPrefix (Fork _ []       _) = []
   shrinkPrefix (Fork l (p : ps) r) =
       [ Fork l'   []                      r'   ] ++
@@ -131,8 +131,8 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
       r'' = removeCommands p r returns
 
       removeManyCommands
-        :: [Untyped' cmd (ConstSym1 IntRef)] -> [Untyped' cmd (ConstSym1 IntRef)]
-        -> [Untyped' cmd (ConstSym1 IntRef)]
+        :: [Untyped' cmd ConstIntRef] -> [Untyped' cmd ConstIntRef]
+        -> [Untyped' cmd ConstIntRef]
       removeManyCommands []       ds = ds
       removeManyCommands (c : cs) ds = removeManyCommands cs (removeCommands c ds returns)
 
@@ -197,7 +197,7 @@ linearise
 linearise _                        [] = property True
 linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ xs0
   where
-  step :: model (ConstSym1 IntRef) -> Rose (Operation cmd) -> Property
+  step :: model ConstIntRef -> Rose (Operation cmd) -> Property
   step m (Rose (Operation cmd resp _) roses) =
     postcondition m cmd resp .&&.
     anyP' (step (transition m cmd resp)) roses
@@ -239,10 +239,10 @@ mkHistoryKit pid = do
 runMany
   :: SDecide ix
   => IxFunctor1 cmd
-  => HistoryKit cmd (ConstSym1 IntRef)
+  => HistoryKit cmd ConstIntRef
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> [Untyped' cmd (ConstSym1 IntRef)]
+  -> [Untyped' cmd ConstIntRef]
   -> StateT (IxMap ix IntRef refs) IO ()
 runMany kit sem returns = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
   lift $ atomically $ writeTChan (getHistoryChannel kit) $

@@ -177,7 +177,7 @@ ixfor _ EmptySmall   _ = pure EmptySmall
 ixfor _ SmallIntoBig _ = pure SmallIntoBig
 ixfor _ BigIntoSmall _ = pure BigIntoSmall
 
-deriving instance Eq (Step resp (ConstSym1 IntRef))
+deriving instance Eq (Step resp ConstIntRef)
 
 instance IxFunctor1 Step where
   ifmap1 _ FillBig      = FillBig
@@ -190,7 +190,7 @@ instance IxFunctor1 Step where
 instance IxFoldable (Untyped' Step) where
   ifoldMap _ = undefined
 
-instance Show (Untyped' Step (ConstSym1 IntRef)) where
+instance Show (Untyped' Step ConstIntRef) where
   show (Untyped' FillBig      _) = "FillBig"
   show (Untyped' FillSmall    _) = "FillSmall"
   show (Untyped' EmptyBig     _) = "EmptyBig"

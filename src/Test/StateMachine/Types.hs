@@ -52,9 +52,11 @@ newtype Ref = Ref Int
 data IntRef = IntRef Ref Pid
   deriving (Eq, Ord, Show, Read)
 
+type ConstIntRef = ConstSym1 IntRef
+
 data Untyped (f :: Response resp -> (TyFun i * -> *) -> *) refs where
-  Untyped :: (Show (Response_ (ConstSym1 IntRef) resp),
-               Typeable (Response_ (ConstSym1 IntRef) resp),
+  Untyped :: (Show (Response_ ConstIntRef resp),
+               Typeable (Response_ ConstIntRef resp),
                Typeable resp) => f resp refs -> Untyped f refs
 
 data Untyped' (f :: Response resp -> (TyFun i * -> *) -> *) refs where
@@ -62,7 +64,7 @@ data Untyped' (f :: Response resp -> (TyFun i * -> *) -> *) refs where
                 Typeable (Response_ refs resp),
                 Typeable resp
                ) =>
-    f resp refs -> MayResponse_ (ConstSym1 IntRef) resp -> Untyped' f refs
+    f resp refs -> MayResponse_ ConstIntRef resp -> Untyped' f refs
 
 data IxRefs ix :: (TyFun ix *) -> *
 
