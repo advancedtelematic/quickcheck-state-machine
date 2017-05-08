@@ -50,8 +50,8 @@ data MemStep :: Response () -> (TyFun () * -> *) -> * where
   Inc   :: refs @@ '() ->        MemStep ('Response   ()) refs
   Copy  :: refs @@ '() ->        MemStep ('Reference '()) refs
 
-deriving instance Eq   (MemStep resp (ConstSym1 IntRef))
-deriving instance Show (MemStep resp (ConstSym1 IntRef))
+deriving instance Eq   (MemStep resp ConstIntRef)
+deriving instance Show (MemStep resp ConstIntRef)
 
 instance IxFunctor (MemStep resp) where
   ifmap _ New           = New
@@ -162,7 +162,7 @@ shrink1 _                               = []
 
 ------------------------------------------------------------------------
 
-instance Read (Untyped' MemStep (ConstSym1 IntRef)) where
+instance Read (Untyped' MemStep ConstIntRef) where
   readPrec = parens $ choice
     [ Untyped' <$ key "Untyped'" <*> parens (New <$ key " New") <*> readPrec
     , Untyped' <$ key "Untyped'" <*> parens (Read <$ key "Read" <*> readPrec) <*> readPrec
@@ -213,10 +213,10 @@ instance ShowCmd MemStep where
   showCmd (Inc   ref)   = "Inc ("   ++ show ref ++ ")"
   showCmd (Copy  ref)   = "Copy ("   ++ show ref ++ ")"
 
-instance Eq (Untyped' MemStep (ConstSym1 IntRef)) where
+instance Eq (Untyped' MemStep ConstIntRef) where
   Untyped' c1 _ == Untyped' c2 _ = Just c1 == cast c2
 
-instance Ord (Untyped' MemStep (ConstSym1 IntRef)) where
+instance Ord (Untyped' MemStep ConstIntRef) where
   Untyped' c1 _ <= Untyped' c2 _ = Just c1 <= cast c2
 
 data RawMemStep refs
@@ -226,8 +226,8 @@ data RawMemStep refs
   | IncR   (refs @@ '())
   | CopyR  (refs @@ '())
 
-deriving instance Eq  (RawMemStep (ConstSym1 IntRef))
-deriving instance Ord (RawMemStep (ConstSym1 IntRef))
+deriving instance Eq  (RawMemStep ConstIntRef)
+deriving instance Ord (RawMemStep ConstIntRef)
 
 raw :: MemStep resp refs -> RawMemStep refs
 raw New           = NewR
@@ -236,7 +236,7 @@ raw (Write ref i) = WriteR ref i
 raw (Inc   ref)   = IncR   ref
 raw (Copy  ref)   = CopyR  ref
 
-instance Ord (MemStep resp (ConstSym1 IntRef)) where
+instance Ord (MemStep resp ConstIntRef) where
   c1 <= c2 = raw c1 <= raw c2
 
 instance IxForallF Show p => Show (Model p) where
@@ -279,13 +279,13 @@ scopeCheck
   :: forall
      (ix   :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  (forall resp. cmd resp (ConstSym1 IntRef) -> SResponse ix resp)
-  -> (forall resp. cmd resp (ConstSym1 IntRef) -> [Ex (ConstSym1 IntRef)])
-  -> [(Pid, Untyped' cmd (ConstSym1 IntRef))]
+  .  (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
+  -> (forall resp. cmd resp ConstIntRef -> [Ex ConstIntRef])
+  -> [(Pid, Untyped' cmd ConstIntRef)]
   -> Bool
 scopeCheck returns' uses' = go []
   where
-  go :: [IntRef] -> [(Pid, Untyped' cmd (ConstSym1 IntRef))] -> Bool
+  go :: [IntRef] -> [(Pid, Untyped' cmd ConstIntRef)] -> Bool
   go _    []                           = True
   go refs ((_, Untyped' c miref) : cs) = case returns' c of
     SReference _  ->
@@ -300,15 +300,15 @@ scopeCheckFork'
   :: forall
      (ix   :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  (forall resp. cmd resp (ConstSym1 IntRef) -> SResponse ix resp)
-  -> (forall resp. cmd resp (ConstSym1 IntRef) -> [Ex (ConstSym1 IntRef)])
-  -> Fork [Untyped' cmd (ConstSym1 IntRef)] -> Bool
+  .  (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
+  -> (forall resp. cmd resp ConstIntRef -> [Ex ConstIntRef])
+  -> Fork [Untyped' cmd ConstIntRef] -> Bool
 scopeCheckFork' returns' uses' (Fork l p r) =
   let p' = zip (repeat 0) p in
   scopeCheck returns' uses' (p' ++ zip (repeat 1) l) &&
   scopeCheck returns' uses' (p' ++ zip (repeat 2) r)
 
-scopeCheckFork :: Fork [Untyped' MemStep (ConstSym1 IntRef)] -> Bool
+scopeCheckFork :: Fork [Untyped' MemStep ConstIntRef] -> Bool
 scopeCheckFork = scopeCheckFork' returns usesRefs
 
 prop_genScope :: Property
@@ -348,8 +348,8 @@ prop_shrinkForkScope :: Property
 prop_shrinkForkScope = forAll (liftGenFork gens returns ixfor) $ \f ->
   all scopeCheckFork (liftShrinkFork returns shrink1 f)
 
-debugShrinkFork :: Fork [Untyped' MemStep (ConstSym1 IntRef)]
-  -> [Fork [Untyped' MemStep (ConstSym1 IntRef)]]
+debugShrinkFork :: Fork [Untyped' MemStep ConstIntRef]
+  -> [Fork [Untyped' MemStep ConstIntRef]]
 debugShrinkFork = take 1 . map snd . dropWhile fst . map (\f -> (scopeCheckFork f, f))
   . liftShrinkFork returns shrink1
 
@@ -360,7 +360,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   let f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f ||  isMinimal f
   where
-  hasMinimalShrink :: Fork [Untyped' MemStep (ConstSym1 IntRef)] -> Bool
+  hasMinimalShrink :: Fork [Untyped' MemStep ConstIntRef] -> Bool
   hasMinimalShrink
     = anyRose isMinimal
     . rose (liftShrinkFork returns shrink1)
@@ -373,10 +373,10 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       where
       go x = Rose x $ map go $ more x
 
-  isMinimal :: Fork [Untyped' MemStep (ConstSym1 IntRef)] -> Bool
+  isMinimal :: Fork [Untyped' MemStep ConstIntRef] -> Bool
   isMinimal xs = any (alphaEqFork returns ixfor xs) minimal
 
-  minimal :: [Fork [Untyped' MemStep (ConstSym1 IntRef)]]
+  minimal :: [Fork [Untyped' MemStep ConstIntRef]]
   minimal  = minimal' ++ map mirrored minimal'
     where
     minimal' = [ Fork [w0, Untyped' (Read var) ()]
