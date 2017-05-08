@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE PolyKinds          #-}
@@ -9,11 +10,14 @@
 module DieHard where
 
 import           Data.List
-import           Data.Singletons.Prelude
-import           Test.QuickCheck
+import           Data.Singletons.Prelude (type (@@), ConstSym1, Proxy, Sing,
+                                          TyFun)
+import           Test.QuickCheck         (Gen, Property, ioProperty, label,
+                                          property)
 
-import           Test.QuickCheck.StateMachineModel
-import           Test.QuickCheck.StateMachineModel.Utils
+import           Test.StateMachine
+import           Test.StateMachine.Types
+import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 

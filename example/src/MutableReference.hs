@@ -18,25 +18,28 @@
 
 module MutableReference where
 
-import           Control.Concurrent                      (threadDelay)
+import           Control.Concurrent                    (threadDelay)
 import           Control.Monad.State
 import           Data.Char
 import           Data.Constraint
 import           Data.Dynamic
 import           Data.IORef
 import           Data.Kind
-import           Data.List                               hiding ((\\))
-import           Data.Map                                (Map)
-import qualified Data.Map                                as M
-import           Data.Singletons.Prelude                 hiding ((:-), Map)
+import           Data.List                             hiding ((\\))
+import           Data.Map                              (Map)
+import qualified Data.Map                              as M
+import           Data.Singletons.Prelude               hiding ((:-), Map)
 import           System.Random
 import           Test.QuickCheck
-import           Test.QuickCheck.Monadic
-import           Text.ParserCombinators.ReadP            (string)
+import           Text.ParserCombinators.ReadP          (string)
 import           Text.Read
 
-import           Test.QuickCheck.StateMachineModel
-import           Test.QuickCheck.StateMachineModel.Utils
+import           Test.StateMachine
+import           Test.StateMachine.Internal.Parallel
+import           Test.StateMachine.Internal.Sequential
+import           Test.StateMachine.Types
+import           Test.StateMachine.Types.AlphaEquality
+import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 

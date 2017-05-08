@@ -1,4 +1,4 @@
-name:                quickcheck-state-machine-model-example
+name:                quickcheck-state-machine-example
 version:             1
 build-type:          Simple
 cabal-version:       >=1.10
@@ -12,18 +12,19 @@ library
                      , containers
                      , mtl
                      , QuickCheck
-                     , quickcheck-state-machine-model
+                     , quickcheck-state-machine
                      , random
                      , singletons
   default-language:    Haskell2010
 
-test-suite quickcheck-state-machine-model-example-test
+test-suite quickcheck-state-machine-example-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  other-modules:       MutableReferenceSpec
+  other-modules:       DieHardSpec
+                     , MutableReferenceSpec
   build-depends:       base
                      , hspec
-                     , quickcheck-state-machine-model-example
+                     , quickcheck-state-machine-example
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010

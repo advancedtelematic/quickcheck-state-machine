@@ -1,1 +1,1 @@
-# quickcheck-state-machine-model-example
+# quickcheck-state-machine-example
