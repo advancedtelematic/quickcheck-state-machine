@@ -189,11 +189,11 @@ instance IxFoldable (Untyped' MemStep) where
   ifoldMap f (Untyped' (Copy  ref)   _) = f STuple0 ref
 
 instance Show a => Show (Untyped MemStep (ConstSym1 a)) where
-  show (Untyped New          ) =  "New"
-  show (Untyped (Read  ref)  ) =  "Read ("  ++ show ref ++ ")"
-  show (Untyped (Write ref i)) =  "Write (" ++ show ref ++ ") " ++ show i
-  show (Untyped (Inc   ref)  ) =  "Inc ("   ++ show ref ++ ")"
-  show (Untyped (Copy  ref)  ) =  "Copy ("   ++ show ref ++ ")"
+  show (Untyped New          ) = "New"
+  show (Untyped (Read  ref)  ) = "Read ("  ++ show ref ++ ")"
+  show (Untyped (Write ref i)) = "Write (" ++ show ref ++ ") " ++ show i
+  show (Untyped (Inc   ref)  ) = "Inc ("   ++ show ref ++ ")"
+  show (Untyped (Copy  ref)  ) = "Copy ("   ++ show ref ++ ")"
 
 instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
   show (Untyped' New           miref) = "Untyped' New (" ++ show miref ++ ")"
@@ -207,11 +207,11 @@ instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
     "Untyped' (Copy ("   ++ show ref ++ ")) (" ++ show miref ++ ")"
 
 instance ShowCmd MemStep where
-  showCmd New           =  "New"
-  showCmd (Read  ref)   =  "Read ("  ++ show ref ++ ")"
-  showCmd (Write ref i) =  "Write (" ++ show ref ++ ") " ++ show i
-  showCmd (Inc   ref)   =  "Inc ("   ++ show ref ++ ")"
-  showCmd (Copy  ref)   =  "Copy ("   ++ show ref ++ ")"
+  showCmd New           = "New"
+  showCmd (Read  ref)   = "Read ("  ++ show ref ++ ")"
+  showCmd (Write ref i) = "Write (" ++ show ref ++ ") " ++ show i
+  showCmd (Inc   ref)   = "Inc ("   ++ show ref ++ ")"
+  showCmd (Copy  ref)   = "Copy ("   ++ show ref ++ ")"
 
 instance Eq (Untyped' MemStep (ConstSym1 IntRef)) where
   Untyped' c1 _ == Untyped' c2 _ = Just c1 == cast c2
