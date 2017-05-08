@@ -206,7 +206,7 @@ instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
   show (Untyped' (Copy  ref)   miref) =
     "Untyped' (Copy ("   ++ show ref ++ ")) (" ++ show miref ++ ")"
 
-instance ShowCmd MemStep (ConstSym1 IntRef) where
+instance ShowCmd MemStep where
   showCmd New           =  "New"
   showCmd (Read  ref)   =  "Read ("  ++ show ref ++ ")"
   showCmd (Write ref i) =  "Write (" ++ show ref ++ ") " ++ show i

@@ -20,8 +20,8 @@ import           Data.Singletons.Prelude      (type (@@), Apply, ConstSym1,
 import           Data.Typeable                (Typeable)
 import           Test.QuickCheck.Property     (Property)
 import           Text.PrettyPrint.ANSI.Leijen (Pretty, align, dot, indent, int,
-                                               pretty, prettyList, text,
-                                               underline, vsep, (<+>))
+                                               pretty, text, underline, vsep,
+                                               (<+>))
 
 import           Test.StateMachine.Utils
 
@@ -90,8 +90,8 @@ instance Pretty a => Pretty (Fork a) where
     , indent 2 $ int 2 <> dot <+> align (pretty r)
     ]
 
-class ShowCmd (cmd :: Response ix -> (TyFun ix * -> *) -> *) (refs :: TyFun ix * -> *) where
-  showCmd :: forall resp. cmd resp refs -> String
+class ShowCmd (cmd :: Response ix -> (TyFun ix * -> *) -> *) where
+  showCmd :: forall resp. cmd resp (ConstSym1 IntRef) -> String
 
 data Rose a = Rose a [Rose a]
   deriving Show
