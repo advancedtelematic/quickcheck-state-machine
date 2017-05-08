@@ -9,11 +9,11 @@
 
 module DieHard where
 
+import           Control.Monad.Identity  (Identity, runIdentity)
 import           Data.List
 import           Data.Singletons.Prelude (type (@@), ConstSym1, Proxy, Sing,
                                           TyFun)
-import           Test.QuickCheck         (Gen, Property, ioProperty, label,
-                                          property)
+import           Test.QuickCheck         (Gen, Property, label, property)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -83,7 +83,7 @@ shrink1 _ = []
 
 ------------------------------------------------------------------------
 
-semStep :: Step resp (ConstSym1 ()) -> IO (Response_ (ConstSym1 ()) resp)
+semStep :: Step resp (ConstSym1 ()) -> Identity (Response_ (ConstSym1 ()) resp)
 semStep FillBig      = return ()
 semStep FillSmall    = return ()
 semStep EmptyBig     = return ()
@@ -101,7 +101,7 @@ prop_dieHard = sequentialProperty
   returns
   semStep
   ixfor
-  ioProperty
+  runIdentity
 
 validSolutions :: [[Step ('Response ()) (ConstSym1 ())]]
 validSolutions =
