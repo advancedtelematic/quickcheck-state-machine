@@ -16,9 +16,7 @@
 
 module Test.StateMachine.Utils where
 
-import           Control.Concurrent.STM.TChan (TChan, tryReadTChan)
 import           Control.Monad
-import           Control.Monad.STM            (STM, atomically)
 import           Data.Constraint
 import           Data.Constraint.Forall
 import           Data.Kind
@@ -88,18 +86,6 @@ iinstF :: forall a p f. Proxy a -> IxForallF p f :- p (f @@ a)
 iinstF _ = Sub $
   case inst :: Forall (IxComposeC p f) :- IxComposeC p f a of
     Sub Dict -> Dict
-
-------------------------------------------------------------------------
-
-getChanContents :: forall a. TChan a -> IO [a]
-getChanContents chan = reverse <$> atomically (go [])
-  where
-  go :: [a] -> STM [a]
-  go acc = do
-    mx <- tryReadTChan chan
-    case mx of
-      Just x  -> go $ x : acc
-      Nothing -> return acc
 
 ------------------------------------------------------------------------
 

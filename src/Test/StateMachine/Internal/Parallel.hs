@@ -15,23 +15,18 @@
 module Test.StateMachine.Internal.Parallel
   ( liftGenFork
   , liftShrinkFork
-  , runMany
-  , linearise
-  , toForkOfOps
-  , mkHistoryKit
-  , fromRose
-  , response
-  , invocation
-  , getProcessIdHistory
-  , getHistoryChannel
+  , liftSemFork
+  , checkParallelInvariant
   ) where
 
 import           Control.Concurrent                    (threadDelay)
-import           Control.Concurrent.STM                (atomically)
-import           Control.Concurrent.STM.TChan          (TChan, newTChanIO,
+import           Control.Concurrent.ParallelIO.Local   (parallel_, withPool)
+import           Control.Concurrent.STM                (STM, atomically)
+import           Control.Concurrent.STM.TChan          (TChan, newTChanIO, tryReadTChan,
                                                         writeTChan)
 import           Control.Monad                         (foldM)
-import           Control.Monad.State                   (StateT, lift)
+import           Control.Monad.State                   (StateT, evalStateT,
+                                                        execStateT, lift)
 import           Data.Dynamic                          (Dynamic, fromDynamic,
                                                         toDyn)
 import           Data.Kind                             (type (*))
@@ -46,13 +41,16 @@ import           Data.Singletons.Prelude               (type (@@), ConstSym1,
                                                         fromSing)
 import           Data.Typeable                         (Typeable)
 import           System.Random                         (randomRIO)
-import           Test.QuickCheck                       (Gen, Property, property,
-                                                        (.&&.))
+import           Test.QuickCheck                       (Gen, Property,
+                                                        counterexample,
+                                                        property, (.&&.))
+import           Test.QuickCheck.Monadic               (PropertyM)
 import           Text.PrettyPrint.ANSI.Leijen          (Pretty, pretty,
                                                         prettyList, text, vsep,
                                                         (<+>))
 
 import           Test.StateMachine.Internal.IxMap      (IxMap)
+import qualified Test.StateMachine.Internal.IxMap      as IxM
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Types
 import           Test.StateMachine.Utils
@@ -140,41 +138,39 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
 
 ------------------------------------------------------------------------
 
-type History cmd refs = [HistoryEvent (Untyped' cmd refs)]
+type History cmd = [HistoryEvent (Untyped' cmd (ConstSym1 IntRef))]
 
 data HistoryEvent cmd
-  = InvocationEvent
-      { invocation        :: cmd
-      , getProcessIdEvent :: Pid
-      }
-  | ResponseEvent
-      { response          :: Dynamic
-      , getProcessIdEvent :: Pid
-      }
+  = InvocationEvent cmd     Pid
+  | ResponseEvent   Dynamic Pid
 
-data Operation cmd refs = forall resp.
-  (Show (Response_ refs resp),
+getProcessIdEvent :: HistoryEvent cmd -> Pid
+getProcessIdEvent (InvocationEvent _ pid) = pid
+getProcessIdEvent (ResponseEvent   _ pid) = pid
+
+data Operation cmd = forall resp.
+  (Show (Response_ (ConstSym1 IntRef) resp),
    Typeable resp,
-   Typeable (Response_ refs resp)) =>
-  Operation (cmd resp refs) (Response_ refs resp) Pid
+   Typeable (Response_ (ConstSym1 IntRef) resp)) =>
+  Operation (cmd resp (ConstSym1 IntRef)) (Response_ (ConstSym1 IntRef) resp) Pid
 
-instance ShowCmd cmd refs => Pretty (Operation cmd refs) where
+instance ShowCmd cmd => Pretty (Operation cmd) where
   pretty (Operation cmd resp _) =
     text (showCmd cmd) <+> text "-->" <+> text (show resp)
   prettyList                     = vsep . map pretty
 
-takeInvocations :: History cmd refs -> [HistoryEvent (Untyped' cmd refs)]
+takeInvocations :: History cmd -> [HistoryEvent (Untyped' cmd (ConstSym1 IntRef))]
 takeInvocations = takeWhile $ \h -> case h of
   InvocationEvent _ _ -> True
   _                   -> False
 
-findCorrespondingResp :: Pid -> History cmd refs -> [(Dynamic, History cmd refs)]
+findCorrespondingResp :: Pid -> History cmd -> [(Dynamic, History cmd)]
 findCorrespondingResp _   [] = []
 findCorrespondingResp pid (ResponseEvent resp pid' : es) | pid == pid' = [(resp, es)]
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
-linearTree :: History cmd refs -> [Rose (Operation cmd refs)]
+linearTree :: History cmd -> [Rose (Operation cmd)]
 linearTree [] = []
 linearTree es =
   [ Rose (Operation cmd (dynResp resp) pid) (linearTree es')
@@ -196,12 +192,12 @@ linearTree es =
 linearise
   :: forall cmd model
   .  StateMachineModel model cmd
-  -> History cmd (ConstSym1 IntRef)
+  -> History cmd
   -> Property
 linearise _                        [] = property True
 linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ xs0
   where
-  step :: model (ConstSym1 IntRef) -> Rose (Operation cmd (ConstSym1 IntRef)) -> Property
+  step :: model (ConstSym1 IntRef) -> Rose (Operation cmd) -> Property
   step m (Rose (Operation cmd resp _) roses) =
     postcondition m cmd resp .&&.
     anyP' (step (transition m cmd resp)) roses
@@ -212,7 +208,7 @@ linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ x
 
 ------------------------------------------------------------------------
 
-toForkOfOps :: forall cmd refs. History cmd refs -> Fork [Operation cmd refs]
+toForkOfOps :: forall cmd. History cmd -> Fork [Operation cmd]
 toForkOfOps h = Fork (mkOps l) p' (mkOps r)
   where
   (p, h') = partition (\e -> getProcessIdEvent e == 0) h
@@ -220,7 +216,7 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
 
   p'      = mkOps p
 
-  mkOps :: [HistoryEvent (Untyped' cmd refs)] -> [Operation cmd refs]
+  mkOps :: [HistoryEvent (Untyped' cmd (ConstSym1 IntRef))] -> [Operation cmd]
   mkOps [] = []
   mkOps (InvocationEvent (Untyped' cmd _) _ : ResponseEvent resp pid : es)
     = Operation cmd (dynResp resp) pid : mkOps es
@@ -248,12 +244,48 @@ runMany
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> [Untyped' cmd (ConstSym1 IntRef)]
   -> StateT (IxMap ix IntRef refs) IO ()
-runMany kit step returns = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
+runMany kit sem returns = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
   lift $ atomically $ writeTChan (getHistoryChannel kit) $
     InvocationEvent cmd' (getProcessIdHistory kit)
-  resp <- liftSem step returns cmd iref
+  resp <- liftSem sem returns cmd iref
 
   lift $ do
     threadDelay =<< randomRIO (0, 20)
     atomically $ writeTChan (getHistoryChannel kit) $
       ResponseEvent (toDyn resp) (getProcessIdHistory kit)
+
+liftSemFork
+  :: SDecide ix
+  => IxFunctor1 cmd
+  => (forall resp. cmd resp refs -> IO (Response_ refs resp))
+  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
+  -> Fork [Untyped' cmd (ConstSym1 IntRef)]
+  -> IO (History cmd)
+liftSemFork sem returns (Fork left prefix right) = do
+  kit <- mkHistoryKit 0
+  env <- execStateT (runMany kit sem returns prefix) IxM.empty
+  withPool 2 $ \pool -> do
+    parallel_ pool
+      [ evalStateT (runMany (kit { getProcessIdHistory = 1}) sem returns left)  env
+      , evalStateT (runMany (kit { getProcessIdHistory = 2}) sem returns right) env
+      ]
+  hist <- getChanContents $ getHistoryChannel kit
+  return hist
+  where
+  getChanContents :: forall a. TChan a -> IO [a]
+  getChanContents chan = reverse <$> atomically (go [])
+    where
+    go :: [a] -> STM [a]
+    go acc = do
+      mx <- tryReadTChan chan
+      case mx of
+        Just x  -> go $ x : acc
+        Nothing -> return acc
+
+checkParallelInvariant
+  :: ShowCmd cmd
+  => StateMachineModel model cmd -> History cmd -> PropertyM IO ()
+checkParallelInvariant smm hist
+  = liftProperty
+  . counterexample (("Couldn't linearise:\n\n" ++) $ show $ pretty $ toForkOfOps hist)
+  $ linearise smm hist

@@ -20,10 +20,8 @@
 module Test.StateMachine
   ( sequentialProperty
   , parallelProperty
-  )
-  where
+  ) where
 
-import           Control.Concurrent.ParallelIO.Local   (parallel_, withPool)
 import           Control.Monad.State
 import           Data.Kind                             (type (*))
 import qualified Data.Map                              as M
@@ -32,7 +30,6 @@ import           Data.Singletons.TH
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
 import           Test.QuickCheck.Property              (Property (..))
-import           Text.PrettyPrint.ANSI.Leijen          (pretty)
 
 import           Test.StateMachine.Internal.IxMap      (IxMap)
 import qualified Test.StateMachine.Internal.IxMap      as IxM
@@ -70,7 +67,7 @@ sequentialProperty
         -> f (cmd resp q))
   -> (m Property -> Property)
   -> Property
-sequentialProperty StateMachineModel {..} gens shrinker returns runCmd ixFor runM =
+sequentialProperty StateMachineModel {..} gens shrinker returns sem ixFor runM =
   forAllShrink
     (fst <$> liftGen gens 0 M.empty returns ixFor)
     (liftShrink returns shrinker)
@@ -89,7 +86,7 @@ sequentialProperty StateMachineModel {..} gens shrinker returns runCmd ixFor run
     let s = takeWhile (/= ' ') $ show cmd
     monitor $ label s
     pre $ precondition m cmd'
-    resp <- run $ liftSem runCmd returns cmd' miref
+    resp <- run $ liftSem sem returns cmd' miref
     liftProperty $
       counterexample ("The post-condition for `" ++ s ++ "' failed!") $
         postcondition m cmd' resp
@@ -106,7 +103,7 @@ parallelProperty
   .  IxFunctor1 cmd
   => IxFoldable (Untyped' cmd)
   => Show (Untyped' cmd (ConstSym1 IntRef))
-  => ShowCmd cmd (ConstSym1 IntRef)
+  => ShowCmd cmd
   => Ord (Untyped' cmd (ConstSym1 IntRef))
   => Ord       ix
   => SDecide   ix
@@ -123,20 +120,10 @@ parallelProperty
         -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
         -> f (cmd resp q))
   -> Property
-parallelProperty smm gen shrinker returns runStep ifor
-  = forAllShrinkShow
+parallelProperty smm gen shrinker returns sem ifor
+  = forAllShrink
       (liftGenFork gen returns ifor)
       (liftShrinkFork returns shrinker)
-      show $ monadicIO . \(Fork left prefix right) -> do
-        replicateM_ 10 $ do
-          kit <- run $ mkHistoryKit 0
-          env <- run $ execStateT (runMany kit runStep returns prefix) IxM.empty
-          run $ withPool 2 $ \pool -> do
-            parallel_ pool
-              [ evalStateT (runMany (kit { getProcessIdHistory = 1}) runStep returns left)  env
-              , evalStateT (runMany (kit { getProcessIdHistory = 2}) runStep returns right) env
-              ]
-          hist <- run $ getChanContents $ getHistoryChannel kit
-          liftProperty $ counterexample
-            (("Couldn't linearise:\n\n" ++) $ show $ pretty $ toForkOfOps hist) $
-              linearise smm hist
+      $ \fork -> monadicIO $ replicateM_ 10 $ do
+          hist <- run $ liftSemFork sem returns fork
+          checkParallelInvariant smm hist
