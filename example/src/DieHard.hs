@@ -8,6 +8,7 @@
 
 module DieHard where
 
+import           Data.List
 import           Data.Singletons.Prelude
 import           Test.QuickCheck
 
@@ -23,6 +24,8 @@ data Step :: Response () -> (TyFun () * -> *) -> * where
   EmptySmall   :: Step ('Response ()) refs
   SmallIntoBig :: Step ('Response ()) refs
   BigIntoSmall :: Step ('Response ()) refs
+
+deriving instance Show (Step resp refs)
 
 ------------------------------------------------------------------------
 
@@ -54,7 +57,7 @@ transitions (State big small) BigIntoSmall _ =
           , smallJug = small' }
 
 postconditions :: State refs -> Step resp refs -> Response_ refs resp -> Property
-postconditions s _ _ = property (bigJug s /= 4)
+postconditions s c r = property (bigJug (transitions s c r) /= 4)
 
 smm :: StateMachineModel State Step
 smm = StateMachineModel preconditions postconditions transitions initState
@@ -86,8 +89,8 @@ semStep BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
-prop_dieSafety :: Property
-prop_dieSafety = sequentialProperty
+prop_dieHard :: Property
+prop_dieHard = sequentialProperty
   smm
   gens
   shrink1
@@ -95,6 +98,60 @@ prop_dieSafety = sequentialProperty
   semStep
   ixfor
   ioProperty
+
+validSolutions :: [[Step ('Response ()) (ConstSym1 ())]]
+validSolutions =
+  [ [ FillBig
+    , BigIntoSmall
+    , EmptySmall
+    , BigIntoSmall
+    , FillBig
+    , BigIntoSmall
+    ]
+  , [ FillSmall
+    , SmallIntoBig
+    , FillSmall
+    , SmallIntoBig
+    , EmptyBig
+    , SmallIntoBig
+    , FillSmall
+    , SmallIntoBig
+    ]
+  , [ FillSmall
+    , SmallIntoBig
+    , FillSmall
+    , SmallIntoBig
+    , EmptySmall
+    , BigIntoSmall
+    , EmptySmall
+    , BigIntoSmall
+    , FillBig
+    , BigIntoSmall
+    ]
+  , [ FillBig
+    , BigIntoSmall
+    , EmptyBig
+    , SmallIntoBig
+    , FillSmall
+    , SmallIntoBig
+    , EmptyBig
+    , SmallIntoBig
+    , FillSmall
+    , SmallIntoBig
+    ]
+  ]
+
+testValidSolutions :: Bool
+testValidSolutions = all ((/= 4) . bigJug . run) validSolutions
+  where
+  run = foldr (\c s -> transitions s c ()) initState
+
+prop_bigJug4 :: Property
+prop_bigJug4 = shrinkPropertyHelper' prop_dieHard $ \output ->
+  let counterExample = lines output !! 1 in
+  case find (== counterExample) (map show validSolutions) of
+    Nothing -> property False
+    Just ex -> label ex (property True)
 
 ------------------------------------------------------------------------
 
