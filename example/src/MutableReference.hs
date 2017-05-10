@@ -50,16 +50,6 @@ data MemStep :: Response () -> (TyFun () * -> *) -> * where
   Inc   :: refs @@ '() ->        MemStep ('Response   ()) refs
   Copy  :: refs @@ '() ->        MemStep ('Reference '()) refs
 
-deriving instance Eq   (MemStep resp ConstIntRef)
-deriving instance Show (MemStep resp ConstIntRef)
-
-instance IxFunctor (MemStep resp) where
-  ifmap _ New           = New
-  ifmap f (Read  ref)   = Read  (f STuple0 ref)
-  ifmap f (Write ref i) = Write (f STuple0 ref) i
-  ifmap f (Inc   ref)   = Inc   (f STuple0 ref)
-  ifmap f (Copy  ref)   = Copy  (f STuple0 ref)
-
 ------------------------------------------------------------------------
 
 newtype Model refs = Model (Map (refs @@ '()) Int)
@@ -145,24 +135,6 @@ returns (Write _ _) = SResponse
 returns (Inc   _)   = SResponse
 returns (Copy _)    = SReference STuple0
 
-ixfor :: Applicative f => Proxy q -> MemStep resp p
-  -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-  -> f (MemStep resp q)
-ixfor _ New             _ = pure New
-ixfor _ (Read  ref)     f = Read  <$> f STuple0 ref
-ixfor _ (Write ref val) f = Write <$> f STuple0 ref <*> pure val
-ixfor _ (Inc   ref)     f = Inc   <$> f STuple0 ref
-ixfor _ (Copy  ref)     f = Copy  <$> f STuple0 ref
-
-instance IxFunctor  (Untyped MemStep) where
-  ifmap _ _ = undefined
-
-instance IxFoldable (Untyped MemStep) where
-  ifoldMap _ _ = undefined
-
-instance IxTraversable (Untyped MemStep) where
-  ifor p (Untyped cmd) f = Untyped <$> ixfor p cmd f
-
 ------------------------------------------------------------------------
 
 shrink1 :: Untyped' MemStep refs -> [Untyped' MemStep refs ]
@@ -171,31 +143,31 @@ shrink1 _                               = []
 
 ------------------------------------------------------------------------
 
-instance Read (Untyped' MemStep ConstIntRef) where
-  readPrec = parens $ choice
-    [ Untyped' <$ key "Untyped'" <*> parens (New <$ key " New") <*> readPrec
-    , Untyped' <$ key "Untyped'" <*> parens (Read <$ key "Read" <*> readPrec) <*> readPrec
-    , Untyped' <$ key "Untyped'" <*> parens (Write <$ key "Write" <*> readPrec <*> readPrec) <*> readPrec
-    , Untyped' <$ key "Untyped'" <*> parens (Inc <$ key "Inc" <*> readPrec) <*> readPrec
-    ]
-    where
-      key s = Text.Read.lift (string s)
+instance IxFunctor MemStep where
+  ifmap _ New           = New
+  ifmap f (Read  ref)   = Read  (f STuple0 ref)
+  ifmap f (Write ref i) = Write (f STuple0 ref) i
+  ifmap f (Inc   ref)   = Inc   (f STuple0 ref)
+  ifmap f (Copy  ref)   = Copy  (f STuple0 ref)
 
-  readListPrec = readListPrecDefault
+instance IxFoldable MemStep where
+  ifoldMap _ New           = mempty
+  ifoldMap f (Read  ref)   = f STuple0 ref
+  ifoldMap f (Write ref _) = f STuple0 ref
+  ifoldMap f (Inc   ref)   = f STuple0 ref
+  ifoldMap f (Copy  ref)   = f STuple0 ref
 
-instance IxFunctor1 MemStep where
-  ifmap1 _ New           = New
-  ifmap1 f (Read  ref)   = Read  (f STuple0 ref)
-  ifmap1 f (Write ref i) = Write (f STuple0 ref) i
-  ifmap1 f (Inc   ref)   = Inc   (f STuple0 ref)
-  ifmap1 f (Copy  ref)   = Copy  (f STuple0 ref)
+instance IxTraversable MemStep where
+  ifor _ New             _ = pure New
+  ifor _ (Read  ref)     f = Read  <$> f STuple0 ref
+  ifor _ (Write ref val) f = Write <$> f STuple0 ref <*> pure val
+  ifor _ (Inc   ref)     f = Inc   <$> f STuple0 ref
+  ifor _ (Copy  ref)     f = Copy  <$> f STuple0 ref
 
-instance IxFoldable (Untyped' MemStep) where
-  ifoldMap _ (Untyped' New           _) = mempty
-  ifoldMap f (Untyped' (Read  ref)   _) = f STuple0 ref
-  ifoldMap f (Untyped' (Write ref _) _) = f STuple0 ref
-  ifoldMap f (Untyped' (Inc   ref)   _) = f STuple0 ref
-  ifoldMap f (Untyped' (Copy  ref)   _) = f STuple0 ref
+------------------------------------------------------------------------
+
+deriving instance Eq   (MemStep resp ConstIntRef)
+deriving instance Show (MemStep resp ConstIntRef)
 
 instance Show a => Show (Untyped MemStep (ConstSym1 a)) where
   show (Untyped New          ) = "New"
@@ -329,7 +301,7 @@ prop_genForkScope = forAll
   scopeCheckFork
 
 prop_sequentialShrink :: Property
-prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns ixfor
+prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns ifor
   [ Untyped' New    (IntRef (Ref 0) (Pid 0))
   , Untyped' (Write (IntRef (Ref 0) (Pid 0)) (5)) ()
   , Untyped' (Read  (IntRef (Ref 0) (Pid 0))) ()
@@ -381,7 +353,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       go x = Rose x $ map go $ more x
 
   isMinimal :: Fork [Untyped' MemStep ConstIntRef] -> Bool
-  isMinimal xs = any (alphaEqFork returns ixfor xs) minimal
+  isMinimal xs = any (alphaEqFork returns ifor xs) minimal
 
   minimal :: [Fork [Untyped' MemStep ConstIntRef]]
   minimal  = minimal' ++ map mirrored minimal'
@@ -398,3 +370,18 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
 
     var = IntRef 0 0
     writes = [Untyped' (Write var 0) (), Untyped' (Inc var) ()]
+
+instance Read (Untyped' MemStep ConstIntRef) where
+  readPrec = parens $ choice
+    [ Untyped' <$ key "Untyped'" <*> parens (New <$ key " New") <*> readPrec
+    , Untyped' <$ key "Untyped'" <*>
+        parens (Read <$ key "Read" <*> readPrec) <*> readPrec
+    , Untyped' <$ key "Untyped'" <*>
+        parens (Write <$ key "Write" <*> readPrec <*> readPrec) <*> readPrec
+    , Untyped' <$ key "Untyped'" <*>
+        parens (Inc <$ key "Inc" <*> readPrec) <*> readPrec
+    ]
+    where
+      key s = Text.Read.lift (string s)
+
+  readListPrec = readListPrecDefault

@@ -91,56 +91,38 @@ iinstF _ = Sub $
 
 data Ex (p :: TyFun a * -> *) = forall (x :: a). Ex (Sing x) (p @@ x)
 
-class IxFunctor (f :: (TyFun ix * -> *) -> *) where
-  ifmap :: (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> f p -> f q
+class IxFunctor (f :: jx -> (TyFun ix * -> *) -> *) where
+  ifmap :: (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> forall j. f j p -> f j q
 
-class IxFunctor1 (f :: k -> (TyFun ix * -> *) -> *) where
-  ifmap1 :: (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> forall j. f j p -> f j q
+class IxFoldable (t :: jx -> (TyFun ix * -> *) -> *) where
 
-class IxFoldable (t :: (TyFun ix * -> *) -> *) where
+  ifoldMap :: Monoid m => (forall i. Sing (i :: ix) -> p @@ i -> m) -> t j p -> m
 
-  ifoldMap :: Monoid m => (forall i. Sing (i :: ix) -> p @@ i -> m) -> t p -> m
-
-  itoList :: t p -> [Ex p]
+  itoList :: t j p -> [Ex p]
   itoList = ifoldMap (\s px -> [Ex s px])
 
-  ifoldr :: (forall i. Sing (i :: ix) -> p @@ i -> b -> b) -> b -> t p -> b
+  ifoldr :: (forall i. Sing (i :: ix) -> p @@ i -> b -> b) -> b -> t j p -> b
   ifoldr f z = foldr (\(Ex i x) -> f i x) z . itoList
 
-iany
-  :: forall
-     (ix :: *)
-     (t  :: (TyFun ix * -> *) -> *)
-     (p  :: TyFun ix * -> *)
-  .  IxFoldable t
-  => (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t p -> Bool
-iany p = ifoldr (\i x ih -> p i x || ih) False
+  iany :: (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t j p -> Bool
+  iany p = ifoldr (\i x ih -> p i x || ih) False
 
-iall
-  :: forall
-     (ix :: *)
-     (t  :: (TyFun ix * -> *) -> *)
-     (p  :: TyFun ix * -> *)
-  .  IxFoldable t
-  => (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t p -> Bool
-iall p = ifoldr (\i x ih -> p i x && ih) True
-
-class (IxFunctor t, IxFoldable t) => IxTraversable (t :: (TyFun ix * -> *) -> *) where
+class (IxFunctor t, IxFoldable t) => IxTraversable (t :: jx -> (TyFun ix * -> *) -> *) where
 
   itraverse
     :: Applicative f
     => Proxy q
     -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-    -> t p
-    -> f (t q)
+    -> t j p
+    -> f (t j q)
   itraverse pq f tp = ifor pq tp f
 
   ifor
     :: Applicative f
     => Proxy q
-    -> t p
+    -> t j p
     -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-    -> f (t q)
+    -> f (t j q)
   ifor pq tp f = itraverse pq f tp
 
   {-# MINIMAL itraverse | ifor #-}
