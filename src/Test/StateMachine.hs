@@ -25,7 +25,6 @@ module Test.StateMachine
 import           Control.Monad.State
 import           Data.Kind                             (type (*))
 import qualified Data.Map                              as M
-import           Data.Singletons.Prelude               (ConstSym1)
 import           Data.Singletons.TH
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
@@ -51,6 +50,7 @@ sequentialProperty
   => IxFunctor1 cmd
   => Show (Untyped' cmd ConstIntRef)
   => IxFoldable (Untyped' cmd)
+  => IxTraversable (Untyped cmd)
   => Ord       ix
   => SDecide   ix
   => SingKind  ix
@@ -60,16 +60,11 @@ sequentialProperty
   -> (forall refs'. Shrinker (Untyped' cmd refs'))
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> (forall resp. cmd resp refs -> m (Response_ refs resp))
-  -> (forall f p q resp. Applicative f
-        => Proxy q
-        -> cmd resp p
-        -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
-        -> f (cmd resp q))
   -> (m Property -> Property)
   -> Property
-sequentialProperty StateMachineModel {..} gens shrinker returns sem ixFor runM =
+sequentialProperty StateMachineModel {..} gens shrinker returns sem runM =
   forAllShrink
-    (fst <$> liftGen gens 0 M.empty returns ixFor)
+    (fst <$> liftGen gens 0 M.empty returns)
     (liftShrink returns shrinker)
     $ \cmds ->
       let len = length cmds in
@@ -102,6 +97,7 @@ parallelProperty
      (model :: (TyFun ix * -> *) -> *)
   .  IxFunctor1 cmd
   => IxFoldable (Untyped' cmd)
+  => IxTraversable (Untyped cmd)
   => Show (Untyped' cmd ConstIntRef)
   => ShowCmd cmd
   => Ord (Untyped' cmd ConstIntRef)
@@ -114,15 +110,10 @@ parallelProperty
   -> (forall refs'. Shrinker (Untyped' cmd refs'))
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
-  -> (forall f p q resp. Applicative f
-        => Proxy q
-        -> cmd resp p
-        -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
-        -> f (cmd resp q))
   -> Property
-parallelProperty smm gen shrinker returns sem ifor
+parallelProperty smm gen shrinker returns sem
   = forAllShrink
-      (liftGenFork gen returns ifor)
+      (liftGenFork gen returns)
       (liftShrinkFork returns shrinker)
       $ \fork -> monadicIO $ replicateM_ 10 $ do
           hist <- run $ liftSemFork sem returns fork

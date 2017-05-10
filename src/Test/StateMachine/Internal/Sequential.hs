@@ -24,10 +24,9 @@ import qualified Data.Map                         as M
 import           Data.Set                         (Set)
 import qualified Data.Set                         as S
 import           Data.Singletons.Decide           (SDecide)
-import           Data.Singletons.Prelude          (type (@@), ConstSym1,
-                                                   DemoteRep, Proxy (Proxy),
-                                                   Sing, SingKind, TyFun,
-                                                   fromSing)
+import           Data.Singletons.Prelude          (type (@@), DemoteRep,
+                                                   Proxy (Proxy), Sing,
+                                                   SingKind, TyFun, fromSing)
 import           Test.QuickCheck                  (Gen, choose, frequency,
                                                    sized)
 
@@ -46,17 +45,13 @@ liftGen
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
+  => IxTraversable (Untyped cmd)
   => [(Int, Gen (Untyped cmd refs))]
   -> Pid
   -> Map ix Int
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> (forall f p q resp. Applicative f
-        => Proxy q
-        -> cmd resp p
-        -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
-        -> f (cmd resp q))
   -> Gen ([Untyped' cmd ConstIntRef], Map ix Int)
-liftGen gens pid ns returns ixfor = sized $ \sz -> runStateT (go sz) ns
+liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
   where
 
   translate
@@ -77,9 +72,8 @@ liftGen gens pid ns returns ixfor = sized $ \sz -> runStateT (go sz) ns
     scopes       <- get
 
     Untyped cmd <- lift . genFromMaybe $ do
-      Untyped cmd <- frequency gens
-      cmd' <- getCompose $ ixfor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
-      return $ Untyped <$> cmd'
+      cmd <- frequency gens
+      getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
 
     ixref <- case returns cmd of
       SResponse    -> return ()
