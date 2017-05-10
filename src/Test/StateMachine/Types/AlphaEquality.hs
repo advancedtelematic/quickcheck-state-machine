@@ -19,8 +19,8 @@ import           Control.Monad                    (forM)
 import           Control.Monad.State              (State, get, put, runState)
 import           Data.Kind                        (type (*))
 import           Data.Singletons.Decide           (SDecide)
-import           Data.Singletons.Prelude          (type (@@), ConstSym1,
-                                                   Proxy (..), Sing, TyFun)
+import           Data.Singletons.Prelude          (type (@@), Proxy (..), Sing,
+                                                   TyFun)
 
 import           Test.StateMachine.Internal.IxMap (IxMap)
 import qualified Test.StateMachine.Internal.IxMap as IxM

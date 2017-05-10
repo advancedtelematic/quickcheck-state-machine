@@ -100,7 +100,6 @@ prop_dieHard = sequentialProperty
   shrink1
   returns
   semStep
-  ixfor
   runIdentity
 
 validSolutions :: [[Step ('Response ()) (ConstSym1 ())]]

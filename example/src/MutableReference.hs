@@ -155,7 +155,10 @@ ixfor _ (Inc   ref)     f = Inc   <$> f STuple0 ref
 ixfor _ (Copy  ref)     f = Copy  <$> f STuple0 ref
 
 instance IxFunctor  (Untyped MemStep) where
+  ifmap _ _ = undefined
+
 instance IxFoldable (Untyped MemStep) where
+  ifoldMap _ _ = undefined
 
 instance IxTraversable (Untyped MemStep) where
   ifor p (Untyped cmd) f = Untyped <$> ixfor p cmd f
@@ -260,7 +263,6 @@ prop_safety prb = sequentialProperty
   shrink1
   returns
   (semStep prb)
-  ixfor
   ioProperty
 
 prop_parallel :: Problem -> Property
@@ -270,7 +272,6 @@ prop_parallel prb = parallelProperty
   shrink1
   returns
   (semStep prb)
-  ixfor
 
 ------------------------------------------------------------------------
 

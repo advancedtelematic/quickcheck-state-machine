@@ -22,7 +22,8 @@ module Test.StateMachine.Internal.Parallel
 import           Control.Concurrent                    (threadDelay)
 import           Control.Concurrent.ParallelIO.Local   (parallel_, withPool)
 import           Control.Concurrent.STM                (STM, atomically)
-import           Control.Concurrent.STM.TChan          (TChan, newTChanIO, tryReadTChan,
+import           Control.Concurrent.STM.TChan          (TChan, newTChanIO,
+                                                        tryReadTChan,
                                                         writeTChan)
 import           Control.Monad                         (foldM)
 import           Control.Monad.State                   (StateT, evalStateT,
@@ -35,9 +36,8 @@ import           Data.Map                              (Map)
 import qualified Data.Map                              as M
 import qualified Data.Set                              as S
 import           Data.Singletons.Decide                (SDecide)
-import           Data.Singletons.Prelude               (type (@@), ConstSym1,
-                                                        DemoteRep, Proxy, Sing,
-                                                        SingKind, TyFun,
+import           Data.Singletons.Prelude               (ConstSym1, DemoteRep,
+                                                        Sing, SingKind, TyFun,
                                                         fromSing)
 import           Data.Typeable                         (Typeable)
 import           System.Random                         (randomRIO)

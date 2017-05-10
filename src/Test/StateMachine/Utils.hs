@@ -142,3 +142,5 @@ class (IxFunctor t, IxFoldable t) => IxTraversable (t :: (TyFun ix * -> *) -> *)
     -> (forall x. Sing x -> p @@ x -> f (q @@ x))
     -> f (t q)
   ifor pq tp f = itraverse pq f tp
+
+  {-# MINIMAL itraverse | ifor #-}

@@ -24,10 +24,9 @@ import qualified Data.Map                         as M
 import           Data.Set                         (Set)
 import qualified Data.Set                         as S
 import           Data.Singletons.Decide           (SDecide)
-import           Data.Singletons.Prelude          (type (@@), ConstSym1,
-                                                   DemoteRep, Proxy (Proxy),
-                                                   Sing, SingKind, TyFun,
-                                                   fromSing)
+import           Data.Singletons.Prelude          (type (@@), DemoteRep,
+                                                   Proxy (Proxy), Sing,
+                                                   SingKind, TyFun, fromSing)
 import           Test.QuickCheck                  (Gen, choose, frequency,
                                                    sized)
 
@@ -66,7 +65,7 @@ liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
       v <- choose (0, max 0 (u - 1))
       return . Just $ IntRef (Ref v) pid
 
-  go :: Int -> StateT (Map ix Int) Gen [Untyped' cmd (ConstSym1 IntRef)]
+  go :: Int -> StateT (Map ix Int) Gen [Untyped' cmd ConstIntRef]
   go 0  = return []
   go sz = do
 
