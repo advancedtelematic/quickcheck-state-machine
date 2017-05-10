@@ -177,6 +177,15 @@ ixfor _ EmptySmall   _ = pure EmptySmall
 ixfor _ SmallIntoBig _ = pure SmallIntoBig
 ixfor _ BigIntoSmall _ = pure BigIntoSmall
 
+instance IxFunctor  (Untyped Step) where
+  ifmap _ _ = undefined
+
+instance IxFoldable (Untyped Step) where
+  ifoldMap _ _ = undefined
+
+instance IxTraversable (Untyped Step) where
+  ifor p (Untyped cmd) f = Untyped <$> ixfor p cmd f
+
 deriving instance Eq (Step resp ConstIntRef)
 
 instance IxFunctor1 Step where

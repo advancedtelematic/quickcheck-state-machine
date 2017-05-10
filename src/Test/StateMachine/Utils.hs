@@ -126,6 +126,19 @@ iall
 iall p = ifoldr (\i x ih -> p i x && ih) True
 
 class (IxFunctor t, IxFoldable t) => IxTraversable (t :: (TyFun ix * -> *) -> *) where
-  itraverse :: Applicative f => Proxy q
+
+  itraverse
+    :: Applicative f
+    => Proxy q
     -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-    -> t p -> t q
+    -> t p
+    -> f (t q)
+  itraverse pq f tp = ifor pq tp f
+
+  ifor
+    :: Applicative f
+    => Proxy q
+    -> t p
+    -> (forall x. Sing x -> p @@ x -> f (q @@ x))
+    -> f (t q)
+  ifor pq tp f = itraverse pq f tp

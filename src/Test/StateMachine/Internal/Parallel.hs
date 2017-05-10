@@ -66,18 +66,14 @@ liftGenFork
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxFunctor1 cmd
+  => IxTraversable (Untyped cmd)
   => [(Int, Gen (Untyped cmd refs))]
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> (forall f p q resp. Applicative f
-        => Proxy q
-        -> cmd resp p
-        -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
-        -> f (cmd resp q))
   -> Gen (Fork [Untyped' cmd ConstIntRef])
-liftGenFork gens returns ixFor = do
-  (prefix, ns) <- liftGen gens 0 M.empty returns ixFor
-  left         <- fst <$> liftGen gens 1 ns returns ixFor
-  right        <- fst <$> liftGen gens 2 ns returns ixFor
+liftGenFork gens returns = do
+  (prefix, ns) <- liftGen gens 0 M.empty returns
+  left         <- fst <$> liftGen gens 1 ns returns
+  right        <- fst <$> liftGen gens 2 ns returns
   return $ Fork
     (map (\(Untyped' cmd miref) ->
             Untyped' (ifmap1 (fixPid ns) cmd) miref) left)

@@ -154,6 +154,12 @@ ixfor _ (Write ref val) f = Write <$> f STuple0 ref <*> pure val
 ixfor _ (Inc   ref)     f = Inc   <$> f STuple0 ref
 ixfor _ (Copy  ref)     f = Copy  <$> f STuple0 ref
 
+instance IxFunctor  (Untyped MemStep) where
+instance IxFoldable (Untyped MemStep) where
+
+instance IxTraversable (Untyped MemStep) where
+  ifor p (Untyped cmd) f = Untyped <$> ixfor p cmd f
+
 ------------------------------------------------------------------------
 
 shrink1 :: Untyped' MemStep refs -> [Untyped' MemStep refs ]
@@ -312,13 +318,13 @@ scopeCheckFork :: Fork [Untyped' MemStep ConstIntRef] -> Bool
 scopeCheckFork = scopeCheckFork' returns usesRefs
 
 prop_genScope :: Property
-prop_genScope = forAll (fst <$> liftGen gens (Pid 0) M.empty returns ixfor) $ \p ->
+prop_genScope = forAll (fst <$> liftGen gens (Pid 0) M.empty returns) $ \p ->
   let p' = zip (repeat 0) p in
   scopeCheck returns usesRefs p'
 
 prop_genForkScope :: Property
 prop_genForkScope = forAll
-  (liftGenFork gens returns ixfor)
+  (liftGenFork gens returns)
   scopeCheckFork
 
 prop_sequentialShrink :: Property
@@ -335,7 +341,7 @@ cheat = fmap (map (\ms -> case ms of
   _                         -> ms))
 
 prop_shrinkForkSubseq :: Property
-prop_shrinkForkSubseq = forAll (liftGenFork gens returns ixfor) $ \f@(Fork l p r) ->
+prop_shrinkForkSubseq = forAll (liftGenFork gens returns) $ \f@(Fork l p r) ->
   all (\(Fork l' p' r') -> noRefs l' `isSubsequenceOf` noRefs l &&
                            noRefs p' `isSubsequenceOf` noRefs p &&
                            noRefs r' `isSubsequenceOf` noRefs r)
@@ -345,7 +351,7 @@ prop_shrinkForkSubseq = forAll (liftGenFork gens returns ixfor) $ \f@(Fork l p r
   noRefs = fmap (const ())
 
 prop_shrinkForkScope :: Property
-prop_shrinkForkScope = forAll (liftGenFork gens returns ixfor) $ \f ->
+prop_shrinkForkScope = forAll (liftGenFork gens returns) $ \f ->
   all scopeCheckFork (liftShrinkFork returns shrink1 f)
 
 debugShrinkFork :: Fork [Untyped' MemStep ConstIntRef]

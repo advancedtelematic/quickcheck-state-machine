@@ -46,17 +46,13 @@ liftGen
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
+  => IxTraversable (Untyped cmd)
   => [(Int, Gen (Untyped cmd refs))]
   -> Pid
   -> Map ix Int
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> (forall f p q resp. Applicative f
-        => Proxy q
-        -> cmd resp p
-        -> (forall (x :: ix). Sing x -> p @@ x -> f (q @@ x))
-        -> f (cmd resp q))
   -> Gen ([Untyped' cmd ConstIntRef], Map ix Int)
-liftGen gens pid ns returns ixfor = sized $ \sz -> runStateT (go sz) ns
+liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
   where
 
   translate
@@ -70,16 +66,15 @@ liftGen gens pid ns returns ixfor = sized $ \sz -> runStateT (go sz) ns
       v <- choose (0, max 0 (u - 1))
       return . Just $ IntRef (Ref v) pid
 
-  go :: Int -> StateT (Map ix Int) Gen [Untyped' cmd ConstIntRef]
+  go :: Int -> StateT (Map ix Int) Gen [Untyped' cmd (ConstSym1 IntRef)]
   go 0  = return []
   go sz = do
 
     scopes       <- get
 
     Untyped cmd <- lift . genFromMaybe $ do
-      Untyped cmd <- frequency gens
-      cmd' <- getCompose $ ixfor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
-      return $ Untyped <$> cmd'
+      cmd <- frequency gens
+      getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
 
     ixref <- case returns cmd of
       SResponse    -> return ()
