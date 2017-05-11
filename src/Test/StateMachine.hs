@@ -91,7 +91,6 @@ parallelProperty
   :: IxTraversable cmd
   => ShowCmd cmd
   => Show (IntRefed cmd)
-  => Ord (IntRefed cmd)
   => Ord       ix
   => SDecide   ix
   => SingKind  ix

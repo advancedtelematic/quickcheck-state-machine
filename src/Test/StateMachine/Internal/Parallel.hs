@@ -32,7 +32,6 @@ import           Data.Dynamic                          (Dynamic, fromDynamic,
                                                         toDyn)
 import           Data.List                             (partition)
 import qualified Data.Map                              as M
-import qualified Data.Set                              as S
 import           Data.Singletons.Decide                (SDecide)
 import           Data.Singletons.Prelude               (DemoteRep, SingKind,
                                                         fromSing)
@@ -82,11 +81,10 @@ liftGenFork gens returns = do
 liftShrinkFork
   :: forall ix cmd
   .  IxFoldable cmd
-  => Ord (IntRefed cmd)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> Shrinker (IntRefed cmd)
   -> Shrinker (Fork [IntRefed cmd])
-liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
+liftShrinkFork returns shrinker f@(Fork l0 p0 r0) =
 
   -- Only shrink the branches:
   [ Fork l' p0 r'
