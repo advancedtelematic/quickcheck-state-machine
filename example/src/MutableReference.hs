@@ -166,8 +166,6 @@ instance IxTraversable MemStep where
 
 ------------------------------------------------------------------------
 
-deriving instance Eq   (MemStep resp ConstIntRef)
-
 instance ShowCmd MemStep where
   showCmd New           = "New"
   showCmd (Read  ref)   = "Read ("  ++ show ref ++ ")"
@@ -185,35 +183,6 @@ instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
     "Untyped' (Inc ("   ++ show ref ++ ")) "  ++ show miref
   show (Untyped' (Copy  ref)   miref) =
     "Untyped' (Copy ("   ++ show ref ++ ")) (" ++ show miref ++ ")"
-
-instance Eq (Untyped' MemStep ConstIntRef) where
-  Untyped' c1 _ == Untyped' c2 _ = Just c1 == cast c2
-
-instance Ord (Untyped' MemStep ConstIntRef) where
-  Untyped' c1 _ <= Untyped' c2 _ = Just c1 <= cast c2
-
-data RawMemStep refs
-  = NewR
-  | ReadR  (refs @@ '())
-  | WriteR (refs @@ '()) Int
-  | IncR   (refs @@ '())
-  | CopyR  (refs @@ '())
-
-deriving instance Eq  (RawMemStep ConstIntRef)
-deriving instance Ord (RawMemStep ConstIntRef)
-
-raw :: MemStep resp refs -> RawMemStep refs
-raw New           = NewR
-raw (Read  ref)   = ReadR  ref
-raw (Write ref i) = WriteR ref i
-raw (Inc   ref)   = IncR   ref
-raw (Copy  ref)   = CopyR  ref
-
-instance Ord (MemStep resp ConstIntRef) where
-  c1 <= c2 = raw c1 <= raw c2
-
-instance IxForallF Show p => Show (Model p) where
-  show (Model m) = show m \\ (iinstF @'() Proxy :: IxForallF Show p :- Show (p @@ '()))
 
 ------------------------------------------------------------------------
 
@@ -299,6 +268,11 @@ prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns
   , Untyped' (Read  (IntRef (Ref 0) (Pid 0))) ()
   ]
   . read . (!! 1) . lines
+
+deriving instance Eq  (MemStep resp ConstIntRef)
+
+instance Eq (Untyped' MemStep ConstIntRef) where
+  Untyped' c1 _ == Untyped' c2 _ = Just c1 == cast c2
 
 cheat :: Fork [Untyped' MemStep (ConstSym1 refs)] -> Fork [Untyped' MemStep (ConstSym1 refs)]
 cheat = fmap (map (\ms -> case ms of
