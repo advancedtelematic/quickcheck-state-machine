@@ -57,33 +57,31 @@ newtype Model refs = Model (Map (refs @@ '()) Int)
 initModel :: Model ref
 initModel = Model M.empty
 
-type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
-
 preconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep resp refs -> Bool
-preconditions (Model m) cmd = case cmd of
+preconditions (Model m) cmd = (case cmd of
   New         -> True
-  Read  ref   -> M.member ref m \\ (iinstF @'() Proxy :: Ords refs)
-  Write ref _ -> M.member ref m \\ (iinstF @'() Proxy :: Ords refs)
-  Inc   ref   -> M.member ref m \\ (iinstF @'() Proxy :: Ords refs)
-  Copy  ref   -> M.member ref m \\ (iinstF @'() Proxy :: Ords refs)
+  Read  ref   -> M.member ref m
+  Write ref _ -> M.member ref m
+  Inc   ref   -> M.member ref m
+  Copy  ref   -> M.member ref m) \\ (iinstF @'() Proxy :: Ords refs)
 
 transitions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep resp refs
   -> Response_ refs resp -> Model refs
-transitions (Model m) cmd resp = case cmd of
-  New          -> Model (M.insert resp 0 m)              \\ (iinstF @'() Proxy :: Ords refs)
-  Read  _      -> Model m                                \\ (iinstF @'() Proxy :: Ords refs)
-  Write ref i  -> Model (M.insert ref i m)               \\ (iinstF @'() Proxy :: Ords refs)
-  Inc   ref    -> Model (M.insert ref (m M.! ref + 1) m) \\ (iinstF @'() Proxy :: Ords refs)
-  Copy  ref    -> Model (M.insert resp (m M.! ref) m)    \\ (iinstF @'() Proxy :: Ords refs)
+transitions (Model m) cmd resp = (case cmd of
+  New          -> Model (M.insert resp 0 m)
+  Read  _      -> Model m
+  Write ref i  -> Model (M.insert ref i m)
+  Inc   ref    -> Model (M.insert ref (m M.! ref + 1) m)
+  Copy  ref    -> Model (M.insert resp (m M.! ref) m)) \\ (iinstF @'() Proxy :: Ords refs)
 
 postconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep resp refs
   -> Response_ refs resp -> Property
-postconditions (Model m) cmd resp = case cmd of
+postconditions (Model m) cmd resp = (case cmd of
   New         -> property $ True
-  Read  ref   -> property $ m  M.! ref == resp          \\ (iinstF @'() Proxy :: Ords refs)
-  Write ref i -> property $ m' M.! ref == i             \\ (iinstF @'() Proxy :: Ords refs)
-  Inc   ref   -> property $ m' M.! ref == m M.! ref + 1 \\ (iinstF @'() Proxy :: Ords refs)
-  Copy  ref   -> property $ m' M.! resp == m M.! ref    \\ (iinstF @'() Proxy :: Ords refs)
+  Read  ref   -> property $ m  M.! ref == resp
+  Write ref i -> property $ m' M.! ref == i
+  Inc   ref   -> property $ m' M.! ref == m M.! ref + 1
+  Copy  ref   -> property $ m' M.! resp == m M.! ref) \\ (iinstF @'() Proxy :: Ords refs)
   where
   Model m' = transitions (Model m) cmd resp
 

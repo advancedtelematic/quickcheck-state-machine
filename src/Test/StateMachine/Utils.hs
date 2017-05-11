@@ -87,6 +87,8 @@ iinstF _ = Sub $
   case inst :: Forall (IxComposeC p f) :- IxComposeC p f a of
     Sub Dict -> Dict
 
+type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
+
 ------------------------------------------------------------------------
 
 data Ex (p :: TyFun a * -> *) = forall (x :: a). Ex (Sing x) (p @@ x)
