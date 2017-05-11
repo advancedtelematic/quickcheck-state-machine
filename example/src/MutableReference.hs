@@ -139,7 +139,7 @@ returns (Copy _)    = SReference STuple0
 
 shrink1 :: Untyped' MemStep refs -> [Untyped' MemStep refs ]
 shrink1 (Untyped' (Write ref i) iref) = [ Untyped' (Write ref i') iref | i' <- shrink i ]
-shrink1 _                               = []
+shrink1 _                             = []
 
 ------------------------------------------------------------------------
 
@@ -167,14 +167,13 @@ instance IxTraversable MemStep where
 ------------------------------------------------------------------------
 
 deriving instance Eq   (MemStep resp ConstIntRef)
-deriving instance Show (MemStep resp ConstIntRef)
 
-instance Show a => Show (Untyped MemStep (ConstSym1 a)) where
-  show (Untyped New          ) = "New"
-  show (Untyped (Read  ref)  ) = "Read ("  ++ show ref ++ ")"
-  show (Untyped (Write ref i)) = "Write (" ++ show ref ++ ") " ++ show i
-  show (Untyped (Inc   ref)  ) = "Inc ("   ++ show ref ++ ")"
-  show (Untyped (Copy  ref)  ) = "Copy ("   ++ show ref ++ ")"
+instance ShowCmd MemStep where
+  showCmd New           = "New"
+  showCmd (Read  ref)   = "Read ("  ++ show ref ++ ")"
+  showCmd (Write ref i) = "Write (" ++ show ref ++ ") " ++ show i
+  showCmd (Inc   ref)   = "Inc ("   ++ show ref ++ ")"
+  showCmd (Copy  ref)   = "Copy ("   ++ show ref ++ ")"
 
 instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
   show (Untyped' New           miref) = "Untyped' New (" ++ show miref ++ ")"
@@ -186,13 +185,6 @@ instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
     "Untyped' (Inc ("   ++ show ref ++ ")) "  ++ show miref
   show (Untyped' (Copy  ref)   miref) =
     "Untyped' (Copy ("   ++ show ref ++ ")) (" ++ show miref ++ ")"
-
-instance ShowCmd MemStep where
-  showCmd New           = "New"
-  showCmd (Read  ref)   = "Read ("  ++ show ref ++ ")"
-  showCmd (Write ref i) = "Write (" ++ show ref ++ ") " ++ show i
-  showCmd (Inc   ref)   = "Inc ("   ++ show ref ++ ")"
-  showCmd (Copy  ref)   = "Copy ("   ++ show ref ++ ")"
 
 instance Eq (Untyped' MemStep ConstIntRef) where
   Untyped' c1 _ == Untyped' c2 _ = Just c1 == cast c2
@@ -260,11 +252,11 @@ scopeCheck
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> (forall resp. cmd resp ConstIntRef -> [Ex ConstIntRef])
-  -> [(Pid, Untyped' cmd ConstIntRef)]
+  -> [(Pid, IntRefed cmd)]
   -> Bool
 scopeCheck returns' uses' = go []
   where
-  go :: [IntRef] -> [(Pid, Untyped' cmd ConstIntRef)] -> Bool
+  go :: [IntRef] -> [(Pid, IntRefed cmd)] -> Bool
   go _    []                           = True
   go refs ((_, Untyped' c miref) : cs) = case returns' c of
     SReference _  ->
@@ -281,7 +273,7 @@ scopeCheckFork'
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
   .  (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> (forall resp. cmd resp ConstIntRef -> [Ex ConstIntRef])
-  -> Fork [Untyped' cmd ConstIntRef] -> Bool
+  -> Fork [IntRefed cmd] -> Bool
 scopeCheckFork' returns' uses' (Fork l p r) =
   let p' = zip (repeat 0) p in
   scopeCheck returns' uses' (p' ++ zip (repeat 1) l) &&

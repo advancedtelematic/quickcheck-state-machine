@@ -18,7 +18,6 @@ module Test.StateMachine.Internal.Sequential
 import           Control.Monad.State              (StateT, get, lift, modify,
                                                    runStateT)
 import           Data.Functor.Compose             (Compose (..), getCompose)
-import           Data.Kind                        (type (*))
 import           Data.Map                         (Map)
 import qualified Data.Map                         as M
 import           Data.Set                         (Set)
@@ -26,7 +25,7 @@ import qualified Data.Set                         as S
 import           Data.Singletons.Decide           (SDecide)
 import           Data.Singletons.Prelude          (type (@@), DemoteRep,
                                                    Proxy (Proxy), Sing,
-                                                   SingKind, TyFun, fromSing)
+                                                   SingKind, fromSing)
 import           Test.QuickCheck                  (Gen, choose, frequency,
                                                    sized)
 
@@ -38,34 +37,32 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 liftGen
-  :: forall
-     (ix   :: *)
-     (refs :: TyFun ix * -> *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall ix cmd
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
-  => [(Int, Gen (Untyped cmd refs))]
+  => [(Int, Gen (Untyped cmd (IxRefs ix)))]
   -> Pid
   -> Map ix Int
-  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> Gen ([Untyped' cmd ConstIntRef], Map ix Int)
+  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
+  -> Gen ([IntRefed cmd], Map ix Int)
 liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
   where
 
   translate
-    :: Map ix Int
-    -> forall (x :: ix). Sing x
-    -> refs @@ x
-    -> Compose Gen Maybe (ConstIntRef @@ x)
+    :: forall (i :: ix)
+    .  Map ix Int
+    -> Sing i
+    -> IxRefs ix @@ i
+    -> Compose Gen Maybe IntRef
   translate scopes i _ = Compose $ case M.lookup (fromSing i) scopes of
     Nothing -> return Nothing
     Just u  -> do
       v <- choose (0, max 0 (u - 1))
       return . Just $ IntRef (Ref v) pid
 
-  go :: Int -> StateT (Map ix Int) Gen [Untyped' cmd ConstIntRef]
+  go :: Int -> StateT (Map ix Int) Gen [IntRefed cmd]
   go 0  = return []
   go sz = do
 
@@ -88,13 +85,10 @@ liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
 ------------------------------------------------------------------------
 
 liftShrink
-  :: forall
-     (ix   :: *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  IxFoldable cmd
-  => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> Shrinker (Untyped' cmd ConstIntRef)
-  -> Shrinker [Untyped' cmd ConstIntRef]
+  :: IxFoldable cmd
+  => (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
+  -> Shrinker (IntRefed cmd)
+  -> Shrinker [IntRefed cmd]
 liftShrink returns shrinker = go
   where
   go []       = []
@@ -104,20 +98,18 @@ liftShrink returns shrinker = go
     [ c' : cs' | (c', cs') <- shrinkPair' shrinker go (c, cs) ]
 
 removeCommands
-  :: forall
-     (ix :: *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall ix cmd
   .  IxFoldable cmd
-  => Untyped' cmd ConstIntRef
-  -> [Untyped' cmd ConstIntRef]
-  -> (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> [Untyped' cmd ConstIntRef]
+  => IntRefed cmd
+  -> [IntRefed cmd]
+  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
+  -> [IntRefed cmd]
 removeCommands (Untyped' cmd0 miref0) cmds0 returns =
   case returns cmd0 of
     SResponse    -> cmds0
     SReference _ -> go cmds0 (S.singleton miref0)
   where
-  go :: [Untyped' cmd ConstIntRef] -> Set IntRef -> [Untyped' cmd ConstIntRef]
+  go :: [IntRefed cmd] -> Set IntRef -> [IntRefed cmd]
   go []                                  _       = []
   go (cmd@(Untyped' cmd' miref) : cmds) removed =
     case returns cmd' of
@@ -132,31 +124,21 @@ uses cmd xs = iany (\_ iref -> iref `S.member` xs) cmd
 ------------------------------------------------------------------------
 
 liftSem
-  :: forall
-     (ix   :: *)
-     (resp :: Response ix)
-     (refs :: TyFun ix * -> *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-     (m    :: * -> *)
-  .  SDecide ix
+  :: SDecide ix
   => Monad m
   => IxFunctor cmd
-  => (forall resp'. cmd resp' refs -> m (Response_ refs resp'))
-  -> (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
+  => (cmd resp refs -> m (Response_ refs resp))
+  -> (cmd resp refs -> SResponse ix resp)
   -> cmd resp ConstIntRef
   -> MayResponse_ ConstIntRef resp
   -> StateT (IxMap ix IntRef refs) m (Response_ ConstIntRef resp)
 liftSem sem returns cmd iref = do
 
   env <- get
-
-  let cmd' :: cmd resp refs
-      cmd' = ifmap (\s i -> env IxM.! (s, i)) cmd
+  let cmd' = ifmap (\s i -> env IxM.! (s, i)) cmd
 
   case returns cmd' of
-
     SResponse    -> lift $ sem cmd'
-
     SReference i -> do
       ref <- lift $ sem cmd'
       modify $ IxM.insert i iref ref

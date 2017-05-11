@@ -30,14 +30,11 @@ import           Control.Monad.State                   (StateT, evalStateT,
                                                         execStateT, lift)
 import           Data.Dynamic                          (Dynamic, fromDynamic,
                                                         toDyn)
-import           Data.Kind                             (type (*))
 import           Data.List                             (partition)
-import           Data.Map                              (Map)
 import qualified Data.Map                              as M
 import qualified Data.Set                              as S
 import           Data.Singletons.Decide                (SDecide)
-import           Data.Singletons.Prelude               (DemoteRep, Sing,
-                                                        SingKind, TyFun,
+import           Data.Singletons.Prelude               (DemoteRep, SingKind,
                                                         fromSing)
 import           Data.Typeable                         (Typeable)
 import           System.Random                         (randomRIO)
@@ -58,17 +55,13 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 liftGenFork
-  :: forall
-     (ix   :: *)
-     (refs :: TyFun ix * -> *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  Ord       ix
+  :: Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
-  => [(Int, Gen (Untyped cmd refs))]
-  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> Gen (Fork [Untyped' cmd ConstIntRef])
+  => [(Int, Gen (Untyped cmd (IxRefs ix)))]
+  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
+  -> Gen (Fork [IntRefed cmd])
 liftGenFork gens returns = do
   (prefix, ns) <- liftGen gens 0 M.empty returns
   left         <- fst <$> liftGen gens 1 ns returns
@@ -80,7 +73,6 @@ liftGenFork gens returns = do
     (map (\(Untyped' cmd miref) ->
             Untyped' (ifmap (fixPid ns) cmd) miref) right)
   where
-  fixPid :: Map ix Int -> Sing (i :: ix) -> IntRef -> IntRef
   fixPid ns i iref@(IntRef (Ref ref) _)
     | ref <= ns M.! fromSing i = IntRef (Ref ref) 0
     | otherwise                = iref
@@ -88,14 +80,12 @@ liftGenFork gens returns = do
 ------------------------------------------------------------------------
 
 liftShrinkFork
-  :: forall
-     (ix   :: *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall ix cmd
   .  IxFoldable cmd
-  => Ord (Untyped' cmd ConstIntRef)
+  => Ord (IntRefed cmd)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> Shrinker (Untyped' cmd ConstIntRef)
-  -> Shrinker (Fork [Untyped' cmd ConstIntRef])
+  -> Shrinker (IntRefed cmd)
+  -> Shrinker (Fork [IntRefed cmd])
 liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
 
   -- Only shrink the branches:
@@ -109,8 +99,7 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
   shrinkPrefix f
 
   where
-  shrinkPrefix
-    :: Fork [Untyped' cmd ConstIntRef] -> [Fork [Untyped' cmd ConstIntRef]]
+  shrinkPrefix :: Fork [IntRefed cmd] -> [Fork [IntRefed cmd]]
   shrinkPrefix (Fork _ []       _) = []
   shrinkPrefix (Fork l (p : ps) r) =
       [ Fork l'   []                      r'   ] ++
@@ -125,15 +114,13 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
       l'' = removeCommands p l returns
       r'' = removeCommands p r returns
 
-      removeManyCommands
-        :: [Untyped' cmd ConstIntRef] -> [Untyped' cmd ConstIntRef]
-        -> [Untyped' cmd ConstIntRef]
+      removeManyCommands :: [IntRefed cmd] -> [IntRefed cmd] -> [IntRefed cmd]
       removeManyCommands []       ds = ds
       removeManyCommands (c : cs) ds = removeManyCommands cs (removeCommands c ds returns)
 
 ------------------------------------------------------------------------
 
-type History cmd = [HistoryEvent (Untyped' cmd ConstIntRef)]
+type History cmd = [HistoryEvent (IntRefed cmd)]
 
 data HistoryEvent cmd
   = InvocationEvent cmd     Pid
@@ -154,7 +141,7 @@ instance ShowCmd cmd => Pretty (Operation cmd) where
     text (showCmd cmd) <+> text "-->" <+> text (show resp)
   prettyList                     = vsep . map pretty
 
-takeInvocations :: History cmd -> [HistoryEvent (Untyped' cmd ConstIntRef)]
+takeInvocations :: History cmd -> [HistoryEvent (IntRefed cmd)]
 takeInvocations = takeWhile $ \h -> case h of
   InvocationEvent _ _ -> True
   _                   -> False
@@ -211,7 +198,7 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
 
   p'      = mkOps p
 
-  mkOps :: [HistoryEvent (Untyped' cmd ConstIntRef)] -> [Operation cmd]
+  mkOps :: [HistoryEvent (IntRefed cmd)] -> [Operation cmd]
   mkOps [] = []
   mkOps (InvocationEvent (Untyped' cmd _) _ : ResponseEvent resp pid : es)
     = Operation cmd (dynResp resp) pid : mkOps es
@@ -237,7 +224,7 @@ runMany
   => HistoryKit cmd ConstIntRef
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> [Untyped' cmd ConstIntRef]
+  -> [IntRefed cmd]
   -> StateT (IxMap ix IntRef refs) IO ()
 runMany kit sem returns = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
   lift $ atomically $ writeTChan (getHistoryChannel kit) $
@@ -254,7 +241,7 @@ liftSemFork
   => IxFunctor cmd
   => (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> Fork [Untyped' cmd ConstIntRef]
+  -> Fork [IntRefed cmd]
   -> IO (History cmd)
 liftSemFork sem returns (Fork left prefix right) = do
   kit <- mkHistoryKit 0
