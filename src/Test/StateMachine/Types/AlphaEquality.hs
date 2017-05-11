@@ -31,11 +31,11 @@ canonical' returns im = flip runState im . go
   where
   go xs = forM xs $ \(Untyped' cmd ref) -> do
     cmd' <- ifor (Proxy :: Proxy ConstIntRef) cmd $ \ ix iref -> do
-      (IxM.! (ix, iref)) <$> Control.Monad.State.get
+      (IxM.! (ix, iref)) <$> get
     ref' <- case returns cmd of
-      SResponse -> return ()
+      SResponse    -> return ()
       SReference i -> do
-        m <- Control.Monad.State.get
+        m <- get
         let ref' = IntRef (Ref $ IxM.size i m) (Pid 0)
         put $ IxM.insert i ref ref' m
         return $ ref'
