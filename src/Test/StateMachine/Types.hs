@@ -66,6 +66,8 @@ data Untyped' (f :: Response resp -> (TyFun i * -> *) -> *) refs where
                ) =>
     f resp refs -> MayResponse_ ConstIntRef resp -> Untyped' f refs
 
+type IntRefed cmd = Untyped' cmd ConstIntRef
+
 data IxRefs ix :: (TyFun ix *) -> *
 
 type instance Apply (IxRefs _) i = Sing i
