@@ -25,8 +25,8 @@ canonical'
   => IxTraversable cmd
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> IxMap ix IntRef ConstIntRef
-  -> [Untyped' cmd ConstIntRef]
-  -> ([Untyped' cmd ConstIntRef], IxMap ix IntRef ConstIntRef)
+  -> [IntRefed cmd]
+  -> ([IntRefed cmd], IxMap ix IntRef ConstIntRef)
 canonical' returns im = flip runState im . go
   where
   go xs = forM xs $ \(Untyped' cmd ref) -> do
@@ -45,16 +45,16 @@ canonical
   :: SDecide ix
   => IxTraversable cmd
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> [Untyped' cmd ConstIntRef]
-  -> [Untyped' cmd ConstIntRef]
+  -> [IntRefed cmd]
+  -> [IntRefed cmd]
 canonical returns = fst . canonical' returns IxM.empty
 
 canonicalFork
   :: SDecide ix
   => IxTraversable cmd
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> Fork [Untyped' cmd ConstIntRef]
-  -> Fork [Untyped' cmd ConstIntRef]
+  -> Fork [IntRefed cmd]
+  -> Fork [IntRefed cmd]
 canonicalFork returns (Fork l p r) = Fork l' p' r'
   where
   (p', im') = canonical' returns IxM.empty p
@@ -64,10 +64,10 @@ canonicalFork returns (Fork l p r) = Fork l' p' r'
 alphaEq
   :: SDecide ix
   => IxTraversable cmd
-  => Eq (Untyped' cmd ConstIntRef)
+  => Eq (IntRefed cmd)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> [Untyped' cmd ConstIntRef]
-  -> [Untyped' cmd ConstIntRef]
+  -> [IntRefed cmd]
+  -> [IntRefed cmd]
   -> Bool
 alphaEq returns c0 c1
   = canonical returns c0 == canonical returns c1
@@ -75,10 +75,10 @@ alphaEq returns c0 c1
 alphaEqFork
   :: SDecide ix
   => IxTraversable cmd
-  => Eq (Untyped' cmd ConstIntRef)
+  => Eq (IntRefed cmd)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> Fork [Untyped' cmd ConstIntRef]
-  -> Fork [Untyped' cmd ConstIntRef]
+  -> Fork [IntRefed cmd]
+  -> Fork [IntRefed cmd]
   -> Bool
 alphaEqFork returns f1 f2
   = canonicalFork returns f1 == canonicalFork returns f2

@@ -18,7 +18,6 @@ module Test.StateMachine.Internal.Sequential
 import           Control.Monad.State              (StateT, get, lift, modify,
                                                    runStateT)
 import           Data.Functor.Compose             (Compose (..), getCompose)
-import           Data.Kind                        (type (*))
 import           Data.Map                         (Map)
 import qualified Data.Map                         as M
 import           Data.Set                         (Set)
@@ -26,7 +25,7 @@ import qualified Data.Set                         as S
 import           Data.Singletons.Decide           (SDecide)
 import           Data.Singletons.Prelude          (type (@@), DemoteRep,
                                                    Proxy (Proxy), Sing,
-                                                   SingKind, TyFun, fromSing)
+                                                   SingKind, fromSing)
 import           Test.QuickCheck                  (Gen, choose, frequency,
                                                    sized)
 
@@ -38,23 +37,24 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 liftGen
-  :: forall ix refs cmd
+  :: forall ix cmd
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
-  => [(Int, Gen (Untyped cmd refs))]
+  => [(Int, Gen (Untyped cmd (IxRefs ix)))]
   -> Pid
   -> Map ix Int
-  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
+  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> Gen ([IntRefed cmd], Map ix Int)
 liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
   where
 
   translate
-    :: Map ix Int
-    -> forall (x :: ix). Sing x
-    -> refs @@ x
+    :: forall (i :: ix)
+    .  Map ix Int
+    -> Sing i
+    -> IxRefs ix @@ i
     -> Compose Gen Maybe IntRef
   translate scopes i _ = Compose $ case M.lookup (fromSing i) scopes of
     Nothing -> return Nothing
@@ -86,7 +86,7 @@ liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
 
 liftShrink
   :: IxFoldable cmd
-  => (forall resp refs. cmd resp refs -> SResponse ix resp)
+  => (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> Shrinker (IntRefed cmd)
   -> Shrinker [IntRefed cmd]
 liftShrink returns shrinker = go
@@ -102,7 +102,7 @@ removeCommands
   .  IxFoldable cmd
   => IntRefed cmd
   -> [IntRefed cmd]
-  -> (forall resp refs. cmd resp refs -> SResponse ix resp)
+  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> [IntRefed cmd]
 removeCommands (Untyped' cmd0 miref0) cmds0 returns =
   case returns cmd0 of

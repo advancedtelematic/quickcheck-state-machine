@@ -47,7 +47,7 @@ sequentialProperty
      (model :: (TyFun ix * -> *) -> *)
      (m     :: * -> *)
   .  Monad m
-  => Show (Untyped' cmd ConstIntRef)
+  => Show (IntRefed cmd)
   => IxTraversable cmd
   => Ord       ix
   => SDecide   ix
@@ -72,7 +72,7 @@ sequentialProperty StateMachineModel {..} gens shrinker returns sem runM =
       classify (len >= 30)             "30+   commands" $
         monadic (runM . flip evalStateT IxM.empty) $ go initialModel cmds
   where
-  go :: model ConstIntRef -> [Untyped' cmd ConstIntRef]
+  go :: model ConstIntRef -> [IntRefed cmd]
      -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
   go _ []                                 = return ()
   go m (cmd@(Untyped' cmd' miref) : cmds) = do
@@ -88,15 +88,10 @@ sequentialProperty StateMachineModel {..} gens shrinker returns sem runM =
 ------------------------------------------------------------------------
 
 parallelProperty
-  :: forall
-     (ix    :: *)
-     (cmd   :: Response ix -> (TyFun ix * -> *) -> *)
-     (refs  :: TyFun ix * -> *)
-     (model :: (TyFun ix * -> *) -> *)
-  .  IxTraversable cmd
-  => Show (Untyped' cmd ConstIntRef)
+  :: IxTraversable cmd
   => ShowCmd cmd
-  => Ord (Untyped' cmd ConstIntRef)
+  => Show (IntRefed cmd)
+  => Ord (IntRefed cmd)
   => Ord       ix
   => SDecide   ix
   => SingKind  ix
