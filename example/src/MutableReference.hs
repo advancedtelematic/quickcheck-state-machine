@@ -301,7 +301,7 @@ prop_genForkScope = forAll
   scopeCheckFork
 
 prop_sequentialShrink :: Property
-prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns ifor
+prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns
   [ Untyped' New    (IntRef (Ref 0) (Pid 0))
   , Untyped' (Write (IntRef (Ref 0) (Pid 0)) (5)) ()
   , Untyped' (Read  (IntRef (Ref 0) (Pid 0))) ()
@@ -353,7 +353,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       go x = Rose x $ map go $ more x
 
   isMinimal :: Fork [Untyped' MemStep ConstIntRef] -> Bool
-  isMinimal xs = any (alphaEqFork returns ifor xs) minimal
+  isMinimal xs = any (alphaEqFork returns xs) minimal
 
   minimal :: [Fork [Untyped' MemStep ConstIntRef]]
   minimal  = minimal' ++ map mirrored minimal'
