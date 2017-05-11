@@ -11,8 +11,7 @@ module DieHard where
 
 import           Control.Monad.Identity  (Identity, runIdentity)
 import           Data.List
-import           Data.Singletons.Prelude (type (@@), ConstSym1, Proxy, Sing,
-                                          TyFun)
+import           Data.Singletons.Prelude (ConstSym1, TyFun)
 import           Test.QuickCheck         (Gen, Property, label, property)
 
 import           Test.StateMachine
@@ -166,37 +165,26 @@ returns EmptySmall   = SResponse
 returns SmallIntoBig = SResponse
 returns BigIntoSmall = SResponse
 
-ixfor :: Applicative f => Proxy q -> Step resp p
-  -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-  -> f (Step resp q)
-ixfor _ FillBig      _ = pure FillBig
-ixfor _ FillSmall    _ = pure FillSmall
-ixfor _ EmptyBig     _ = pure EmptyBig
-ixfor _ EmptySmall   _ = pure EmptySmall
-ixfor _ SmallIntoBig _ = pure SmallIntoBig
-ixfor _ BigIntoSmall _ = pure BigIntoSmall
+instance IxFoldable Step where
+  ifoldMap _ _ = mempty -- Not needed, since there are no references.
 
-instance IxFunctor  (Untyped Step) where
-  ifmap _ _ = undefined
-
-instance IxFoldable (Untyped Step) where
-  ifoldMap _ _ = undefined
-
-instance IxTraversable (Untyped Step) where
-  ifor p (Untyped cmd) f = Untyped <$> ixfor p cmd f
+instance IxTraversable Step where
+  ifor _ FillBig      _ = pure FillBig
+  ifor _ FillSmall    _ = pure FillSmall
+  ifor _ EmptyBig     _ = pure EmptyBig
+  ifor _ EmptySmall   _ = pure EmptySmall
+  ifor _ SmallIntoBig _ = pure SmallIntoBig
+  ifor _ BigIntoSmall _ = pure BigIntoSmall
 
 deriving instance Eq (Step resp ConstIntRef)
 
-instance IxFunctor1 Step where
-  ifmap1 _ FillBig      = FillBig
-  ifmap1 _ FillSmall    = FillSmall
-  ifmap1 _ EmptyBig     = EmptyBig
-  ifmap1 _ EmptySmall   = EmptySmall
-  ifmap1 _ SmallIntoBig = SmallIntoBig
-  ifmap1 _ BigIntoSmall = BigIntoSmall
-
-instance IxFoldable (Untyped' Step) where
-  ifoldMap _ = undefined
+instance IxFunctor Step where
+  ifmap _ FillBig      = FillBig
+  ifmap _ FillSmall    = FillSmall
+  ifmap _ EmptyBig     = EmptyBig
+  ifmap _ EmptySmall   = EmptySmall
+  ifmap _ SmallIntoBig = SmallIntoBig
+  ifmap _ BigIntoSmall = BigIntoSmall
 
 instance Show (Untyped' Step ConstIntRef) where
   show (Untyped' FillBig      _) = "FillBig"

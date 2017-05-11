@@ -45,7 +45,7 @@ liftGen
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
-  => IxTraversable (Untyped cmd)
+  => IxTraversable cmd
   => [(Int, Gen (Untyped cmd refs))]
   -> Pid
   -> Map ix Int
@@ -72,8 +72,9 @@ liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
     scopes       <- get
 
     Untyped cmd <- lift . genFromMaybe $ do
-      cmd <- frequency gens
-      getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
+      Untyped cmd <- frequency gens
+      cmd' <- getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
+      return $ Untyped <$> cmd'
 
     ixref <- case returns cmd of
       SResponse    -> return ()
@@ -90,7 +91,7 @@ liftShrink
   :: forall
      (ix   :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  IxFoldable (Untyped' cmd)
+  .  IxFoldable cmd
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> Shrinker (Untyped' cmd ConstIntRef)
   -> Shrinker [Untyped' cmd ConstIntRef]
@@ -106,7 +107,7 @@ removeCommands
   :: forall
      (ix :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  IxFoldable (Untyped' cmd)
+  .  IxFoldable cmd
   => Untyped' cmd ConstIntRef
   -> [Untyped' cmd ConstIntRef]
   -> (forall resp refs. cmd resp refs -> SResponse ix resp)
@@ -120,12 +121,12 @@ removeCommands (Untyped' cmd0 miref0) cmds0 returns =
   go []                                  _       = []
   go (cmd@(Untyped' cmd' miref) : cmds) removed =
     case returns cmd' of
-      SReference _ | cmd `uses` removed ->       go cmds (S.insert miref removed)
-                   | otherwise          -> cmd : go cmds removed
-      SResponse    | cmd `uses` removed ->       go cmds removed
-                   | otherwise          -> cmd : go cmds removed
+      SReference _ | cmd' `uses` removed ->       go cmds (S.insert miref removed)
+                   | otherwise           -> cmd : go cmds removed
+      SResponse    | cmd' `uses` removed ->       go cmds removed
+                   | otherwise           -> cmd : go cmds removed
 
-uses :: IxFoldable (cmd resp) => cmd resp ConstIntRef -> Set IntRef -> Bool
+uses :: IxFoldable cmd => cmd resp ConstIntRef -> Set IntRef -> Bool
 uses cmd xs = iany (\_ iref -> iref `S.member` xs) cmd
 
 ------------------------------------------------------------------------
@@ -139,7 +140,7 @@ liftSem
      (m    :: * -> *)
   .  SDecide ix
   => Monad m
-  => IxFunctor1 cmd
+  => IxFunctor cmd
   => (forall resp'. cmd resp' refs -> m (Response_ refs resp'))
   -> (forall resp' refs'. cmd resp' refs' -> SResponse ix resp')
   -> cmd resp ConstIntRef
@@ -150,7 +151,7 @@ liftSem sem returns cmd iref = do
   env <- get
 
   let cmd' :: cmd resp refs
-      cmd' = ifmap1 (\s i -> env IxM.! (s, i)) cmd
+      cmd' = ifmap (\s i -> env IxM.! (s, i)) cmd
 
   case returns cmd' of
 

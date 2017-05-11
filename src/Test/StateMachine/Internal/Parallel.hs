@@ -36,8 +36,8 @@ import           Data.Map                              (Map)
 import qualified Data.Map                              as M
 import qualified Data.Set                              as S
 import           Data.Singletons.Decide                (SDecide)
-import           Data.Singletons.Prelude               (ConstSym1, DemoteRep,
-                                                        Sing, SingKind, TyFun,
+import           Data.Singletons.Prelude               (DemoteRep, Sing,
+                                                        SingKind, TyFun,
                                                         fromSing)
 import           Data.Typeable                         (Typeable)
 import           System.Random                         (randomRIO)
@@ -65,8 +65,7 @@ liftGenFork
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
-  => IxFunctor1 cmd
-  => IxTraversable (Untyped cmd)
+  => IxTraversable cmd
   => [(Int, Gen (Untyped cmd refs))]
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> Gen (Fork [Untyped' cmd ConstIntRef])
@@ -76,10 +75,10 @@ liftGenFork gens returns = do
   right        <- fst <$> liftGen gens 2 ns returns
   return $ Fork
     (map (\(Untyped' cmd miref) ->
-            Untyped' (ifmap1 (fixPid ns) cmd) miref) left)
+            Untyped' (ifmap (fixPid ns) cmd) miref) left)
     prefix
     (map (\(Untyped' cmd miref) ->
-            Untyped' (ifmap1 (fixPid ns) cmd) miref) right)
+            Untyped' (ifmap (fixPid ns) cmd) miref) right)
   where
   fixPid :: Map ix Int -> Sing (i :: ix) -> IntRef -> IntRef
   fixPid ns i iref@(IntRef (Ref ref) _)
@@ -92,7 +91,7 @@ liftShrinkFork
   :: forall
      (ix   :: *)
      (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  IxFoldable (Untyped' cmd)
+  .  IxFoldable cmd
   => Ord (Untyped' cmd ConstIntRef)
   => (forall resp refs. cmd resp refs -> SResponse ix resp)
   -> Shrinker (Untyped' cmd ConstIntRef)
@@ -134,7 +133,7 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) = S.toList $ S.fromList $
 
 ------------------------------------------------------------------------
 
-type History cmd = [HistoryEvent (Untyped' cmd (ConstSym1 IntRef))]
+type History cmd = [HistoryEvent (Untyped' cmd ConstIntRef)]
 
 data HistoryEvent cmd
   = InvocationEvent cmd     Pid
@@ -145,17 +144,17 @@ getProcessIdEvent (InvocationEvent _ pid) = pid
 getProcessIdEvent (ResponseEvent   _ pid) = pid
 
 data Operation cmd = forall resp.
-  (Show (Response_ (ConstSym1 IntRef) resp),
+  (Show (Response_ ConstIntRef resp),
    Typeable resp,
-   Typeable (Response_ (ConstSym1 IntRef) resp)) =>
-  Operation (cmd resp (ConstSym1 IntRef)) (Response_ (ConstSym1 IntRef) resp) Pid
+   Typeable (Response_ ConstIntRef resp)) =>
+  Operation (cmd resp ConstIntRef) (Response_ ConstIntRef resp) Pid
 
 instance ShowCmd cmd => Pretty (Operation cmd) where
   pretty (Operation cmd resp _) =
     text (showCmd cmd) <+> text "-->" <+> text (show resp)
   prettyList                     = vsep . map pretty
 
-takeInvocations :: History cmd -> [HistoryEvent (Untyped' cmd (ConstSym1 IntRef))]
+takeInvocations :: History cmd -> [HistoryEvent (Untyped' cmd ConstIntRef)]
 takeInvocations = takeWhile $ \h -> case h of
   InvocationEvent _ _ -> True
   _                   -> False
@@ -212,7 +211,7 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
 
   p'      = mkOps p
 
-  mkOps :: [HistoryEvent (Untyped' cmd (ConstSym1 IntRef))] -> [Operation cmd]
+  mkOps :: [HistoryEvent (Untyped' cmd ConstIntRef)] -> [Operation cmd]
   mkOps [] = []
   mkOps (InvocationEvent (Untyped' cmd _) _ : ResponseEvent resp pid : es)
     = Operation cmd (dynResp resp) pid : mkOps es
@@ -234,7 +233,7 @@ mkHistoryKit pid = do
 
 runMany
   :: SDecide ix
-  => IxFunctor1 cmd
+  => IxFunctor cmd
   => HistoryKit cmd ConstIntRef
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
@@ -252,10 +251,10 @@ runMany kit sem returns = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
 
 liftSemFork
   :: SDecide ix
-  => IxFunctor1 cmd
+  => IxFunctor cmd
   => (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
-  -> Fork [Untyped' cmd (ConstSym1 IntRef)]
+  -> Fork [Untyped' cmd ConstIntRef]
   -> IO (History cmd)
 liftSemFork sem returns (Fork left prefix right) = do
   kit <- mkHistoryKit 0

@@ -47,10 +47,8 @@ sequentialProperty
      (model :: (TyFun ix * -> *) -> *)
      (m     :: * -> *)
   .  Monad m
-  => IxFunctor1 cmd
   => Show (Untyped' cmd ConstIntRef)
-  => IxFoldable (Untyped' cmd)
-  => IxTraversable (Untyped cmd)
+  => IxTraversable cmd
   => Ord       ix
   => SDecide   ix
   => SingKind  ix
@@ -95,9 +93,7 @@ parallelProperty
      (cmd   :: Response ix -> (TyFun ix * -> *) -> *)
      (refs  :: TyFun ix * -> *)
      (model :: (TyFun ix * -> *) -> *)
-  .  IxFunctor1 cmd
-  => IxFoldable (Untyped' cmd)
-  => IxTraversable (Untyped cmd)
+  .  IxTraversable cmd
   => Show (Untyped' cmd ConstIntRef)
   => ShowCmd cmd
   => Ord (Untyped' cmd ConstIntRef)
