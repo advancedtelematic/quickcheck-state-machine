@@ -32,53 +32,41 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
-usesRefs :: MemStep resp refs -> [Ex refs]
-usesRefs New           = []
-usesRefs (Read  ref)   = [Ex STuple0 ref]
-usesRefs (Write ref _) = [Ex STuple0 ref]
-usesRefs (Inc   ref)   = [Ex STuple0 ref]
-usesRefs (Copy  ref)   = [Ex STuple0 ref]
-
 scopeCheck
-  :: forall
-     (ix   :: *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
-  -> (forall resp. cmd resp ConstIntRef -> [Ex ConstIntRef])
+  :: forall ix cmd
+  .  IxFoldable cmd
+  => (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> [(Pid, IntRefed cmd)]
   -> Bool
-scopeCheck returns' uses' = go []
+scopeCheck returns = go []
   where
   go :: [IntRef] -> [(Pid, IntRefed cmd)] -> Bool
   go _    []                           = True
-  go refs ((_, Untyped' c miref) : cs) = case returns' c of
+  go refs ((_, Untyped' c miref) : cs) = case returns c of
     SReference _  ->
       let refs' = miref : refs in
-      all (\(Ex _ ref) -> ref `elem` refs) (uses' c) &&
+      all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
       go refs' cs
     SResponse     ->
-      all (\(Ex _ ref) -> ref `elem` refs) (uses' c) &&
+      all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
       go refs cs
 
 scopeCheckFork'
-  :: forall
-     (ix   :: *)
-     (cmd  :: Response ix -> (TyFun ix * -> *) -> *)
-  .  (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
-  -> (forall resp. cmd resp ConstIntRef -> [Ex ConstIntRef])
+  :: IxFoldable cmd
+  => (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> Fork [IntRefed cmd] -> Bool
-scopeCheckFork' returns' uses' (Fork l p r) =
+scopeCheckFork' returns (Fork l p r) =
   let p' = zip (repeat 0) p in
-  scopeCheck returns' uses' (p' ++ zip (repeat 1) l) &&
-  scopeCheck returns' uses' (p' ++ zip (repeat 2) r)
+  scopeCheck returns (p' ++ zip (repeat 1) l) &&
+  scopeCheck returns (p' ++ zip (repeat 2) r)
 
 scopeCheckFork :: Fork [Untyped' MemStep ConstIntRef] -> Bool
-scopeCheckFork = scopeCheckFork' returns usesRefs
+scopeCheckFork = scopeCheckFork' returns
 
 prop_genScope :: Property
 prop_genScope = forAll (fst <$> liftGen gens (Pid 0) M.empty returns) $ \p ->
   let p' = zip (repeat 0) p in
-  scopeCheck returns usesRefs p'
+  scopeCheck returns p'
 
 prop_genForkScope :: Property
 prop_genForkScope = forAll
