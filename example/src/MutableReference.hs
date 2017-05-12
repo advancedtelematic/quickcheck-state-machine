@@ -9,7 +9,15 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
 
-module MutableReference where
+module MutableReference
+  ( MemStep(..)
+  , Problem(..)
+  , gens
+  , shrink1
+  , returns
+  , prop_sequential
+  , prop_parallel
+  ) where
 
 import           Control.Concurrent      (threadDelay)
 import           Control.Monad.IO.Class  (MonadIO, liftIO)
@@ -174,8 +182,8 @@ instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
 smm :: StateMachineModel Model MemStep
 smm = StateMachineModel preconditions postconditions transitions initModel
 
-prop_safety :: Problem -> Property
-prop_safety prb = sequentialProperty
+prop_sequential :: Problem -> Property
+prop_sequential prb = sequentialProperty
   smm
   gens
   shrink1
