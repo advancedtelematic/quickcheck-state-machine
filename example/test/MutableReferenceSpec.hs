@@ -74,7 +74,7 @@ prop_genForkScope = forAll
   scopeCheckFork
 
 prop_sequentialShrink :: Property
-prop_sequentialShrink = shrinkPropertyHelper (prop_safety Bug) $ alphaEq returns
+prop_sequentialShrink = shrinkPropertyHelper (prop_sequential Bug) $ alphaEq returns
   [ Untyped' New    (IntRef (Ref 0) (Pid 0))
   , Untyped' (Write (IntRef (Ref 0) (Pid 0)) (5)) ()
   , Untyped' (Read  (IntRef (Ref 0) (Pid 0))) ()
@@ -179,8 +179,8 @@ spec = do
 
   describe "Sequential property" $ do
 
-    it "`prop_safety None`: pre- and post-conditions hold when there are no bugs" $
-      prop_safety None
+    it "`prop_sequential None`: pre- and post-conditions hold when there are no bugs" $
+      prop_sequential None
 
     it "`prop_sequentialShrink`: the minimal counterexample is found when there's a bug"
       prop_sequentialShrink
