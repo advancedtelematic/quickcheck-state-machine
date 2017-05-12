@@ -1,9 +1,10 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE PolyKinds          #-}
-{-# LANGUAGE Rank2Types         #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE TypeOperators         #-}
 
 module DieHard
   ( Step(..)
@@ -15,7 +16,7 @@ module DieHard
 
 import           Control.Monad.Identity  (Identity, runIdentity)
 import           Data.Singletons.Prelude (ConstSym1, TyFun)
-import           Test.QuickCheck         (Gen, Property, label, property)
+import           Test.QuickCheck         (Gen, Property, property)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -93,13 +94,13 @@ semStep BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
-returns :: Step resp refs -> SResponse () resp
-returns FillBig      = SResponse
-returns FillSmall    = SResponse
-returns EmptyBig     = SResponse
-returns EmptySmall   = SResponse
-returns SmallIntoBig = SResponse
-returns BigIntoSmall = SResponse
+instance HasResponse Step where
+  response FillBig      = SResponse
+  response FillSmall    = SResponse
+  response EmptyBig     = SResponse
+  response EmptySmall   = SResponse
+  response SmallIntoBig = SResponse
+  response BigIntoSmall = SResponse
 
 instance IxFoldable Step where
   ifoldMap _ _ = mempty -- Not needed, since there are no references.
@@ -135,6 +136,5 @@ prop_dieHard = sequentialProperty
   smm
   gens
   shrink1
-  returns
   semStep
   runIdentity

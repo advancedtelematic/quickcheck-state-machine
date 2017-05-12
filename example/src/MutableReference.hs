@@ -14,7 +14,6 @@ module MutableReference
   , Problem(..)
   , gens
   , shrink1
-  , returns
   , prop_sequential
   , prop_parallel
   ) where
@@ -121,12 +120,12 @@ gens =
   -- , (5, return . Untyped $ Copy STuple0)
   ]
 
-returns :: MemStep resp refs -> SResponse () resp
-returns New         = SReference STuple0
-returns (Read  _)   = SResponse
-returns (Write _ _) = SResponse
-returns (Inc   _)   = SResponse
-returns (Copy _)    = SReference STuple0
+instance HasResponse MemStep where
+  response New   {} = SReference STuple0
+  response Read  {} = SResponse
+  response Write {} = SResponse
+  response Inc   {} = SResponse
+  response Copy  {} = SReference STuple0
 
 ------------------------------------------------------------------------
 
@@ -187,7 +186,6 @@ prop_sequential prb = sequentialProperty
   smm
   gens
   shrink1
-  returns
   (semStep prb)
   ioProperty
 
@@ -196,5 +194,4 @@ prop_parallel prb = parallelProperty
   smm
   gens
   shrink1
-  returns
   (semStep prb)

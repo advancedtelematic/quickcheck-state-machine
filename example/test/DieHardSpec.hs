@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module DieHardSpec (spec) where
+module DieHardSpec (spec, prop_bigJug4) where
 
 import           Data.List               (find)
 import           Data.Singletons.Prelude (ConstSym1)
