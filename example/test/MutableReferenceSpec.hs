@@ -33,16 +33,13 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 scopeCheck
-  :: forall ix cmd
-  .  IxFoldable cmd
-  => (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
-  -> [(Pid, IntRefed cmd)]
-  -> Bool
-scopeCheck returns = go []
+  :: forall ix cmd. (IxFoldable cmd, HasResponse cmd)
+  => [(Pid, IntRefed cmd)] -> Bool
+scopeCheck = go []
   where
   go :: [IntRef] -> [(Pid, IntRefed cmd)] -> Bool
   go _    []                           = True
-  go refs ((_, Untyped' c miref) : cs) = case returns c of
+  go refs ((_, Untyped' c miref) : cs) = case response c of
     SReference _  ->
       let refs' = miref : refs in
       all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
@@ -51,30 +48,26 @@ scopeCheck returns = go []
       all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
       go refs cs
 
-scopeCheckFork'
-  :: IxFoldable cmd
-  => (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
-  -> Fork [IntRefed cmd] -> Bool
-scopeCheckFork' returns (Fork l p r) =
+scopeCheckFork
+  :: (IxFoldable cmd, HasResponse cmd)
+  => Fork [IntRefed cmd] -> Bool
+scopeCheckFork (Fork l p r) =
   let p' = zip (repeat 0) p in
-  scopeCheck returns (p' ++ zip (repeat 1) l) &&
-  scopeCheck returns (p' ++ zip (repeat 2) r)
-
-scopeCheckFork :: Fork [Untyped' MemStep ConstIntRef] -> Bool
-scopeCheckFork = scopeCheckFork' returns
+  scopeCheck (p' ++ zip (repeat 1) l) &&
+  scopeCheck (p' ++ zip (repeat 2) r)
 
 prop_genScope :: Property
-prop_genScope = forAll (fst <$> liftGen gens (Pid 0) M.empty returns) $ \p ->
+prop_genScope = forAll (fst <$> liftGen gens (Pid 0) M.empty) $ \p ->
   let p' = zip (repeat 0) p in
-  scopeCheck returns p'
+  scopeCheck p'
 
 prop_genForkScope :: Property
 prop_genForkScope = forAll
-  (liftGenFork gens returns)
+  (liftGenFork gens)
   scopeCheckFork
 
 prop_sequentialShrink :: Property
-prop_sequentialShrink = shrinkPropertyHelper (prop_sequential Bug) $ alphaEq returns
+prop_sequentialShrink = shrinkPropertyHelper (prop_sequential Bug) $ alphaEq
   [ Untyped' New    (IntRef (Ref 0) (Pid 0))
   , Untyped' (Write (IntRef (Ref 0) (Pid 0)) (5)) ()
   , Untyped' (Read  (IntRef (Ref 0) (Pid 0))) ()
@@ -92,23 +85,23 @@ cheat = fmap (map (\ms -> case ms of
   _                         -> ms))
 
 prop_shrinkForkSubseq :: Property
-prop_shrinkForkSubseq = forAll (liftGenFork gens returns) $ \f@(Fork l p r) ->
+prop_shrinkForkSubseq = forAll (liftGenFork gens) $ \f@(Fork l p r) ->
   all (\(Fork l' p' r') -> noRefs l' `isSubsequenceOf` noRefs l &&
                            noRefs p' `isSubsequenceOf` noRefs p &&
                            noRefs r' `isSubsequenceOf` noRefs r)
-      (liftShrinkFork returns shrink1 (cheat f))
+      (liftShrinkFork shrink1 (cheat f))
 
   where
   noRefs = fmap (const ())
 
 prop_shrinkForkScope :: Property
-prop_shrinkForkScope = forAll (liftGenFork gens returns) $ \f ->
-  all scopeCheckFork (liftShrinkFork returns shrink1 f)
+prop_shrinkForkScope = forAll (liftGenFork gens) $ \f ->
+  all scopeCheckFork (liftShrinkFork shrink1 f)
 
 debugShrinkFork :: Fork [Untyped' MemStep ConstIntRef]
   -> [Fork [Untyped' MemStep ConstIntRef]]
 debugShrinkFork = take 1 . map snd . dropWhile fst . map (\f -> (scopeCheckFork f, f))
-  . liftShrinkFork returns shrink1
+  . liftShrinkFork shrink1
 
 ------------------------------------------------------------------------
 
@@ -120,7 +113,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   hasMinimalShrink :: Fork [Untyped' MemStep ConstIntRef] -> Bool
   hasMinimalShrink
     = anyRose isMinimal
-    . rose (liftShrinkFork returns shrink1)
+    . rose (liftShrinkFork shrink1)
     where
     anyRose :: (a -> Bool) -> Rose a -> Bool
     anyRose p (Rose x xs) = p x || any (anyRose p) xs
@@ -131,7 +124,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       go x = Rose x $ map go $ more x
 
   isMinimal :: Fork [Untyped' MemStep ConstIntRef] -> Bool
-  isMinimal xs = any (alphaEqFork returns xs) minimal
+  isMinimal xs = any (alphaEqFork xs) minimal
 
   minimal :: [Fork [Untyped' MemStep ConstIntRef]]
   minimal  = minimal' ++ map mirrored minimal'

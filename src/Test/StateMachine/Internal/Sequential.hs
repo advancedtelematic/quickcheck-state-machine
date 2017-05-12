@@ -5,6 +5,7 @@
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeInType          #-}
 {-# LANGUAGE TypeOperators       #-}
 
@@ -42,12 +43,12 @@ liftGen
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
+  => HasResponse cmd
   => [(Int, Gen (Untyped cmd (IxRefs ix)))]
   -> Pid
   -> Map ix Int
-  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> Gen ([IntRefed cmd], Map ix Int)
-liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
+liftGen gens pid ns = sized $ \sz -> runStateT (go sz) ns
   where
 
   translate
@@ -73,7 +74,7 @@ liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
       cmd' <- getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
       return $ Untyped <$> cmd'
 
-    ixref <- case returns cmd of
+    ixref <- case response cmd of
       SResponse    -> return ()
       SReference i -> do
         modify (M.insertWith (\_ old -> old + 1) (fromSing i) 0)
@@ -85,34 +86,34 @@ liftGen gens pid ns returns = sized $ \sz -> runStateT (go sz) ns
 ------------------------------------------------------------------------
 
 liftShrink
-  :: IxFoldable cmd
-  => (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
-  -> Shrinker (IntRefed cmd)
+  :: IxFoldable  cmd
+  => HasResponse cmd
+  => Shrinker (IntRefed cmd)
   -> Shrinker [IntRefed cmd]
-liftShrink returns shrinker = go
+liftShrink shrinker = go
   where
   go []       = []
   go (c : cs) =
     [ [] ] ++
-    [ removeCommands c cs returns ] ++
+    [ removeCommands c cs ] ++
     [ c' : cs' | (c', cs') <- shrinkPair' shrinker go (c, cs) ]
 
 removeCommands
-  :: forall ix cmd
+  :: forall cmd
   .  IxFoldable cmd
+  => HasResponse cmd
   => IntRefed cmd
   -> [IntRefed cmd]
-  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> [IntRefed cmd]
-removeCommands (Untyped' cmd0 miref0) cmds0 returns =
-  case returns cmd0 of
+removeCommands (Untyped' cmd0 miref0) cmds0 =
+  case response cmd0 of
     SResponse    -> cmds0
     SReference _ -> go cmds0 (S.singleton miref0)
   where
   go :: [IntRefed cmd] -> Set IntRef -> [IntRefed cmd]
-  go []                                  _       = []
+  go []                                 _       = []
   go (cmd@(Untyped' cmd' miref) : cmds) removed =
-    case returns cmd' of
+    case response cmd' of
       SReference _ | cmd' `uses` removed ->       go cmds (S.insert miref removed)
                    | otherwise           -> cmd : go cmds removed
       SResponse    | cmd' `uses` removed ->       go cmds removed
@@ -124,20 +125,21 @@ uses cmd xs = iany (\_ iref -> iref `S.member` xs) cmd
 ------------------------------------------------------------------------
 
 liftSem
-  :: SDecide ix
+  :: forall ix cmd refs resp m
+  .  SDecide ix
   => Monad m
   => IxFunctor cmd
+  => HasResponse cmd
   => (cmd resp refs -> m (Response_ refs resp))
-  -> (cmd resp refs -> SResponse ix resp)
   -> cmd resp ConstIntRef
   -> MayResponse_ ConstIntRef resp
   -> StateT (IxMap ix IntRef refs) m (Response_ ConstIntRef resp)
-liftSem sem returns cmd iref = do
+liftSem sem cmd iref = do
 
   env <- get
-  let cmd' = ifmap (\s i -> env IxM.! (s, i)) cmd
+  let cmd' = ifmap @_ @_ @_ @_ @refs (\s i -> env IxM.! (s, i)) cmd
 
-  case returns cmd' of
+  case response cmd' of
     SResponse    -> lift $ sem cmd'
     SReference i -> do
       ref <- lift $ sem cmd'

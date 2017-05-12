@@ -94,7 +94,7 @@ type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
 data Ex (p :: TyFun a * -> *) = forall (x :: a). Ex (Sing x) (p @@ x)
 
 class IxFunctor (f :: jx -> (TyFun ix * -> *) -> *) where
-  ifmap :: (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> forall j. f j p -> f j q
+  ifmap :: forall p q. (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> forall j. f j p -> f j q
 
 class IxFoldable (t :: jx -> (TyFun ix * -> *) -> *) where
 

@@ -49,6 +49,7 @@ sequentialProperty
   .  Monad m
   => Show (IntRefed cmd)
   => IxTraversable cmd
+  => HasResponse cmd
   => Ord       ix
   => SDecide   ix
   => SingKind  ix
@@ -56,14 +57,13 @@ sequentialProperty
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd (IxRefs ix)))]
   -> (forall refs'. Shrinker (Untyped' cmd refs'))
-  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> (forall resp. cmd resp refs -> m (Response_ refs resp))
   -> (m Property -> Property)
   -> Property
-sequentialProperty StateMachineModel {..} gens shrinker returns sem runM =
+sequentialProperty StateMachineModel {..} gens shrinker sem runM =
   forAllShrink
-    (fst <$> liftGen gens 0 M.empty returns)
-    (liftShrink returns shrinker)
+    (fst <$> liftGen gens 0 M.empty)
+    (liftShrink shrinker)
     $ \cmds ->
       let len = length cmds in
       classify (len == 0)              "0     commands" $
@@ -79,7 +79,7 @@ sequentialProperty StateMachineModel {..} gens shrinker returns sem runM =
     let s = takeWhile (/= ' ') $ show cmd
     monitor $ label s
     pre $ precondition m cmd'
-    resp <- run $ liftSem sem returns cmd' miref
+    resp <- run $ liftSem sem cmd' miref
     liftProperty $
       counterexample ("The post-condition for `" ++ s ++ "' failed!") $
         postcondition m cmd' resp
@@ -88,23 +88,23 @@ sequentialProperty StateMachineModel {..} gens shrinker returns sem runM =
 ------------------------------------------------------------------------
 
 parallelProperty
-  :: IxTraversable cmd
-  => ShowCmd cmd
-  => Show (IntRefed cmd)
-  => Ord       ix
+  :: Ord       ix
   => SDecide   ix
   => SingKind  ix
   => DemoteRep ix ~ ix
+  => ShowCmd        cmd
+  => IxTraversable  cmd
+  => HasResponse    cmd
+  => Show (IntRefed cmd)
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd (IxRefs ix)))]
   -> (forall refs'. Shrinker (Untyped' cmd refs'))
-  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> Property
-parallelProperty smm gen shrinker returns sem
+parallelProperty smm gen shrinker sem
   = forAllShrink
-      (liftGenFork gen returns)
-      (liftShrinkFork returns shrinker)
+      (liftGenFork gen)
+      (liftShrinkFork shrinker)
       $ \fork -> monadicIO $ replicateM_ 10 $ do
-          hist <- run $ liftSemFork sem returns fork
+          hist <- run $ liftSemFork sem fork
           checkParallelInvariant smm hist

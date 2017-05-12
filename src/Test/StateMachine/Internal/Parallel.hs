@@ -30,11 +30,12 @@ import           Control.Monad.State                   (StateT, evalStateT,
                                                         execStateT, lift)
 import           Data.Dynamic                          (Dynamic, fromDynamic,
                                                         toDyn)
+import           Data.Kind                             (type (*))
 import           Data.List                             (partition)
 import qualified Data.Map                              as M
 import           Data.Singletons.Decide                (SDecide)
 import           Data.Singletons.Prelude               (DemoteRep, SingKind,
-                                                        fromSing)
+                                                        TyFun, fromSing)
 import           Data.Typeable                         (Typeable)
 import           System.Random                         (randomRIO)
 import           Test.QuickCheck                       (Gen, Property,
@@ -58,13 +59,13 @@ liftGenFork
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
+  => HasResponse   cmd
   => [(Int, Gen (Untyped cmd (IxRefs ix)))]
-  -> (forall resp. cmd resp ConstIntRef -> SResponse ix resp)
   -> Gen (Fork [IntRefed cmd])
-liftGenFork gens returns = do
-  (prefix, ns) <- liftGen gens 0 M.empty returns
-  left         <- fst <$> liftGen gens 1 ns returns
-  right        <- fst <$> liftGen gens 2 ns returns
+liftGenFork gens = do
+  (prefix, ns) <- liftGen gens 0 M.empty
+  left         <- fst <$> liftGen gens 1 ns
+  right        <- fst <$> liftGen gens 2 ns
   return $ Fork
     (map (\(Untyped' cmd miref) ->
             Untyped' (ifmap (fixPid ns) cmd) miref) left)
@@ -79,17 +80,17 @@ liftGenFork gens returns = do
 ------------------------------------------------------------------------
 
 liftShrinkFork
-  :: forall ix cmd
-  .  IxFoldable cmd
-  => (forall resp refs. cmd resp refs -> SResponse ix resp)
-  -> Shrinker (IntRefed cmd)
+  :: forall cmd
+  .  IxFoldable  cmd
+  => HasResponse cmd
+  => Shrinker (IntRefed cmd)
   -> Shrinker (Fork [IntRefed cmd])
-liftShrinkFork returns shrinker f@(Fork l0 p0 r0) =
+liftShrinkFork shrinker f@(Fork l0 p0 r0) =
 
   -- Only shrink the branches:
   [ Fork l' p0 r'
-  | (l', r') <- shrinkPair' (liftShrink returns shrinker)
-                            (liftShrink returns shrinker)
+  | (l', r') <- shrinkPair' (liftShrink shrinker)
+                            (liftShrink shrinker)
                             (l0, r0)
   ] ++
 
@@ -101,7 +102,7 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) =
   shrinkPrefix (Fork _ []       _) = []
   shrinkPrefix (Fork l (p : ps) r) =
       [ Fork l'   []                      r'   ] ++
-      [ Fork l''  (removeCommands p ps returns) r''  ] ++
+      [ Fork l''  (removeCommands p ps) r''  ] ++
       [ Fork l''' (p' : ps')              r'''
       | (p', Fork l''' ps' r''') <- shrinkPair' shrinker shrinkPrefix (p, Fork l ps r)
       ]
@@ -109,12 +110,12 @@ liftShrinkFork returns shrinker f@(Fork l0 p0 r0) =
       l'  = removeManyCommands (p : ps) l
       r'  = removeManyCommands (p : ps) r
 
-      l'' = removeCommands p l returns
-      r'' = removeCommands p r returns
+      l'' = removeCommands p l
+      r'' = removeCommands p r
 
       removeManyCommands :: [IntRefed cmd] -> [IntRefed cmd] -> [IntRefed cmd]
       removeManyCommands []       ds = ds
-      removeManyCommands (c : cs) ds = removeManyCommands cs (removeCommands c ds returns)
+      removeManyCommands (c : cs) ds = removeManyCommands cs (removeCommands c ds)
 
 ------------------------------------------------------------------------
 
@@ -218,16 +219,16 @@ mkHistoryKit pid = do
 
 runMany
   :: SDecide ix
-  => IxFunctor cmd
+  => IxFunctor   cmd
+  => HasResponse cmd
   => HistoryKit cmd ConstIntRef
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
-  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> [IntRefed cmd]
   -> StateT (IxMap ix IntRef refs) IO ()
-runMany kit sem returns = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
+runMany kit sem = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
   lift $ atomically $ writeTChan (getHistoryChannel kit) $
     InvocationEvent cmd' (getProcessIdHistory kit)
-  resp <- liftSem sem returns cmd iref
+  resp <- liftSem sem cmd iref
 
   lift $ do
     threadDelay =<< randomRIO (0, 20)
@@ -235,19 +236,23 @@ runMany kit sem returns = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
       ResponseEvent (toDyn resp) (getProcessIdHistory kit)
 
 liftSemFork
-  :: SDecide ix
-  => IxFunctor cmd
+  :: forall
+     (ix    :: *)
+     (cmd   :: Response ix -> (TyFun ix * -> *) -> *)
+     (refs  :: TyFun ix * -> *)
+  .  SDecide ix
+  => IxFunctor   cmd
+  => HasResponse cmd
   => (forall resp. cmd resp refs -> IO (Response_ refs resp))
-  -> (forall resp refs'. cmd resp refs' -> SResponse ix resp)
   -> Fork [IntRefed cmd]
   -> IO (History cmd)
-liftSemFork sem returns (Fork left prefix right) = do
+liftSemFork sem (Fork left prefix right) = do
   kit <- mkHistoryKit 0
-  env <- execStateT (runMany kit sem returns prefix) IxM.empty
+  env <- execStateT (runMany kit sem prefix) IxM.empty
   withPool 2 $ \pool -> do
     parallel_ pool
-      [ evalStateT (runMany (kit { getProcessIdHistory = 1}) sem returns left)  env
-      , evalStateT (runMany (kit { getProcessIdHistory = 2}) sem returns right) env
+      [ evalStateT (runMany (kit { getProcessIdHistory = 1}) sem left)  env
+      , evalStateT (runMany (kit { getProcessIdHistory = 2}) sem right) env
       ]
   hist <- getChanContents $ getHistoryChannel kit
   return hist

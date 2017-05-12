@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE ExplicitNamespaces         #-}
@@ -26,6 +27,7 @@ import           Text.PrettyPrint.ANSI.Leijen (Pretty, align, dot, indent, int,
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
+-- * Response related types.
 
 data Response ix
   = Response Type
@@ -43,16 +45,24 @@ type family MayResponse_ (refs :: TyFun ix k -> *) (resp :: Response ix) :: k wh
   MayResponse_ refs ('Response  t) = ()
   MayResponse_ refs ('Reference i) = refs @@ i
 
+class HasResponse cmd where
+  response :: cmd resp refs -> SResponse ix resp
+
+------------------------------------------------------------------------
+-- * Internal/integer references.
+
+data IntRef = IntRef Ref Pid
+  deriving (Eq, Ord, Show, Read)
+
 newtype Pid = Pid Int
   deriving (Eq, Ord, Show, Read, Num)
 
 newtype Ref = Ref Int
   deriving (Eq, Ord, Show, Read, Enum, Num)
 
-data IntRef = IntRef Ref Pid
-  deriving (Eq, Ord, Show, Read)
-
 type ConstIntRef = ConstSym1 IntRef
+
+------------------------------------------------------------------------
 
 data Untyped (f :: Response resp -> (TyFun i * -> *) -> *) refs where
   Untyped :: (Show (Response_ ConstIntRef resp),
