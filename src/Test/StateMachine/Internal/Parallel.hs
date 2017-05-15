@@ -238,7 +238,7 @@ runMany kit sem = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
 liftSemFork
   :: forall
      (ix    :: *)
-     (cmd   :: Response ix -> (TyFun ix * -> *) -> *)
+     (cmd   :: Signature ix)
      (refs  :: TyFun ix * -> *)
   .  SDecide ix
   => IxFunctor   cmd

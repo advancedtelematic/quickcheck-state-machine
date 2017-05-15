@@ -42,7 +42,7 @@ import           Test.StateMachine.Utils
 sequentialProperty
   :: forall
      (ix    :: *)
-     (cmd   :: Response ix -> (TyFun ix * -> *) -> *)
+     (cmd   :: Signature ix)
      (refs  :: TyFun ix * -> *)
      (model :: (TyFun ix * -> *) -> *)
      (m     :: * -> *)

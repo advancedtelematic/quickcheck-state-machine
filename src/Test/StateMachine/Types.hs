@@ -27,6 +27,11 @@ import           Text.PrettyPrint.ANSI.Leijen (Pretty, align, dot, indent, int,
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
+-- * Signatures.
+
+type Signature ix = Response ix -> (TyFun ix * -> *) -> *
+
+------------------------------------------------------------------------
 -- * Response related types.
 
 data Response ix
@@ -64,13 +69,13 @@ type ConstIntRef = ConstSym1 IntRef
 
 ------------------------------------------------------------------------
 
-data Untyped (f :: Response resp -> (TyFun ix * -> *) -> *) refs where
+data Untyped (f :: Signature ix) refs where
   Untyped :: ( Show     (Response_ ConstIntRef resp)
              , Typeable (Response_ ConstIntRef resp)
              , Typeable resp
              ) => f resp refs -> Untyped f refs
 
-data Untyped' (f :: Response resp -> (TyFun ix * -> *) -> *) refs where
+data Untyped' (f :: Signature ix) refs where
   Untyped' :: ( Show     (Response_ refs resp)
               , Typeable (Response_ refs resp)
               , Typeable resp
@@ -108,7 +113,7 @@ instance Pretty a => Pretty (Fork a) where
     , indent 2 $ int 2 <> dot <+> align (pretty r)
     ]
 
-class ShowCmd (cmd :: Response ix -> (TyFun ix * -> *) -> *) where
+class ShowCmd (cmd :: Signature ix) where
   showCmd :: forall resp. cmd resp (ConstSym1 IntRef) -> String
 
 data Rose a = Rose a [Rose a]
