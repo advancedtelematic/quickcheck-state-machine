@@ -60,7 +60,7 @@ liftGenFork
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse   cmd
-  => [(Int, Gen (Untyped cmd (IxRefs ix)))]
+  => [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
   -> Gen (Fork [IntRefed cmd])
 liftGenFork gens = do
   (prefix, ns) <- liftGen gens 0 M.empty
