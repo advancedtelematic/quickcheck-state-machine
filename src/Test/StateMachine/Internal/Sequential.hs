@@ -44,7 +44,7 @@ liftGen
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => [(Int, Gen (Untyped cmd (IxRefs ix)))]
+  => [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
   -> Pid
   -> Map ix Int
   -> Gen ([IntRefed cmd], Map ix Int)
@@ -55,7 +55,7 @@ liftGen gens pid ns = sized $ \sz -> runStateT (go sz) ns
     :: forall (i :: ix)
     .  Map ix Int
     -> Sing i
-    -> IxRefs ix @@ i
+    -> RefPlaceholder ix @@ i
     -> Compose Gen Maybe IntRef
   translate scopes i _ = Compose $ case M.lookup (fromSing i) scopes of
     Nothing -> return Nothing

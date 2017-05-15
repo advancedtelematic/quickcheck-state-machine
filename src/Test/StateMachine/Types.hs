@@ -64,23 +64,27 @@ type ConstIntRef = ConstSym1 IntRef
 
 ------------------------------------------------------------------------
 
-data Untyped (f :: Response resp -> (TyFun i * -> *) -> *) refs where
-  Untyped :: (Show (Response_ ConstIntRef resp),
-               Typeable (Response_ ConstIntRef resp),
-               Typeable resp) => f resp refs -> Untyped f refs
+data Untyped (f :: Response resp -> (TyFun ix * -> *) -> *) refs where
+  Untyped :: ( Show     (Response_ ConstIntRef resp)
+             , Typeable (Response_ ConstIntRef resp)
+             , Typeable resp
+             ) => f resp refs -> Untyped f refs
 
-data Untyped' (f :: Response resp -> (TyFun i * -> *) -> *) refs where
-  Untyped' :: (Show     (Response_ refs resp),
-                Typeable (Response_ refs resp),
-                Typeable resp
-               ) =>
-    f resp refs -> MayResponse_ ConstIntRef resp -> Untyped' f refs
+data Untyped' (f :: Response resp -> (TyFun ix * -> *) -> *) refs where
+  Untyped' :: ( Show     (Response_ refs resp)
+              , Typeable (Response_ refs resp)
+              , Typeable resp
+              ) => f resp refs -> MayResponse_ ConstIntRef resp -> Untyped' f refs
 
 type IntRefed cmd = Untyped' cmd ConstIntRef
 
-data IxRefs ix :: (TyFun ix *) -> *
+------------------------------------------------------------------------
 
-type instance Apply (IxRefs _) i = Sing i
+data RefPlaceholder ix :: (TyFun ix *) -> *
+
+type instance Apply (RefPlaceholder _) i = Sing i
+
+------------------------------------------------------------------------
 
 data StateMachineModel model cmd = StateMachineModel
   { precondition  :: forall refs resp. IxForallF Ord refs =>

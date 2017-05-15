@@ -69,7 +69,7 @@ smm = StateMachineModel preconditions postconditions transitions initState
 
 ------------------------------------------------------------------------
 
-gens :: [(Int, Gen (Untyped Step (IxRefs ())))]
+gens :: [(Int, Gen (Untyped Step (RefPlaceholder ())))]
 gens =
   [ (1, return $ Untyped FillBig)
   , (1, return $ Untyped FillSmall)

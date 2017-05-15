@@ -111,7 +111,7 @@ semStep _   (Copy ref)    = do
 
 ------------------------------------------------------------------------
 
-gens :: [(Int, Gen (Untyped MemStep (IxRefs ())))]
+gens :: [(Int, Gen (Untyped MemStep (RefPlaceholder ())))]
 gens =
   [ (1, return . Untyped $ New)
   , (5, return . Untyped $ Read STuple0)
