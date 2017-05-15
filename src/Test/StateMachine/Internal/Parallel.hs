@@ -36,6 +36,7 @@ import qualified Data.Map                              as M
 import           Data.Singletons.Decide                (SDecide)
 import           Data.Singletons.Prelude               (DemoteRep, SingKind,
                                                         TyFun, fromSing)
+import           Data.Tree                             (Tree (Node))
 import           Data.Typeable                         (Typeable)
 import           System.Random                         (randomRIO)
 import           Test.QuickCheck                       (Gen, Property,
@@ -151,10 +152,10 @@ findCorrespondingResp pid (ResponseEvent resp pid' : es) | pid == pid' = [(resp,
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
-linearTree :: History cmd -> [Rose (Operation cmd)]
+linearTree :: History cmd -> [Tree (Operation cmd)]
 linearTree [] = []
 linearTree es =
-  [ Rose (Operation cmd (dynResp resp) pid) (linearTree es')
+  [ Node (Operation cmd (dynResp resp) pid) (linearTree es')
   | InvocationEvent (Untyped' cmd _) pid <- takeInvocations es
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
@@ -178,8 +179,8 @@ linearise
 linearise _                        [] = property True
 linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ xs0
   where
-  step :: model ConstIntRef -> Rose (Operation cmd) -> Property
-  step m (Rose (Operation cmd resp _) roses) =
+  step :: model ConstIntRef -> Tree (Operation cmd) -> Property
+  step m (Node (Operation cmd resp _) roses) =
     postcondition m cmd resp .&&.
     anyP' (step (transition m cmd resp)) roses
     where
