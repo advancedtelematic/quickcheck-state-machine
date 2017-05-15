@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeInType            #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module MutableReference
@@ -37,7 +38,7 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
-data MemStep :: Response () -> (TyFun () * -> *) -> * where
+data MemStep :: Signature () where
   New   ::                       MemStep ('Reference '()) refs
   Read  :: refs @@ '() ->        MemStep ('Response Int)  refs
   Write :: refs @@ '() -> Int -> MemStep ('Response   ()) refs

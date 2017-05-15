@@ -26,7 +26,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 canonical'
-  :: forall (ix :: *) (cmd :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall (ix :: *) (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd
@@ -49,7 +49,7 @@ canonical' im = flip runState im . go
     return $ Untyped' cmd' ref'
 
 canonical
-  :: forall ix (cmd :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall ix (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd
@@ -58,7 +58,7 @@ canonical
 canonical = fst . canonical' IxM.empty
 
 canonicalFork
-  :: forall ix (cmd :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall ix (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd
@@ -71,7 +71,7 @@ canonicalFork (Fork l p r) = Fork l' p' r'
   r'        = fst $ canonical' im' r
 
 alphaEq
-  :: forall ix (cmd :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall ix (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd
@@ -82,7 +82,7 @@ alphaEq
 alphaEq c0 c1 = canonical c0 == canonical c1
 
 alphaEqFork
-  :: forall ix (cmd :: Response ix -> (TyFun ix * -> *) -> *)
+  :: forall ix (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd

@@ -4,6 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE TypeInType            #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module DieHard
@@ -24,7 +25,7 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
-data Step :: Response () -> (TyFun () * -> *) -> * where
+data Step :: Signature () where
   FillBig      :: Step ('Response ()) refs
   FillSmall    :: Step ('Response ()) refs
   EmptyBig     :: Step ('Response ()) refs
