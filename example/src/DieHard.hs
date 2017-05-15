@@ -122,13 +122,13 @@ instance IxFunctor Step where
   ifmap _ SmallIntoBig = SmallIntoBig
   ifmap _ BigIntoSmall = BigIntoSmall
 
-instance Show (Untyped' Step ConstIntRef) where
-  show (Untyped' FillBig      _) = "FillBig"
-  show (Untyped' FillSmall    _) = "FillSmall"
-  show (Untyped' EmptyBig     _) = "EmptyBig"
-  show (Untyped' EmptySmall   _) = "EmptySmall"
-  show (Untyped' SmallIntoBig _) = "SmallIntoBig"
-  show (Untyped' BigIntoSmall _) = "BigIntoSmall"
+instance ShowCmd Step where
+  showCmd FillBig      = "FillBig"
+  showCmd FillSmall    = "FillSmall"
+  showCmd EmptyBig     = "EmptyBig"
+  showCmd EmptySmall   = "EmptySmall"
+  showCmd SmallIntoBig = "SmallIntoBig"
+  showCmd BigIntoSmall = "BigIntoSmall"
 
 ------------------------------------------------------------------------
 

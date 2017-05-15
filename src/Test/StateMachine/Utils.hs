@@ -48,6 +48,11 @@ forAllShrinkShow gen shrinker shower pf =
     shrinking shrinker x $ \x' ->
       counterexample (shower x') (pf x')
 
+forAllShow
+  :: Testable prop
+  => Gen a -> (a -> String) -> (a -> prop) -> Property
+forAllShow gen shower pf = forAllShrinkShow gen (\_ -> []) shower pf
+
 liftProperty :: Monad m => Property -> PropertyM m ()
 liftProperty prop = MkPropertyM (\k -> liftM (prop .&&.) <$> k ())
 

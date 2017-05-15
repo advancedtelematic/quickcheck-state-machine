@@ -115,3 +115,23 @@ instance Pretty a => Pretty (Fork a) where
 
 class ShowCmd (cmd :: Signature ix) where
   showCmd :: forall resp. cmd resp (ConstSym1 IntRef) -> String
+
+------------------------------------------------------------------------
+
+showFork:: (a -> String) -> Fork a -> String
+showFork showx (Fork l p r) =
+  "Fork (" ++ showx l ++ ") (" ++ showx p ++ ") (" ++ showx r ++ ")"
+
+showList' :: (a -> String) ->  [a] -> String
+showList' _     []       = "[]"
+showList' showx (x : xs) = '[' : showx x ++ showl xs
+  where
+  showl []       = "]"
+  showl (y : ys) = ',' : showx y ++ showl ys
+
+showIntRefedList :: (ShowCmd cmd, HasResponse cmd) => [IntRefed cmd] -> String
+showIntRefedList = showList'
+  (\(Untyped' cmd miref) -> showCmd cmd ++ " " ++
+       case response cmd of
+         SResponse    -> "()"
+         SReference _ -> "(" ++ show miref ++ ")")

@@ -134,7 +134,6 @@ shrink1 :: MemStep resp refs -> [MemStep resp refs]
 shrink1 (Write ref i) = [ Write ref i' | i' <- shrink i ]
 shrink1 _             = []
 
-
 ------------------------------------------------------------------------
 
 instance IxFunctor MemStep where
@@ -166,17 +165,6 @@ instance ShowCmd MemStep where
   showCmd (Write ref i) = "Write (" ++ show ref ++ ") " ++ show i
   showCmd (Inc   ref)   = "Inc ("   ++ show ref ++ ")"
   showCmd (Copy  ref)   = "Copy ("   ++ show ref ++ ")"
-
-instance Show a => Show (Untyped' MemStep (ConstSym1 a)) where
-  show (Untyped' New           miref) = "Untyped' New (" ++ show miref ++ ")"
-  show (Untyped' (Read  ref)   miref) =
-    "Untyped' (Read ("  ++ show ref ++ ")) " ++ show miref
-  show (Untyped' (Write ref i) miref) =
-    "Untyped' (Write (" ++ show ref ++ ") (" ++ show i ++ ")) " ++ show miref
-  show (Untyped' (Inc   ref)   miref) =
-    "Untyped' (Inc ("   ++ show ref ++ ")) "  ++ show miref
-  show (Untyped' (Copy  ref)   miref) =
-    "Untyped' (Copy ("   ++ show ref ++ ")) (" ++ show miref ++ ")"
 
 ------------------------------------------------------------------------
 

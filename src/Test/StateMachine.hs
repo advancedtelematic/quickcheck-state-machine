@@ -47,7 +47,7 @@ sequentialProperty
      (model :: (TyFun ix * -> *) -> *)
      (m     :: * -> *)
   .  Monad m
-  => Show (IntRefed cmd)
+  => ShowCmd cmd
   => IxTraversable cmd
   => HasResponse cmd
   => Ord       ix
@@ -61,9 +61,10 @@ sequentialProperty
   -> (m Property -> Property)
   -> Property
 sequentialProperty StateMachineModel {..} gens shrinker sem runM =
-  forAllShrink
+  forAllShrinkShow
     (fst <$> liftGen gens 0 M.empty)
     (liftShrink shrinker)
+    showIntRefedList
     $ \cmds ->
       let len = length cmds in
       classify (len == 0)              "0     commands" $
@@ -76,7 +77,7 @@ sequentialProperty StateMachineModel {..} gens shrinker sem runM =
      -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
   go _ []                                 = return ()
   go m (cmd@(Untyped' cmd' miref) : cmds) = do
-    let s = takeWhile (/= ' ') $ show cmd
+    let s = takeWhile (/= ' ') $ showCmd cmd'
     monitor $ label s
     pre $ precondition m cmd'
     resp <- run $ liftSem sem cmd' miref
@@ -95,16 +96,16 @@ parallelProperty
   => ShowCmd        cmd
   => IxTraversable  cmd
   => HasResponse    cmd
-  => Show (IntRefed cmd)
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
   -> (forall resp refs'. Shrinker (cmd resp refs'))
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> Property
 parallelProperty smm gen shrinker sem
-  = forAllShrink
+  = forAllShrinkShow
       (liftGenFork gen)
       (liftShrinkFork shrinker)
+      (showFork showIntRefedList)
       $ \fork -> monadicIO $ replicateM_ 10 $ do
           hist <- run $ liftSemFork sem fork
           checkParallelInvariant smm hist

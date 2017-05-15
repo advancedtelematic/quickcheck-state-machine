@@ -45,7 +45,7 @@ canonical' im = flip runState im . go
         m <- get
         let ref' = IntRef (Ref $ IxM.size i m) (Pid 0)
         put $ IxM.insert i ref ref' m
-        return $ ref'
+        return ref'
     return $ Untyped' cmd' ref'
 
 canonical
