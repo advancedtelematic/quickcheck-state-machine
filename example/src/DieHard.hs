@@ -80,7 +80,7 @@ gens =
   , (1, return $ Untyped BigIntoSmall)
   ]
 
-shrink1 :: Untyped' Step refs -> [Untyped' Step refs ]
+shrink1 :: Step resp refs -> [Step resp refs ]
 shrink1 _ = []
 
 ------------------------------------------------------------------------

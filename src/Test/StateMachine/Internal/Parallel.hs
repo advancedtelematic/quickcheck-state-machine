@@ -84,7 +84,7 @@ liftShrinkFork
   :: forall cmd
   .  IxFoldable  cmd
   => HasResponse cmd
-  => Shrinker (IntRefed cmd)
+  => (forall resp. Shrinker (cmd resp ConstIntRef))
   -> Shrinker (Fork [IntRefed cmd])
 liftShrinkFork shrinker f@(Fork l0 p0 r0) =
 
@@ -105,7 +105,9 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) =
       [ Fork l'   []                      r'   ] ++
       [ Fork l''  (removeCommands p ps) r''  ] ++
       [ Fork l''' (p' : ps')              r'''
-      | (p', Fork l''' ps' r''') <- shrinkPair' shrinker shrinkPrefix (p, Fork l ps r)
+      | (p', Fork l''' ps' r''') <- shrinkPair' (liftShrinker shrinker)
+                                                shrinkPrefix
+                                                (p, Fork l ps r)
       ]
       where
       l'  = removeManyCommands (p : ps) l

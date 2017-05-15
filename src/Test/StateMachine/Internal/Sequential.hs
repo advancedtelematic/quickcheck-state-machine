@@ -11,6 +11,7 @@
 
 module Test.StateMachine.Internal.Sequential
   ( liftGen
+  , liftShrinker
   , liftShrink
   , liftSem
   , removeCommands
@@ -85,10 +86,16 @@ liftGen gens pid ns = sized $ \sz -> runStateT (go sz) ns
 
 ------------------------------------------------------------------------
 
+liftShrinker :: (forall resp. Shrinker (cmd resp ConstIntRef)) -> Shrinker (IntRefed cmd)
+liftShrinker shrinker (Untyped' cmd miref) =
+  [ Untyped' cmd' miref
+  | cmd' <- shrinker cmd
+  ]
+
 liftShrink
   :: IxFoldable  cmd
   => HasResponse cmd
-  => Shrinker (IntRefed cmd)
+  => (forall resp. Shrinker (cmd resp ConstIntRef))
   -> Shrinker [IntRefed cmd]
 liftShrink shrinker = go
   where
@@ -96,7 +103,7 @@ liftShrink shrinker = go
   go (c : cs) =
     [ [] ] ++
     [ removeCommands c cs ] ++
-    [ c' : cs' | (c', cs') <- shrinkPair' shrinker go (c, cs) ]
+    [ c' : cs' | (c', cs') <- shrinkPair' (liftShrinker shrinker) go (c, cs) ]
 
 removeCommands
   :: forall cmd

@@ -130,9 +130,10 @@ instance HasResponse MemStep where
 
 ------------------------------------------------------------------------
 
-shrink1 :: Untyped' MemStep refs -> [Untyped' MemStep refs ]
-shrink1 (Untyped' (Write ref i) iref) = [ Untyped' (Write ref i') iref | i' <- shrink i ]
-shrink1 _                             = []
+shrink1 :: MemStep resp refs -> [MemStep resp refs]
+shrink1 (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrink1 _             = []
+
 
 ------------------------------------------------------------------------
 
