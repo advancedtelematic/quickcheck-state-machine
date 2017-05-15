@@ -115,9 +115,3 @@ instance Pretty a => Pretty (Fork a) where
 
 class ShowCmd (cmd :: Signature ix) where
   showCmd :: forall resp. cmd resp (ConstSym1 IntRef) -> String
-
-data Rose a = Rose a [Rose a]
-  deriving Show
-
-fromRose :: Rose a -> [a]
-fromRose (Rose x xs) = x : concatMap fromRose xs

@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE ExplicitNamespaces  #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -10,13 +11,15 @@
 
 module MutableReferenceSpec (spec) where
 
+import           Control.Arrow                         ((&&&))
 import           Data.Char                             (isSpace)
 import           Data.Dynamic                          (cast)
-import           Data.Kind
+import           Data.Kind                             (type (*))
 import           Data.List                             (isSubsequenceOf)
 import           Data.Map                              (Map)
 import qualified Data.Map                              as M
 import           Data.Singletons.Prelude
+import           Data.Tree                             (Tree (Node), unfoldTree)
 import           Test.Hspec
 import           Test.Hspec.QuickCheck
 import           Test.QuickCheck
@@ -112,16 +115,16 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   where
   hasMinimalShrink :: Fork [Untyped' MemStep ConstIntRef] -> Bool
   hasMinimalShrink
-    = anyRose isMinimal
-    . rose (liftShrinkFork shrink1)
+    = anyTree isMinimal
+    . unfoldTree (id &&& liftShrinkFork shrink1)
     where
-    anyRose :: (a -> Bool) -> Rose a -> Bool
-    anyRose p (Rose x xs) = p x || any (anyRose p) xs
-
-    rose :: (a -> [a]) -> a -> Rose a
-    rose more = go
+    anyTree :: (a -> Bool) -> Tree a -> Bool
+    anyTree p = foldTree (\x ih -> p x || or ih)
       where
-      go x = Rose x $ map go $ more x
+      -- `foldTree` is part of `Data.Tree` in later versions of `containers`.
+      foldTree :: (a -> [b] -> b) -> Tree a -> b
+      foldTree f = go where
+        go (Node x ts) = f x (map go ts)
 
   isMinimal :: Fork [Untyped' MemStep ConstIntRef] -> Bool
   isMinimal xs = any (alphaEqFork xs) minimal
