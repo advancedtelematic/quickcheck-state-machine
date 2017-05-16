@@ -1,7 +1,7 @@
 name:                quickcheck-state-machine
 version:             0.1.0.0
 -- synopsis:
--- description:
+description:         See README at <https://github.com/advancedtelematic/quickcheck-state-machine#readme>
 homepage:            https://github.com/advancedtelematic/quickcheck-state-machine#readme
 license:             BSD3
 license-file:        LICENSE
@@ -12,6 +12,7 @@ category:            Testing
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
+tested-with:         GHC == 8.0.2
 
 library
   hs-source-dirs:      src
@@ -22,16 +23,16 @@ library
                      , Test.StateMachine.Types
                      , Test.StateMachine.Types.AlphaEquality
                      , Test.StateMachine.Utils
-  build-depends:       ansi-wl-pprint
-                     , base >= 4.7 && < 5
+  build-depends:       ansi-wl-pprint == 0.6.7.3
+                     , base >=4.7 && <5
                      , containers
-                     , mtl
-                     , constraints
-                     , singletons
-                     , parallel-io
-                     , QuickCheck
-                     , random
-                     , stm
+                     , mtl ==2.2.1
+                     , constraints ==0.9.1
+                     , singletons ==2.2
+                     , parallel-io ==0.3.3
+                     , QuickCheck ==2.9.2
+                     , random ==1.1
+                     , stm ==2.4.4.1
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-test
