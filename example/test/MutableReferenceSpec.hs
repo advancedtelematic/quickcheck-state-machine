@@ -45,7 +45,7 @@ scopeCheck = go []
   where
   go :: [IntRef] -> [(Pid, IntRefed cmd)] -> Bool
   go _    []                           = True
-  go refs ((_, Untyped' c miref) : cs) = case response c of
+  go refs ((_, IntRefed c miref) : cs) = case response c of
     SReference _  ->
       let refs' = miref : refs in
       all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
@@ -76,20 +76,20 @@ prop_genForkScope = forAllShow
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_sequential Bug) $ alphaEq
-  [ Untyped' New                                (IntRef 0 0)
-  , Untyped' (Write (IntRef (Ref 0) (Pid 0)) 5) ()
-  , Untyped' (Read  (IntRef (Ref 0) (Pid 0)))   ()
+  [ IntRefed New                                (IntRef 0 0)
+  , IntRefed (Write (IntRef (Ref 0) (Pid 0)) 5) ()
+  , IntRefed (Read  (IntRef (Ref 0) (Pid 0)))   ()
   ]
   . read . (!! 1) . lines
 
 deriving instance Eq (MemStep resp ConstIntRef)
 
-instance Eq (Untyped' MemStep ConstIntRef) where
-  Untyped' c1 _ == Untyped' c2 _ = Just c1 == cast c2
+instance Eq (IntRefed MemStep) where
+  IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
 
-cheat :: Fork [Untyped' MemStep ConstIntRef] -> Fork [Untyped' MemStep ConstIntRef]
+cheat :: Fork [IntRefed MemStep] -> Fork [IntRefed MemStep]
 cheat = fmap (map (\ms -> case ms of
-  Untyped' (Write ref _) () -> Untyped' (Write ref 0) ()
+  IntRefed (Write ref _) () -> IntRefed (Write ref 0) ()
   _                         -> ms))
 
 prop_shrinkForkSubseq :: Property
@@ -110,8 +110,8 @@ prop_shrinkForkScope = forAllShow
   (showFork showIntRefedList)
   $ \f -> all scopeCheckFork (liftShrinkFork shrink1 f)
 
-debugShrinkFork :: Fork [Untyped' MemStep ConstIntRef]
-  -> [Fork [Untyped' MemStep ConstIntRef]]
+debugShrinkFork :: Fork [IntRefed MemStep]
+  -> [Fork [IntRefed MemStep]]
 debugShrinkFork = take 1 . map snd . dropWhile fst . map (\f -> (scopeCheckFork f, f))
   . liftShrinkFork shrink1
 
@@ -141,8 +141,8 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   minimal :: [Fork [IntRefed MemStep]]
   minimal  = minimal' ++ map mirrored minimal'
     where
-    minimal' = [ Fork [w0, Untyped' (Read var) ()]
-                      [Untyped' New var]
+    minimal' = [ Fork [w0, IntRefed (Read var) ()]
+                      [IntRefed New var]
                       [w1]
                | w0 <- writes
                , w1 <- writes
@@ -152,16 +152,16 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
     mirrored (Fork l p r) = Fork r p l
 
     var    = IntRef 0 0
-    writes = [Untyped' (Write var 0) (), Untyped' (Inc var) ()]
+    writes = [IntRefed (Write var 0) (), IntRefed (Inc var) ()]
 
-instance Read (Untyped' MemStep ConstIntRef) where
+instance Read (IntRefed MemStep) where
   readPrec = parens $ choice
-    [ Untyped' <$> parens (New <$ key "New") <*> readPrec
-    , Untyped' <$>
+    [ IntRefed <$> parens (New <$ key "New") <*> readPrec
+    , IntRefed <$>
         parens (Read <$ key "Read" <*> readPrec) <*> readPrec
-    , Untyped' <$>
+    , IntRefed <$>
         parens (Write <$ key "Write" <*> readPrec <*> readPrec) <*> readPrec
-    , Untyped' <$>
+    , IntRefed <$>
         parens (Inc <$ key "Inc" <*> readPrec) <*> readPrec
     ]
     where
