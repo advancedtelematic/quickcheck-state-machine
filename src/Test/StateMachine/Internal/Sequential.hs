@@ -88,13 +88,13 @@ liftGen gens pid ns = sized $ \sz -> runStateT (go sz) ns
         m <- get
         return $ IntRef (Ref (m M.! fromSing i)) pid
 
-    (Untyped' cmd ixref :) <$> go (pred sz)
+    (IntRefed cmd ixref :) <$> go (pred sz)
 
 ------------------------------------------------------------------------
 
 liftShrinker :: (forall resp. Shrinker (cmd resp ConstIntRef)) -> Shrinker (IntRefed cmd)
-liftShrinker shrinker (Untyped' cmd miref) =
-  [ Untyped' cmd' miref
+liftShrinker shrinker (IntRefed cmd miref) =
+  [ IntRefed cmd' miref
   | cmd' <- shrinker cmd
   ]
 
@@ -118,14 +118,14 @@ removeCommands
   => IntRefed cmd
   -> [IntRefed cmd]
   -> [IntRefed cmd]
-removeCommands (Untyped' cmd0 miref0) cmds0 =
+removeCommands (IntRefed cmd0 miref0) cmds0 =
   case response cmd0 of
     SResponse    -> cmds0
     SReference _ -> go cmds0 (S.singleton miref0)
   where
   go :: [IntRefed cmd] -> Set IntRef -> [IntRefed cmd]
   go []                                 _       = []
-  go (cmd@(Untyped' cmd' miref) : cmds) removed =
+  go (cmd@(IntRefed cmd' miref) : cmds) removed =
     case response cmd' of
       SReference _ | cmd' `uses` removed ->       go cmds (S.insert miref removed)
                    | otherwise           -> cmd : go cmds removed
@@ -185,7 +185,7 @@ checkSequentialInvariant
   -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
 checkSequentialInvariant _ _ _ []                              = return ()
 checkSequentialInvariant
-  smm@StateMachineModel {..} m sem (Untyped' cmd miref : cmds) = do
+  smm@StateMachineModel {..} m sem (IntRefed cmd miref : cmds) = do
     let s = takeWhile (/= ' ') $ showCmd cmd
     monitor $ label s
     pre $ precondition m cmd

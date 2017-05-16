@@ -16,7 +16,7 @@ import           Control.Monad                    (forM)
 import           Control.Monad.State              (State, get, put, runState)
 import           Data.Kind                        (type (*))
 import           Data.Singletons.Decide           (SDecide)
-import           Data.Singletons.Prelude          (Proxy (..), TyFun)
+import           Data.Singletons.Prelude          (Proxy (..))
 
 import           Test.StateMachine.Internal.IxMap (IxMap)
 import qualified Test.StateMachine.Internal.IxMap as IxM
@@ -36,7 +36,7 @@ canonical'
 canonical' im = flip runState im . go
   where
   go :: [IntRefed cmd] -> State (IxMap ix IntRef ConstIntRef) [IntRefed cmd]
-  go xs = forM xs $ \(Untyped' cmd ref) -> do
+  go xs = forM xs $ \(IntRefed cmd ref) -> do
     cmd' <- ifor (Proxy :: Proxy ConstIntRef) cmd $ \ix iref -> do
       (IxM.! (ix, iref)) <$> get
     ref' <- case response cmd of
@@ -46,7 +46,7 @@ canonical' im = flip runState im . go
         let ref' = IntRef (Ref $ IxM.size i m) (Pid 0)
         put $ IxM.insert i ref ref' m
         return ref'
-    return $ Untyped' cmd' ref'
+    return $ IntRefed cmd' ref'
 
 canonical
   :: forall ix (cmd :: Signature ix)

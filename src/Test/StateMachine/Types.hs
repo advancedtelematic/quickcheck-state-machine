@@ -75,13 +75,11 @@ data Untyped (f :: Signature ix) refs where
              , Typeable resp
              ) => f resp refs -> Untyped f refs
 
-data Untyped' (f :: Signature ix) refs where
-  Untyped' :: ( Show     (Response_ refs resp)
-              , Typeable (Response_ refs resp)
+data IntRefed (f :: Signature ix) where
+  IntRefed :: ( Show     (Response_ ConstIntRef resp)
+              , Typeable (Response_ ConstIntRef resp)
               , Typeable resp
-              ) => f resp refs -> MayResponse_ ConstIntRef resp -> Untyped' f refs
-
-type IntRefed cmd = Untyped' cmd ConstIntRef
+              ) => f resp ConstIntRef -> MayResponse_ ConstIntRef resp -> IntRefed f
 
 ------------------------------------------------------------------------
 
@@ -122,16 +120,16 @@ showFork:: (a -> String) -> Fork a -> String
 showFork showx (Fork l p r) =
   "Fork (" ++ showx l ++ ") (" ++ showx p ++ ") (" ++ showx r ++ ")"
 
-showList' :: (a -> String) ->  [a] -> String
-showList' _     []       = "[]"
-showList' showx (x : xs) = '[' : showx x ++ showl xs
-  where
-  showl []       = "]"
-  showl (y : ys) = ',' : showx y ++ showl ys
-
 showIntRefedList :: (ShowCmd cmd, HasResponse cmd) => [IntRefed cmd] -> String
 showIntRefedList = showList'
-  (\(Untyped' cmd miref) -> showCmd cmd ++ " " ++
+  (\(IntRefed cmd miref) -> showCmd cmd ++ " " ++
        case response cmd of
          SResponse    -> "()"
          SReference _ -> "(" ++ show miref ++ ")")
+  where
+  showList' :: (a -> String) ->  [a] -> String
+  showList' _     []       = "[]"
+  showList' showx (x : xs) = '[' : showx x ++ showl xs
+    where
+    showl []       = "]"
+    showl (y : ys) = ',' : showx y ++ showl ys

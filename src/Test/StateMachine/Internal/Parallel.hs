@@ -68,11 +68,11 @@ liftGenFork gens = do
   left         <- fst <$> liftGen gens 1 ns
   right        <- fst <$> liftGen gens 2 ns
   return $ Fork
-    (map (\(Untyped' cmd miref) ->
-            Untyped' (ifmap (fixPid ns) cmd) miref) left)
+    (map (\(IntRefed cmd miref) ->
+            IntRefed (ifmap (fixPid ns) cmd) miref) left)
     prefix
-    (map (\(Untyped' cmd miref) ->
-            Untyped' (ifmap (fixPid ns) cmd) miref) right)
+    (map (\(IntRefed cmd miref) ->
+            IntRefed (ifmap (fixPid ns) cmd) miref) right)
   where
   fixPid ns i iref@(IntRef (Ref ref) _)
     | ref <= ns M.! fromSing i = IntRef (Ref ref) 0
@@ -158,7 +158,7 @@ linearTree :: History cmd -> [Tree (Operation cmd)]
 linearTree [] = []
 linearTree es =
   [ Node (Operation cmd (dynResp resp) pid) (linearTree es')
-  | InvocationEvent (Untyped' cmd _) pid <- takeInvocations es
+  | InvocationEvent (IntRefed cmd _) pid <- takeInvocations es
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
@@ -202,7 +202,7 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
 
   mkOps :: [HistoryEvent (IntRefed cmd)] -> [Operation cmd]
   mkOps [] = []
-  mkOps (InvocationEvent (Untyped' cmd _) _ : ResponseEvent resp pid : es)
+  mkOps (InvocationEvent (IntRefed cmd _) _ : ResponseEvent resp pid : es)
     = Operation cmd (dynResp resp) pid : mkOps es
     where
     dynResp = maybe (error "toForkOfOps: impossible.") id . fromDynamic
@@ -211,7 +211,7 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
 ------------------------------------------------------------------------
 
 data HistoryKit cmd refs = HistoryKit
-  { getHistoryChannel   :: TChan (HistoryEvent (Untyped' cmd refs))
+  { getHistoryChannel   :: TChan (HistoryEvent (IntRefed cmd))
   , getProcessIdHistory :: Pid
   }
 
@@ -228,7 +228,7 @@ runMany
   -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
   -> [IntRefed cmd]
   -> StateT (IxMap ix IntRef refs) IO ()
-runMany kit sem = flip foldM () $ \_ cmd'@(Untyped' cmd iref) -> do
+runMany kit sem = flip foldM () $ \_ cmd'@(IntRefed cmd iref) -> do
   lift $ atomically $ writeTChan (getHistoryChannel kit) $
     InvocationEvent cmd' (getProcessIdHistory kit)
   resp <- liftSem sem cmd iref
