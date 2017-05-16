@@ -84,7 +84,7 @@ liftShrinkFork
   :: forall cmd
   .  IxFoldable  cmd
   => HasResponse cmd
-  => (forall resp. Shrinker (cmd resp ConstIntRef))
+  => (forall resp. Shrinker (cmd ConstIntRef resp))
   -> Shrinker (Fork [IntRefed cmd])
 liftShrinkFork shrinker f@(Fork l0 p0 r0) =
 
@@ -136,7 +136,7 @@ data Operation cmd = forall resp.
   (Show (Response_ ConstIntRef resp),
    Typeable resp,
    Typeable (Response_ ConstIntRef resp)) =>
-  Operation (cmd resp ConstIntRef) (Response_ ConstIntRef resp) Pid
+  Operation (cmd ConstIntRef resp) (Response_ ConstIntRef resp) Pid
 
 instance ShowCmd cmd => Pretty (Operation cmd) where
   pretty (Operation cmd resp _) =
@@ -225,7 +225,7 @@ runMany
   => IxFunctor   cmd
   => HasResponse cmd
   => HistoryKit cmd ConstIntRef
-  -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
+  -> (forall resp. cmd refs resp -> IO (Response_ refs resp))
   -> [IntRefed cmd]
   -> StateT (IxMap ix IntRef refs) IO ()
 runMany kit sem = flip foldM () $ \_ cmd'@(IntRefed cmd iref) -> do
@@ -246,7 +246,7 @@ liftSemFork
   .  SDecide ix
   => IxFunctor   cmd
   => HasResponse cmd
-  => (forall resp. cmd resp refs -> IO (Response_ refs resp))
+  => (forall resp. cmd refs resp -> IO (Response_ refs resp))
   -> Fork [IntRefed cmd]
   -> IO (History cmd)
 liftSemFork sem (Fork left prefix right) = do

@@ -37,11 +37,11 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 data MemStep :: Signature () where
-  New   ::                       MemStep ('Reference '()) refs
-  Read  :: refs @@ '() ->        MemStep ('Response Int)  refs
-  Write :: refs @@ '() -> Int -> MemStep ('Response   ()) refs
-  Inc   :: refs @@ '() ->        MemStep ('Response   ()) refs
-  Copy  :: refs @@ '() ->        MemStep ('Reference '()) refs
+  New   ::                       MemStep refs ('Reference '())
+  Read  :: refs @@ '() ->        MemStep refs ('Response Int)
+  Write :: refs @@ '() -> Int -> MemStep refs ('Response   ())
+  Inc   :: refs @@ '() ->        MemStep refs ('Response   ())
+  Copy  :: refs @@ '() ->        MemStep refs ('Reference '())
 
 ------------------------------------------------------------------------
 
@@ -50,7 +50,7 @@ newtype Model refs = Model (Map (refs @@ '()) Int)
 initModel :: Model ref
 initModel = Model M.empty
 
-preconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep resp refs -> Bool
+preconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep refs resp -> Bool
 preconditions (Model m) cmd = (case cmd of
   New         -> True
   Read  ref   -> M.member ref m
@@ -58,7 +58,7 @@ preconditions (Model m) cmd = (case cmd of
   Inc   ref   -> M.member ref m
   Copy  ref   -> M.member ref m) \\ (iinstF @'() Proxy :: Ords refs)
 
-transitions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep resp refs
+transitions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep refs resp
   -> Response_ refs resp -> Model refs
 transitions (Model m) cmd resp = (case cmd of
   New         -> Model (M.insert resp 0 m)
@@ -67,7 +67,7 @@ transitions (Model m) cmd resp = (case cmd of
   Inc   ref   -> Model (M.insert ref (m M.! ref + 1) m)
   Copy  ref   -> Model (M.insert resp (m M.! ref) m)) \\ (iinstF @'() Proxy :: Ords refs)
 
-postconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep resp refs
+postconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep refs resp
   -> Response_ refs resp -> Property
 postconditions (Model m) cmd resp = (case cmd of
   New         -> property $ True
@@ -85,7 +85,7 @@ data Problem = None | Bug | RaceCondition
 
 semStep
   :: MonadIO m
-  => Problem -> MemStep resp (ConstSym1 (IORef Int))
+  => Problem -> MemStep (ConstSym1 (IORef Int)) resp
   -> m (Response_ (ConstSym1 (IORef Int)) resp)
 semStep _   New           = liftIO (newIORef 0)
 semStep _   (Read  ref)   = liftIO (readIORef  ref)
@@ -128,7 +128,7 @@ instance HasResponse MemStep where
 
 ------------------------------------------------------------------------
 
-shrink1 :: MemStep resp refs -> [MemStep resp refs]
+shrink1 :: MemStep refs resp -> [MemStep refs resp]
 shrink1 (Write ref i) = [ Write ref i' | i' <- shrink i ]
 shrink1 _             = []
 

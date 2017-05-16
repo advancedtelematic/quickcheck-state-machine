@@ -98,38 +98,38 @@ type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
 
 data Ex (p :: TyFun a * -> *) = forall (x :: a). Ex (Sing x) (p @@ x)
 
-class IxFunctor (f :: jx -> (TyFun ix * -> *) -> *) where
-  ifmap :: forall p q. (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> forall j. f j p -> f j q
+class IxFunctor (f :: (TyFun ix * -> *) -> jx -> *) where
+  ifmap :: forall p q j. (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> f p j -> f q j
 
-class IxFoldable (t :: jx -> (TyFun ix * -> *) -> *) where
+class IxFoldable (t :: (TyFun ix * -> *) -> jx -> *) where
 
-  ifoldMap :: Monoid m => (forall i. Sing (i :: ix) -> p @@ i -> m) -> t j p -> m
+  ifoldMap :: Monoid m => (forall i. Sing (i :: ix) -> p @@ i -> m) -> t p j -> m
 
-  itoList :: t j p -> [Ex p]
+  itoList :: t p j -> [Ex p]
   itoList = ifoldMap (\s px -> [Ex s px])
 
-  ifoldr :: (forall i. Sing (i :: ix) -> p @@ i -> b -> b) -> b -> t j p -> b
+  ifoldr :: (forall i. Sing (i :: ix) -> p @@ i -> b -> b) -> b -> t p j -> b
   ifoldr f z = foldr (\(Ex i x) -> f i x) z . itoList
 
-  iany :: (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t j p -> Bool
+  iany :: (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t p j -> Bool
   iany p = ifoldr (\i x ih -> p i x || ih) False
 
-class (IxFunctor t, IxFoldable t) => IxTraversable (t :: jx -> (TyFun ix * -> *) -> *) where
+class (IxFunctor t, IxFoldable t) => IxTraversable (t :: (TyFun ix * -> *) -> jx -> *) where
 
   itraverse
     :: Applicative f
     => Proxy q
     -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-    -> t j p
-    -> f (t j q)
+    -> t p j
+    -> f (t q j)
   itraverse pq f tp = ifor pq tp f
 
   ifor
     :: Applicative f
     => Proxy q
-    -> t j p
+    -> t p j
     -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-    -> f (t j q)
+    -> f (t q j)
   ifor pq tp f = itraverse pq f tp
 
   {-# MINIMAL itraverse | ifor #-}

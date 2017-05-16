@@ -29,7 +29,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 -- * Signatures.
 
-type Signature ix = Response ix -> (TyFun ix * -> *) -> *
+type Signature ix = (TyFun ix * -> *) -> Response ix -> *
 
 ------------------------------------------------------------------------
 -- * Response related types.
@@ -51,7 +51,7 @@ type family MayResponse_ (refs :: TyFun ix k -> *) (resp :: Response ix) :: k wh
   MayResponse_ refs ('Reference i) = refs @@ i
 
 class HasResponse cmd where
-  response :: cmd resp refs -> SResponse ix resp
+  response :: cmd refs resp -> SResponse ix resp
 
 ------------------------------------------------------------------------
 -- * Internal/integer references.
@@ -73,13 +73,13 @@ data Untyped (f :: Signature ix) refs where
   Untyped :: ( Show     (Response_ ConstIntRef resp)
              , Typeable (Response_ ConstIntRef resp)
              , Typeable resp
-             ) => f resp refs -> Untyped f refs
+             ) => f refs resp -> Untyped f refs
 
 data IntRefed (f :: Signature ix) where
   IntRefed :: ( Show     (Response_ ConstIntRef resp)
               , Typeable (Response_ ConstIntRef resp)
               , Typeable resp
-              ) => f resp ConstIntRef -> MayResponse_ ConstIntRef resp -> IntRefed f
+              ) => f ConstIntRef resp -> MayResponse_ ConstIntRef resp -> IntRefed f
 
 ------------------------------------------------------------------------
 
@@ -91,12 +91,12 @@ type instance Apply (RefPlaceholder _) i = Sing i
 
 data StateMachineModel model cmd = StateMachineModel
   { precondition  :: forall refs resp. IxForallF Ord refs =>
-      model refs -> cmd resp refs -> Bool
+      model refs -> cmd refs resp -> Bool
   , postcondition :: forall refs resp. IxForallF Ord refs =>
-      model refs -> cmd resp refs -> Response_ refs resp -> Property
+      model refs -> cmd refs resp -> Response_ refs resp -> Property
   , transition    :: forall refs resp. IxForallF Ord refs =>
-      model refs -> cmd resp refs -> Response_ refs resp -> model refs
-  , initialModel  :: forall refs.      model refs
+      model refs -> cmd refs resp -> Response_ refs resp -> model refs
+  , initialModel  :: forall refs. model refs
   }
 
 data Fork a = Fork a a a
@@ -112,7 +112,7 @@ instance Pretty a => Pretty (Fork a) where
     ]
 
 class ShowCmd (cmd :: Signature ix) where
-  showCmd :: forall resp. cmd resp (ConstSym1 IntRef) -> String
+  showCmd :: forall resp. cmd ConstIntRef resp -> String
 
 ------------------------------------------------------------------------
 

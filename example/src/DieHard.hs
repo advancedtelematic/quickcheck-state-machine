@@ -21,12 +21,12 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 data Step :: Signature () where
-  FillBig      :: Step ('Response ()) refs
-  FillSmall    :: Step ('Response ()) refs
-  EmptyBig     :: Step ('Response ()) refs
-  EmptySmall   :: Step ('Response ()) refs
-  SmallIntoBig :: Step ('Response ()) refs
-  BigIntoSmall :: Step ('Response ()) refs
+  FillBig      :: Step refs ('Response ())
+  FillSmall    :: Step refs ('Response ())
+  EmptyBig     :: Step refs ('Response ())
+  EmptySmall   :: Step refs ('Response ())
+  SmallIntoBig :: Step refs ('Response ())
+  BigIntoSmall :: Step refs ('Response ())
 
 ------------------------------------------------------------------------
 
@@ -40,10 +40,10 @@ initState = State 0 0
 
 ------------------------------------------------------------------------
 
-preconditions :: State refs -> Step resp refs -> Bool
+preconditions :: State refs -> Step refs resp -> Bool
 preconditions _ _ = True
 
-transitions :: State refs -> Step resp refs -> Response_ refs resp -> State refs
+transitions :: State refs -> Step refs resp -> Response_ refs resp -> State refs
 transitions s FillBig   _  = s { bigJug   = 5 }
 transitions s FillSmall _  = s { smallJug = 3 }
 transitions s EmptyBig  _  = s { bigJug   = 0 }
@@ -57,7 +57,7 @@ transitions (State big small) BigIntoSmall _ =
     State { bigJug = big - (small' - small)
           , smallJug = small' }
 
-postconditions :: State refs -> Step resp refs -> Response_ refs resp -> Property
+postconditions :: State refs -> Step refs resp -> Response_ refs resp -> Property
 postconditions s c r = property (bigJug (transitions s c r) /= 4)
 
 smm :: StateMachineModel State Step
@@ -75,12 +75,12 @@ gens =
   , (1, return $ Untyped BigIntoSmall)
   ]
 
-shrink1 :: Step resp refs -> [Step resp refs ]
+shrink1 :: Step refs resp -> [Step refs resp ]
 shrink1 _ = []
 
 ------------------------------------------------------------------------
 
-semStep :: Step resp (ConstSym1 ()) -> Identity (Response_ (ConstSym1 ()) resp)
+semStep :: Step (ConstSym1 ()) resp -> Identity (Response_ (ConstSym1 ()) resp)
 semStep FillBig      = return ()
 semStep FillSmall    = return ()
 semStep EmptyBig     = return ()

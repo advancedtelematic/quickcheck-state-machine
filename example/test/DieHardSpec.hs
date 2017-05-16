@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
@@ -7,7 +9,6 @@ module DieHardSpec (spec) where
 
 import           Data.Dynamic                 (cast)
 import           Data.List                    (find)
-import           Data.Singletons.Prelude      (ConstSym1)
 import           Test.Hspec                   (Spec, describe, it, shouldBe)
 import           Test.QuickCheck              (Property, label, property)
 import           Text.ParserCombinators.ReadP (string)
@@ -21,7 +22,7 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
-validSolutions :: [[Step ('Response ()) ConstIntRef]]
+validSolutions :: [[Step ConstIntRef ('Response ())]]
 validSolutions =
   [ [ FillBig
     , BigIntoSmall
