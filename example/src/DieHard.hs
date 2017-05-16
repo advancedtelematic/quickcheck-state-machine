@@ -1,11 +1,6 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE Rank2Types            #-}
-{-# LANGUAGE TypeInType            #-}
-{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE DataKinds  #-}
+{-# LANGUAGE GADTs      #-}
+{-# LANGUAGE TypeInType #-}
 
 module DieHard
   ( Step(..)
@@ -16,7 +11,7 @@ module DieHard
   ) where
 
 import           Control.Monad.Identity  (Identity, runIdentity)
-import           Data.Singletons.Prelude (ConstSym1, TyFun)
+import           Data.Singletons.Prelude (ConstSym1)
 import           Test.QuickCheck         (Gen, Property, property)
 
 import           Test.StateMachine

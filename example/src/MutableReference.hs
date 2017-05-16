@@ -1,9 +1,7 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE ExplicitNamespaces    #-}
 {-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -27,7 +25,7 @@ import           Data.IORef              (IORef, atomicModifyIORef', newIORef,
 import           Data.Map                (Map)
 import qualified Data.Map                as M
 import           Data.Singletons.Prelude (type (@@), ConstSym1, Proxy (..),
-                                          Sing (STuple0), TyFun)
+                                          Sing (STuple0))
 import           System.Random           (randomRIO)
 import           Test.QuickCheck         (Gen, Property, arbitrary, ioProperty,
                                           property, shrink)
