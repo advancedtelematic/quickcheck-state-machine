@@ -1,5 +1,6 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE ExplicitNamespaces  #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -14,15 +15,12 @@ module MutableReferenceSpec (spec) where
 import           Control.Arrow                         ((&&&))
 import           Data.Char                             (isSpace)
 import           Data.Dynamic                          (cast)
-import           Data.Kind                             (type (*))
 import           Data.List                             (isSubsequenceOf)
-import           Data.Map                              (Map)
 import qualified Data.Map                              as M
-import           Data.Singletons.Prelude
 import           Data.Tree                             (Tree (Node), unfoldTree)
-import           Test.Hspec
-import           Test.Hspec.QuickCheck
-import           Test.QuickCheck
+import           Test.Hspec                            (Spec, describe, it)
+import           Test.Hspec.QuickCheck                 (modifyMaxSuccess)
+import           Test.QuickCheck                       (Property)
 import           Text.ParserCombinators.ReadP          (string)
 import           Text.Read                             (choice, lift, parens,
                                                         readListPrec,
@@ -39,7 +37,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 scopeCheck
-  :: forall ix cmd. (IxFoldable cmd, HasResponse cmd)
+  :: forall cmd. (IxFoldable cmd, HasResponse cmd)
   => [(Pid, IntRefed cmd)] -> Bool
 scopeCheck = go []
   where
@@ -82,7 +80,7 @@ prop_sequentialShrink = shrinkPropertyHelper (prop_sequential Bug) $ alphaEq
   ]
   . read . (!! 1) . lines
 
-deriving instance Eq (MemStep resp ConstIntRef)
+deriving instance Eq (MemStep ConstIntRef resp)
 
 instance Eq (IntRefed MemStep) where
   IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
@@ -109,11 +107,6 @@ prop_shrinkForkScope = forAllShow
   (liftGenFork gens)
   (showFork showIntRefedList)
   $ \f -> all scopeCheckFork (liftShrinkFork shrink1 f)
-
-debugShrinkFork :: Fork [IntRefed MemStep]
-  -> [Fork [IntRefed MemStep]]
-debugShrinkFork = take 1 . map snd . dropWhile fst . map (\f -> (scopeCheckFork f, f))
-  . liftShrinkFork shrink1
 
 ------------------------------------------------------------------------
 

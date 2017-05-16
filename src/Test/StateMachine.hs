@@ -33,8 +33,8 @@ sequentialProperty
   => DemoteRep ix ~ ix
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
-  -> (forall resp refs'. Shrinker (cmd resp refs'))
-  -> (forall resp. cmd resp refs -> m (Response_ refs resp))
+  -> (forall resp refs'. Shrinker (cmd refs' resp))
+  -> (forall resp. cmd refs resp -> m (Response_ refs resp))
   -> (m Property -> Property)
   -> Property
 sequentialProperty smm gens shrinker sem runM =
@@ -58,8 +58,8 @@ parallelProperty
   => HasResponse    cmd
   => StateMachineModel model cmd
   -> [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
-  -> (forall resp refs'. Shrinker (cmd resp refs'))
-  -> (forall resp. cmd resp refs -> IO (Response_ refs resp))
+  -> (forall resp refs'. Shrinker (cmd refs' resp))
+  -> (forall resp. cmd refs resp -> IO (Response_ refs resp))
   -> Property
 parallelProperty smm gen shrinker sem
   = forAllShrinkShow

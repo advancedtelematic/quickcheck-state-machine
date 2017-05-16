@@ -92,7 +92,7 @@ liftGen gens pid ns = sized $ \sz -> runStateT (go sz) ns
 
 ------------------------------------------------------------------------
 
-liftShrinker :: (forall resp. Shrinker (cmd resp ConstIntRef)) -> Shrinker (IntRefed cmd)
+liftShrinker :: (forall resp. Shrinker (cmd ConstIntRef resp)) -> Shrinker (IntRefed cmd)
 liftShrinker shrinker (IntRefed cmd miref) =
   [ IntRefed cmd' miref
   | cmd' <- shrinker cmd
@@ -101,7 +101,7 @@ liftShrinker shrinker (IntRefed cmd miref) =
 liftShrink
   :: IxFoldable  cmd
   => HasResponse cmd
-  => (forall resp. Shrinker (cmd resp ConstIntRef))
+  => (forall resp. Shrinker (cmd ConstIntRef resp))
   -> Shrinker [IntRefed cmd]
 liftShrink shrinker = go
   where
@@ -132,7 +132,7 @@ removeCommands (IntRefed cmd0 miref0) cmds0 =
       SResponse    | cmd' `uses` removed ->       go cmds removed
                    | otherwise           -> cmd : go cmds removed
 
-uses :: IxFoldable cmd => cmd resp ConstIntRef -> Set IntRef -> Bool
+uses :: IxFoldable cmd => cmd ConstIntRef resp -> Set IntRef -> Bool
 uses cmd xs = iany (\_ iref -> iref `S.member` xs) cmd
 
 ------------------------------------------------------------------------
@@ -143,8 +143,8 @@ liftSem
   => Monad m
   => IxFunctor cmd
   => HasResponse cmd
-  => (cmd resp refs -> m (Response_ refs resp))
-  -> cmd resp ConstIntRef
+  => (cmd refs resp -> m (Response_ refs resp))
+  -> cmd ConstIntRef resp
   -> MayResponse_ ConstIntRef resp
   -> StateT (IxMap ix IntRef refs) m (Response_ ConstIntRef resp)
 liftSem sem cmd iref = do
@@ -180,7 +180,7 @@ checkSequentialInvariant
   => HasResponse cmd
   => StateMachineModel model cmd
   -> model ConstIntRef
-  -> (forall resp. cmd resp refs -> m (Response_ refs resp))
+  -> (forall resp. cmd refs resp -> m (Response_ refs resp))
   -> [IntRefed cmd]
   -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
 checkSequentialInvariant _ _ _ []                              = return ()
