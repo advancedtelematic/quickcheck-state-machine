@@ -1,23 +1,29 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE Rank2Types          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeInType          #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE PolyKinds          #-}
+{-# LANGUAGE Rank2Types         #-}
+{-# LANGUAGE TypeInType         #-}
+{-# LANGUAGE TypeOperators      #-}
 
-module Test.StateMachine.Internal.IxMap where
+module Test.StateMachine.Internal.IxMap
+  ( IxMap
+  , empty
+  , (!)
+  , lookup
+  , member
+  , insert
+  , size
+  ) where
 
-import           Data.Kind
+import           Data.Kind               (type (*))
 import           Data.Map                (Map)
 import qualified Data.Map                as M
-import           Data.Proxy
-import           Data.Singletons.Decide
-import           Data.Singletons.Prelude hiding (Map)
+import           Data.Proxy              (Proxy (Proxy))
+import           Data.Singletons.Decide  ((:~:) (Refl), Decision (Proved),
+                                          SDecide, (%~))
+import           Data.Singletons.Prelude (type (@@), Sing, TyFun)
+import           Prelude                 hiding (lookup)
 
 ------------------------------------------------------------------------
 
@@ -45,25 +51,3 @@ insert i k v (IxMap m) = IxMap $ \_ j -> case i %~ j of
 
 size :: Sing (i :: ix) -> IxMap ix k vs -> Int
 size i (IxMap m) = M.size (m Proxy i)
-
-------------------------------------------------------------------------
-
-data ValuesSym :: (TyFun Bool *) -> *
-
-type instance Apply ValuesSym 'True  = Char
-type instance Apply ValuesSym 'False = Int
-
-test0 :: IxMap Bool String ValuesSym
-test0
-  = insert SFalse "k1" 1
-  $ insert STrue  "k1" 'a'
-  $ empty
-
-test1 :: Char
-test1 = test0 ! (STrue, "k1")
-
-test2 :: Int
-test2 = test0 ! (SFalse, "k1")
-
-test3 :: Int
-test3 = size STrue test0
