@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE Rank2Types          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeInType          #-}
@@ -15,6 +16,8 @@ module Test.StateMachine.Internal.Sequential
   , liftShrink
   , liftSem
   , removeCommands
+  , collectStats
+  , checkSequentialInvariant
   ) where
 
 import           Control.Monad.State              (StateT, get, lift, modify,
@@ -28,8 +31,11 @@ import           Data.Singletons.Decide           (SDecide)
 import           Data.Singletons.Prelude          (type (@@), DemoteRep,
                                                    Proxy (Proxy), Sing,
                                                    SingKind, fromSing)
-import           Test.QuickCheck                  (Gen, choose, frequency,
-                                                   sized)
+import           Test.QuickCheck                  (Gen, choose, classify,
+                                                   counterexample, frequency,
+                                                   label, sized)
+import           Test.QuickCheck.Monadic          (PropertyM, monitor, pre, run)
+import           Test.QuickCheck.Property         (Property)
 
 import           Test.StateMachine.Internal.IxMap (IxMap)
 import qualified Test.StateMachine.Internal.IxMap as IxM
@@ -152,3 +158,39 @@ liftSem sem cmd iref = do
       ref <- lift $ sem cmd'
       modify $ IxM.insert i iref ref
       return iref
+
+------------------------------------------------------------------------
+
+collectStats :: [a] -> Property -> Property
+collectStats cmds
+  = classify (len == 0)              "0     commands"
+  . classify (len >= 1  && len < 15) "1-15  commands"
+  . classify (len >= 15 && len < 30) "15-30 commands"
+  . classify (len >= 30)             "30+   commands"
+  where
+  len = length cmds
+
+------------------------------------------------------------------------
+
+checkSequentialInvariant
+  :: ShowCmd cmd
+  => Monad m
+  => SDecide   ix
+  => IxFunctor cmd
+  => HasResponse cmd
+  => StateMachineModel model cmd
+  -> model ConstIntRef
+  -> (forall resp. cmd resp refs -> m (Response_ refs resp))
+  -> [IntRefed cmd]
+  -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
+checkSequentialInvariant _ _ _ []                              = return ()
+checkSequentialInvariant
+  smm@StateMachineModel {..} m sem (Untyped' cmd miref : cmds) = do
+    let s = takeWhile (/= ' ') $ showCmd cmd
+    monitor $ label s
+    pre $ precondition m cmd
+    resp <- run $ liftSem sem cmd miref
+    liftProperty $
+      counterexample ("The post-condition for `" ++ s ++ "' failed!") $
+        postcondition m cmd resp
+    checkSequentialInvariant smm (transition m cmd resp) sem cmds
