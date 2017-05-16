@@ -29,7 +29,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 -- * Signatures.
 
-type Signature ix = (TyFun ix * -> *) -> Response ix -> *
+type Signature ix = (TyFun ix Type -> Type) -> Response ix -> Type
 
 ------------------------------------------------------------------------
 -- * Response related types.

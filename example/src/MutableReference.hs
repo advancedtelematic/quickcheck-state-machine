@@ -70,7 +70,7 @@ transitions (Model m) cmd resp = (case cmd of
 postconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep refs resp
   -> Response_ refs resp -> Property
 postconditions (Model m) cmd resp = (case cmd of
-  New         -> property $ True
+  New         -> property True
   Read  ref   -> property $ m  M.! ref == resp
   Write ref i -> property $ m' M.! ref == i
   Inc   ref   -> property $ m' M.! ref == m M.! ref + 1
@@ -94,7 +94,7 @@ semStep prb (Write ref i) = liftIO (writeIORef ref i')
   -- Introduce bug:
   i' | i `elem` [5..10] = if prb == Bug then i + 1 else i
      | otherwise        = i
-semStep prb (Inc ref)     = liftIO $ do
+semStep prb (Inc ref)     = liftIO $
 
   -- Possible race condition:
   if prb == RaceCondition

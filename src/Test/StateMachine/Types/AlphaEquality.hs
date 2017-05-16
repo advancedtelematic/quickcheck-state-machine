@@ -37,7 +37,7 @@ canonical' im = flip runState im . go
   where
   go :: [IntRefed cmd] -> State (IxMap ix IntRef ConstIntRef) [IntRefed cmd]
   go xs = forM xs $ \(IntRefed cmd ref) -> do
-    cmd' <- ifor (Proxy :: Proxy ConstIntRef) cmd $ \ix iref -> do
+    cmd' <- ifor (Proxy :: Proxy ConstIntRef) cmd $ \ix iref ->
       (IxM.! (ix, iref)) <$> get
     ref' <- case response cmd of
       SResponse    -> return ()

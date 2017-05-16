@@ -79,7 +79,7 @@ prop_bigJug4 = shrinkPropertyHelper' prop_dieHard $ \output ->
 ------------------------------------------------------------------------
 
 spec :: Spec
-spec = do
+spec =
 
   describe "Sequential property" $ do
 
