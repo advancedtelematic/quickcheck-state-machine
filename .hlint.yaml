@@ -50,8 +50,8 @@
 # Ignore some builtin hints
 # - ignore: {name: Use let}
 # - ignore: {name: Use const, within: SpecialModule} # Only within certain modules
-- ignore: {name: Use curry, within: Test.StateMachine.Internal.Sequential}
-- ignore: {name: Use foldl, within: Test.StateMachine.Internal.Parallel}
+- ignore: {name: Use curry, within: Test.StateMachine.Internal.Sequential.liftSem}
+- ignore: {name: Use foldl, within: Test.StateMachine.Internal.Parallel.liftShrinkFork}
 
 
 # Define some custom infix operators
