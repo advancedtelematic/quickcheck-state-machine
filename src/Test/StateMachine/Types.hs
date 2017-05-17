@@ -16,10 +16,11 @@ module Test.StateMachine.Types where
 
 import           Data.Kind                        (Type)
 import           Data.Singletons.Prelude          (type (@@), Apply,
-                                                   Sing, TyFun, ConstSym1)
+                                                   Sing, TyFun)
 import           Data.Typeable                    (Typeable)
 import           Test.QuickCheck.Property         (Property)
 
+import           Test.StateMachine.Internal.Types.IntRef
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
@@ -44,20 +45,6 @@ type family Response_ (refs :: TyFun ix k -> Type) (resp :: Response ix) :: k wh
 
 class HasResponse cmd where
   response :: cmd refs resp -> SResponse ix resp
-
-------------------------------------------------------------------------
--- * Internal/integer references.
-
-data IntRef = IntRef Ref Pid
-  deriving (Eq, Ord, Show, Read)
-
-newtype Pid = Pid Int
-  deriving (Eq, Ord, Show, Read, Num)
-
-newtype Ref = Ref Int
-  deriving (Eq, Ord, Show, Read, Enum, Num)
-
-type ConstIntRef = ConstSym1 IntRef
 
 ------------------------------------------------------------------------
 

@@ -24,6 +24,7 @@ library
                      , Test.StateMachine.Internal.ScopeCheck
                      , Test.StateMachine.Internal.Sequential
                      , Test.StateMachine.Internal.Types
+                     , Test.StateMachine.Internal.Types.IntRef
                      , Test.StateMachine.Types
                      , Test.StateMachine.Utils
   build-depends:       ansi-wl-pprint == 0.6.7.3

@@ -30,6 +30,7 @@ import           Text.PrettyPrint.ANSI.Leijen (Pretty, align, dot, indent, int,
                                                (<+>))
 
 import           Test.StateMachine.Types
+import           Test.StateMachine.Internal.Types.IntRef
 
 ------------------------------------------------------------------------
 
