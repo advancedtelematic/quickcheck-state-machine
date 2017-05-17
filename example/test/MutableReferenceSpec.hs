@@ -37,7 +37,7 @@ prop_genScope :: Property
 prop_genScope = forAllShow
   (fst <$> liftGen gens (Pid 0) M.empty)
   showIntRefedList
-  $ \p -> let p' = zip (repeat 0) p in scopeCheck p'
+  scopeCheck
 
 prop_genForkScope :: Property
 prop_genForkScope = forAllShow
