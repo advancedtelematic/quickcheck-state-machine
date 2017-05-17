@@ -18,7 +18,7 @@ import           Text.Read                    (choice, lift, parens,
 
 import           DieHard
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils
+import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Types
 
 ------------------------------------------------------------------------
