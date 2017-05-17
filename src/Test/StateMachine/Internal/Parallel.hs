@@ -33,6 +33,7 @@ import           Data.Dynamic                          (Dynamic, fromDynamic,
 import           Data.Kind                             (type (*))
 import           Data.List                             (partition)
 import qualified Data.Map                              as M
+import           Data.Maybe                            (fromMaybe)
 import           Data.Singletons.Decide                (SDecide)
 import           Data.Singletons.Prelude               (DemoteRep, SingKind,
                                                         TyFun, fromSing)
@@ -162,7 +163,7 @@ linearTree es =
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
-  dynResp resp = maybe (error "linearTree: impossible.") id $ fromDynamic resp
+  dynResp resp = fromMaybe (error "linearTree: impossible.") (fromDynamic resp)
 
   filter1 :: (a -> Bool) -> [a] -> [a]
   filter1 _ []                   = []
@@ -205,7 +206,7 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
   mkOps (InvocationEvent (IntRefed cmd _) _ : ResponseEvent resp pid : es)
     = Operation cmd (dynResp resp) pid : mkOps es
     where
-    dynResp = maybe (error "toForkOfOps: impossible.") id . fromDynamic
+    dynResp = fromMaybe (error "toForkOfOps: impossible.") . fromDynamic
   mkOps _  = error "mkOps: Impossible."
 
 ------------------------------------------------------------------------
@@ -252,13 +253,12 @@ liftSemFork
 liftSemFork sem (Fork left prefix right) = do
   kit <- mkHistoryKit 0
   env <- execStateT (runMany kit sem prefix) IxM.empty
-  withPool 2 $ \pool -> do
+  withPool 2 $ \pool ->
     parallel_ pool
       [ evalStateT (runMany (kit { getProcessIdHistory = 1}) sem left)  env
       , evalStateT (runMany (kit { getProcessIdHistory = 2}) sem right) env
       ]
-  hist <- getChanContents $ getHistoryChannel kit
-  return hist
+  getChanContents $ getHistoryChannel kit
   where
   getChanContents :: forall a. TChan a -> IO [a]
   getChanContents chan = reverse <$> atomically (go [])

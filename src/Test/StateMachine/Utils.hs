@@ -16,11 +16,10 @@
 
 module Test.StateMachine.Utils where
 
-import           Control.Monad
 import           Data.Constraint
 import           Data.Constraint.Forall
 import           Data.Kind
-import qualified Data.Maybe                   as May
+import           Data.Maybe                   (fromJust, isJust)
 import           Data.Proxy
 import           Data.Singletons.Prelude      hiding ((:-))
 import           Test.QuickCheck
@@ -32,7 +31,7 @@ import           Test.QuickCheck.Property
 type Shrinker a = a -> [a]
 
 genFromMaybe :: Gen (Maybe a) -> Gen a
-genFromMaybe g = fmap (May.fromJust) (g `suchThat` May.isJust)
+genFromMaybe g = fmap fromJust (g `suchThat` isJust)
 
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)
@@ -51,10 +50,11 @@ forAllShrinkShow gen shrinker shower pf =
 forAllShow
   :: Testable prop
   => Gen a -> (a -> String) -> (a -> prop) -> Property
-forAllShow gen shower pf = forAllShrinkShow gen (\_ -> []) shower pf
+forAllShow gen = forAllShrinkShow gen (const [])
+
 
 liftProperty :: Monad m => Property -> PropertyM m ()
-liftProperty prop = MkPropertyM (\k -> liftM (prop .&&.) <$> k ())
+liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
 
 shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
 shrinkPropertyHelper prop p = shrinkPropertyHelper' prop (property . p)

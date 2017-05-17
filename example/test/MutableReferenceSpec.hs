@@ -13,6 +13,7 @@
 module MutableReferenceSpec (spec) where
 
 import           Control.Arrow                         ((&&&))
+import           Control.Monad                         (void)
 import           Data.Char                             (isSpace)
 import           Data.Dynamic                          (cast)
 import           Data.List                             (isSubsequenceOf)
@@ -95,12 +96,10 @@ prop_shrinkForkSubseq = forAllShow
   (liftGenFork gens)
   (showFork showIntRefedList)
   $ \f@(Fork l p r) ->
-    all (\(Fork l' p' r') -> noRefs l' `isSubsequenceOf` noRefs l &&
-                             noRefs p' `isSubsequenceOf` noRefs p &&
-                             noRefs r' `isSubsequenceOf` noRefs r)
+    all (\(Fork l' p' r') -> void l' `isSubsequenceOf` void l &&
+                             void p' `isSubsequenceOf` void p &&
+                             void r' `isSubsequenceOf` void r)
         (liftShrinkFork shrink1 (cheat f))
-  where
-  noRefs = fmap (const ())
 
 prop_shrinkForkScope :: Property
 prop_shrinkForkScope = forAllShow
@@ -183,7 +182,7 @@ spec = do
     it "`prop_sequentialShrink`: the minimal counterexample is found when there's a bug"
       prop_sequentialShrink
 
-  describe "Shrinking" $ do
+  describe "Shrinking" $
 
     modifyMaxSuccess (const 20) $ do
 
@@ -193,11 +192,11 @@ spec = do
       it "`prop_shrinkForkScope`: shrinking parallel programs preserves scope"
         prop_shrinkForkScope
 
-  describe "Parallel property" $ do
+  describe "Parallel property" $
 
     modifyMaxSuccess (const 10) $ do
 
-      it "`prop_parallel None`: linearisation is possible when there are no race conditions" $ do
+      it "`prop_parallel None`: linearisation is possible when there are no race conditions" $
         prop_parallel None
 
       it "`prop_shrinkForkMinimal`: the minimal counterexample is found when there's a race condition"
