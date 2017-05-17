@@ -1,0 +1,76 @@
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE TypeInType                #-}
+{-# LANGUAGE TypeOperators             #-}
+
+module Test.StateMachine.Internal.Utils
+  ( Shrinker
+  , genFromMaybe
+  , anyP
+  , forAllShrinkShow
+  , forAllShow
+  , liftProperty
+  , shrinkPropertyHelper
+  , shrinkPropertyHelper'
+  , shrinkPair
+  ) where
+
+import           Data.Maybe
+                   (fromJust, isJust)
+import           Test.QuickCheck
+                   (Gen, Property, counterexample, chatty, Result(Failure), output, Testable, stdArgs, quickCheckWithResult, property, shrinking, again, suchThat)
+import           Test.QuickCheck.Monadic
+                   (PropertyM(MkPropertyM), run, monadicIO)
+import           Test.QuickCheck.Property
+                   ((.&&.), Property(MkProperty), unProperty, (.||.))
+
+------------------------------------------------------------------------
+
+type Shrinker a = a -> [a]
+
+genFromMaybe :: Gen (Maybe a) -> Gen a
+genFromMaybe g = fmap fromJust (g `suchThat` isJust)
+
+anyP :: (a -> Property) -> [a] -> Property
+anyP p = foldr (\x ih -> p x .||. ih) (property False)
+
+forAllShrinkShow
+  :: Testable prop
+  => Gen a -> Shrinker a -> (a -> String) -> (a -> prop) -> Property
+forAllShrinkShow gen shrinker shower pf =
+  again $
+  MkProperty $
+  gen >>= \x ->
+    unProperty $
+    shrinking shrinker x $ \x' ->
+      counterexample (shower x') (pf x')
+
+forAllShow
+  :: Testable prop
+  => Gen a -> (a -> String) -> (a -> prop) -> Property
+forAllShow gen = forAllShrinkShow gen (const [])
+
+
+liftProperty :: Monad m => Property -> PropertyM m ()
+liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
+
+shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
+shrinkPropertyHelper prop p = shrinkPropertyHelper' prop (property . p)
+
+shrinkPropertyHelper' :: Property -> (String -> Property) -> Property
+shrinkPropertyHelper' prop p = monadicIO $ do
+  result <- run $ quickCheckWithResult (stdArgs {chatty = False}) prop
+  case result of
+    Failure { output = outputLines } -> liftProperty $
+      counterexample ("failed: " ++ outputLines) $ p outputLines
+    _                                -> return ()
+
+shrinkPair :: (a -> [a]) -> (b -> [b]) -> (a, b) -> [(a, b)]
+shrinkPair shrinkerA shrinkerB (x, y) =
+  [ (x', y) | x' <- shrinkerA x ] ++
+  [ (x, y') | y' <- shrinkerB y ]

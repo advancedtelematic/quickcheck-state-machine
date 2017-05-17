@@ -25,8 +25,9 @@
 #   - {name: [Data.Set, Data.HashSet], as: Set} # if you import Data.Set qualified, it must be as 'Set'
 #   - {name: Control.Arrow, within: []} # Certain modules are banned entirely
 #
-# - functions:
-#   - {name: unsafePerformIO, within: []} # unsafePerformIO can only appear in no modules
+- functions:
+  - {name: unsafePerformIO, within: []} # unsafePerformIO can only appear in no modules
+  - {name: unsafeCoerce, within: []}
 
 
 # Add custom hints for this project
@@ -38,10 +39,10 @@
 # Turn on hints that are off by default
 #
 # Ban "module X(module X) where", to require a real export list
-# - warn: {name: Use explicit module export list}
+- warn: {name: Use explicit module export list}
 #
 # Replace a $ b $ c with a . b $ c
-# - group: {name: dollar, enabled: true}
+- group: {name: dollar, enabled: true}
 #
 # Generalise map to fmap, ++ to <>
 # - group: {name: generalise, enabled: true}

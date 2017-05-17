@@ -10,7 +10,6 @@ module Test.StateMachine.Internal.ScopeCheck
 
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 

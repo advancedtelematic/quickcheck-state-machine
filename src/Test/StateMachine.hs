@@ -19,7 +19,7 @@ import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils
+import           Test.StateMachine.Internal.Utils
 
 ------------------------------------------------------------------------
 

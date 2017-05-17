@@ -53,7 +53,7 @@ import qualified Test.StateMachine.Internal.IxMap      as IxM
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils
+import           Test.StateMachine.Internal.Utils
 
 ------------------------------------------------------------------------
 
@@ -92,9 +92,9 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) =
 
   -- Only shrink the branches:
   [ Fork l' p0 r'
-  | (l', r') <- shrinkPair' (liftShrink shrinker)
-                            (liftShrink shrinker)
-                            (l0, r0)
+  | (l', r') <- shrinkPair (liftShrink shrinker)
+                           (liftShrink shrinker)
+                           (l0, r0)
   ] ++
 
   -- Only shrink the prefix:
@@ -107,9 +107,9 @@ liftShrinkFork shrinker f@(Fork l0 p0 r0) =
       [ Fork l'   []                      r'   ] ++
       [ Fork l''  (removeCommands p ps) r''  ] ++
       [ Fork l''' (p' : ps')              r'''
-      | (p', Fork l''' ps' r''') <- shrinkPair' (liftShrinker shrinker)
-                                                shrinkPrefix
-                                                (p, Fork l ps r)
+      | (p', Fork l''' ps' r''') <- shrinkPair (liftShrinker shrinker)
+                                               shrinkPrefix
+                                               (p, Fork l ps r)
       ]
       where
       l'  = removeManyCommands (p : ps) l

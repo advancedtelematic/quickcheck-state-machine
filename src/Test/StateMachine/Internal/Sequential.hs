@@ -41,7 +41,7 @@ import           Test.StateMachine.Internal.IxMap (IxMap)
 import qualified Test.StateMachine.Internal.IxMap as IxM
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils
+import           Test.StateMachine.Internal.Utils
 
 ------------------------------------------------------------------------
 
@@ -110,7 +110,7 @@ liftShrink shrinker = go
   go (c : cs) =
     [ [] ] ++
     [ removeCommands c cs ] ++
-    [ c' : cs' | (c', cs') <- shrinkPair' (liftShrinker shrinker) go (c, cs) ]
+    [ c' : cs' | (c', cs') <- shrinkPair (liftShrinker shrinker) go (c, cs) ]
 
 removeCommands
   :: forall cmd

@@ -1,4 +1,9 @@
 {-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE UndecidableSuperClasses   #-}
+{-# LANGUAGE UndecidableInstances      #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE IncoherentInstances       #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE ExplicitNamespaces         #-}
@@ -12,8 +17,35 @@
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Test.StateMachine.Types where
+module Test.StateMachine.Types
+  ( Signature
+  , Response(..)
+  , SResponse(..)
+  , Response_
+  , HasResponse
+  , response
+  , Untyped(..)
+  , RefPlaceholder
+  , StateMachineModel(..)
+  , ShowCmd
+  , showCmd
+  , IxForallF
+  , Ords
+  , iinstF
+  , Ex(..)
+  , IxFunctor
+  , ifmap
+  , IxFoldable
+  , ifoldMap
+  , itoList
+  , iany
+  , IxTraversable
+  , ifor
+  ) where
 
+import           Data.Constraint
+import           Data.Proxy (Proxy(..))
+import           Data.Constraint.Forall
 import           Data.Kind                        (Type)
 import           Data.Singletons.Prelude          (type (@@), Apply,
                                                    Sing, TyFun)
@@ -21,7 +53,6 @@ import           Data.Typeable                    (Typeable)
 import           Test.QuickCheck.Property         (Property)
 
 import           Test.StateMachine.Internal.Types.IntRef
-import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 -- * Signatures.
@@ -74,3 +105,62 @@ data StateMachineModel model cmd = StateMachineModel
 
 class ShowCmd (cmd :: Signature ix) where
   showCmd :: forall resp. cmd ConstIntRef resp -> String
+
+------------------------------------------------------------------------
+
+class p (f @@ a) =>
+  IxComposeC (p :: k2 -> Constraint) (f :: TyFun k1 k2 -> Type) (a :: k1)
+
+instance p (f @@ a) => IxComposeC p f a
+
+class Forall (IxComposeC p f) =>
+  IxForallF (p :: k2 -> Constraint) (f :: TyFun k1 k2 -> Type)
+
+instance Forall (IxComposeC p f) => IxForallF p f
+
+iinstF :: forall a p f. Proxy a -> IxForallF p f :- p (f @@ a)
+iinstF _ = Sub $
+  case inst :: Forall (IxComposeC p f) :- IxComposeC p f a of
+    Sub Dict -> Dict
+
+type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
+
+------------------------------------------------------------------------
+
+data Ex (p :: TyFun a Type -> Type) = forall (x :: a). Ex (Sing x) (p @@ x)
+
+class IxFunctor (f :: (TyFun ix Type -> Type) -> jx -> Type) where
+  ifmap :: forall p q j. (forall i. Sing (i :: ix) -> p @@ i -> q @@ i) -> f p j -> f q j
+
+class IxFoldable (t :: (TyFun ix Type -> Type) -> jx -> Type) where
+
+  ifoldMap :: Monoid m => (forall i. Sing (i :: ix) -> p @@ i -> m) -> t p j -> m
+
+  itoList :: t p j -> [Ex p]
+  itoList = ifoldMap (\s px -> [Ex s px])
+
+  ifoldr :: (forall i. Sing (i :: ix) -> p @@ i -> b -> b) -> b -> t p j -> b
+  ifoldr f z = foldr (\(Ex i x) -> f i x) z . itoList
+
+  iany :: (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t p j -> Bool
+  iany p = ifoldr (\i x ih -> p i x || ih) False
+
+class (IxFunctor t, IxFoldable t) => IxTraversable (t :: (TyFun ix Type -> Type) -> jx -> Type) where
+
+  itraverse
+    :: Applicative f
+    => Proxy q
+    -> (forall x. Sing x -> p @@ x -> f (q @@ x))
+    -> t p j
+    -> f (t q j)
+  itraverse pq f tp = ifor pq tp f
+
+  ifor
+    :: Applicative f
+    => Proxy q
+    -> t p j
+    -> (forall x. Sing x -> p @@ x -> f (q @@ x))
+    -> f (t q j)
+  ifor pq tp f = itraverse pq f tp
+
+  {-# MINIMAL itraverse | ifor #-}

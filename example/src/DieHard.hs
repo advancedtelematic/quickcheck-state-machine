@@ -16,7 +16,6 @@ import           Test.QuickCheck         (Gen, Property, property)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 

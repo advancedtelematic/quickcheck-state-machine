@@ -32,7 +32,6 @@ import           Test.QuickCheck         (Gen, Property, arbitrary, ioProperty,
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
