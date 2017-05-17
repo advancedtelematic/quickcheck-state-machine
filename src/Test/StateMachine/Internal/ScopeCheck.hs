@@ -8,6 +8,7 @@ module Test.StateMachine.Internal.ScopeCheck
   , scopeCheckFork
   ) where
 
+import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Types
 import           Test.StateMachine.Utils
 

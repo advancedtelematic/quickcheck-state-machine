@@ -19,9 +19,9 @@ module Test.StateMachine.Utils where
 import           Data.Constraint
 import           Data.Constraint.Forall
 import           Data.Kind
-import           Data.Maybe                   (fromJust, isJust)
+import           Data.Maybe               (fromJust, isJust)
 import           Data.Proxy
-import           Data.Singletons.Prelude      hiding ((:-))
+import           Data.Singletons.Prelude  hiding ((:-))
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
 import           Test.QuickCheck.Property

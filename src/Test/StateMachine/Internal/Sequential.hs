@@ -39,6 +39,7 @@ import           Test.QuickCheck.Property         (Property)
 
 import           Test.StateMachine.Internal.IxMap (IxMap)
 import qualified Test.StateMachine.Internal.IxMap as IxM
+import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Types
 import           Test.StateMachine.Utils
 
