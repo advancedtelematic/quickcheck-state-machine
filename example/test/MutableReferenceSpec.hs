@@ -1,14 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE Rank2Types          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TypeInType          #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module MutableReferenceSpec (spec) where
 
@@ -32,35 +26,12 @@ import           Text.Read                                (choice, lift, parens,
 import           MutableReference
 import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Parallel
+import           Test.StateMachine.Internal.ScopeCheck
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Types
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
-
-scopeCheck
-  :: forall cmd. (IxFoldable cmd, HasResponse cmd)
-  => [(Pid, IntRefed cmd)] -> Bool
-scopeCheck = go []
-  where
-  go :: [IntRef] -> [(Pid, IntRefed cmd)] -> Bool
-  go _    []                           = True
-  go refs ((_, IntRefed c miref) : cs) = case response c of
-    SReference _  ->
-      let refs' = miref : refs in
-      all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
-      go refs' cs
-    SResponse     ->
-      all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
-      go refs cs
-
-scopeCheckFork
-  :: (IxFoldable cmd, HasResponse cmd)
-  => Fork [IntRefed cmd] -> Bool
-scopeCheckFork (Fork l p r) =
-  let p' = zip (repeat 0) p in
-  scopeCheck (p' ++ zip (repeat 1) l) &&
-  scopeCheck (p' ++ zip (repeat 2) r)
 
 prop_genScope :: Property
 prop_genScope = forAllShow
