@@ -18,11 +18,12 @@ tested-with:         GHC == 8.0.2
 library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
-                     , Test.StateMachine.Internal.Parallel
-                     , Test.StateMachine.Internal.Sequential
+                     , Test.StateMachine.Internal.AlphaEquality
                      , Test.StateMachine.Internal.IxMap
+                     , Test.StateMachine.Internal.Parallel
+                     , Test.StateMachine.Internal.ScopeCheck
+                     , Test.StateMachine.Internal.Sequential
                      , Test.StateMachine.Types
-                     , Test.StateMachine.Types.AlphaEquality
                      , Test.StateMachine.Utils
   build-depends:       ansi-wl-pprint == 0.6.7.3
                      , base >=4.7 && <5

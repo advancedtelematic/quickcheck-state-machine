@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeInType          #-}
 
-module Test.StateMachine.Types.AlphaEquality
+module Test.StateMachine.Internal.AlphaEquality
   ( alphaEq
   , alphaEqFork
   ) where
