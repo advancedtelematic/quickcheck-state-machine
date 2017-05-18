@@ -1,12 +1,12 @@
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE ExplicitNamespaces         #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeInType                 #-}
-{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveFunctor      #-}
+{-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE PolyKinds          #-}
+{-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE TypeInType         #-}
+{-# LANGUAGE TypeOperators      #-}
 
 module Test.StateMachine.Internal.Types
   ( IntRef(..)
@@ -20,16 +20,20 @@ module Test.StateMachine.Internal.Types
   , MayResponse_
   ) where
 
-import           Data.Kind                    (Type)
-import           Data.Monoid                  ((<>))
-import           Data.Singletons.Prelude      (type (@@), TyFun)
-import           Data.Typeable                (Typeable)
-import           Text.PrettyPrint.ANSI.Leijen (Pretty, align, dot, indent, int,
-                                               pretty, text, underline, vsep,
-                                               (<+>))
+import           Data.Kind
+                   (Type)
+import           Data.Monoid
+                   ((<>))
+import           Data.Singletons.Prelude
+                   (type (@@), TyFun)
+import           Data.Typeable
+                   (Typeable)
+import           Text.PrettyPrint.ANSI.Leijen
+                   (Pretty, align, dot, indent, int, pretty, text,
+                   underline, vsep, (<+>))
 
-import           Test.StateMachine.Types
 import           Test.StateMachine.Internal.Types.IntRef
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 

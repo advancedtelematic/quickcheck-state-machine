@@ -23,11 +23,13 @@ module Test.StateMachine.Internal.Utils
 import           Data.Maybe
                    (fromJust, isJust)
 import           Test.QuickCheck
-                   (Gen, Property, counterexample, chatty, Result(Failure), output, Testable, stdArgs, quickCheckWithResult, property, shrinking, again, suchThat)
+                   (Gen, Property, Result(Failure), Testable, again,
+                   chatty, counterexample, output, property,
+                   quickCheckWithResult, shrinking, stdArgs, suchThat)
 import           Test.QuickCheck.Monadic
-                   (PropertyM(MkPropertyM), run, monadicIO)
+                   (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property
-                   ((.&&.), Property(MkProperty), unProperty, (.||.))
+                   (Property(MkProperty), unProperty, (.&&.), (.||.))
 
 ------------------------------------------------------------------------
 

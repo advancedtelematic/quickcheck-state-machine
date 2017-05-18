@@ -6,22 +6,30 @@
 
 module MutableReferenceSpec (spec) where
 
-import           Control.Arrow                            ((&&&))
-import           Control.Monad                            (void)
-import           Data.Char                                (isSpace)
-import           Data.Dynamic                             (cast)
-import           Data.List                                (isSubsequenceOf)
+import           Control.Arrow
+                   ((&&&))
+import           Control.Monad
+                   (void)
+import           Data.Char
+                   (isSpace)
+import           Data.Dynamic
+                   (cast)
+import           Data.List
+                   (isSubsequenceOf)
 import qualified Data.Map                                 as M
-import           Data.Tree                                (Tree (Node),
-                                                           unfoldTree)
-import           Test.Hspec                               (Spec, describe, it)
-import           Test.Hspec.QuickCheck                    (modifyMaxSuccess)
-import           Test.QuickCheck                          (Property)
-import           Text.ParserCombinators.ReadP             (string)
-import           Text.Read                                (choice, lift, parens,
-                                                           readListPrec,
-                                                           readListPrecDefault,
-                                                           readPrec)
+import           Data.Tree
+                   (Tree(Node), unfoldTree)
+import           Test.Hspec
+                   (Spec, describe, it)
+import           Test.Hspec.QuickCheck
+                   (modifyMaxSuccess)
+import           Test.QuickCheck
+                   (Property)
+import           Text.ParserCombinators.ReadP
+                   (string)
+import           Text.Read
+                   (choice, lift, parens, readListPrec,
+                   readListPrecDefault, readPrec)
 
 import           MutableReference
 import           Test.StateMachine.Internal.AlphaEquality

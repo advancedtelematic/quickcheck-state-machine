@@ -7,19 +7,24 @@
 
 module DieHardSpec (spec) where
 
-import           Data.Dynamic                 (cast)
-import           Data.List                    (find)
-import           Test.Hspec                   (Spec, describe, it, shouldBe)
-import           Test.QuickCheck              (Property, label, property)
-import           Text.ParserCombinators.ReadP (string)
-import           Text.Read                    (choice, lift, parens,
-                                               readListPrec,
-                                               readListPrecDefault, readPrec)
+import           Data.Dynamic
+                   (cast)
+import           Data.List
+                   (find)
+import           Test.Hspec
+                   (Spec, describe, it, shouldBe)
+import           Test.QuickCheck
+                   (Property, label, property)
+import           Text.ParserCombinators.ReadP
+                   (string)
+import           Text.Read
+                   (choice, lift, parens, readListPrec,
+                   readListPrecDefault, readPrec)
 
 import           DieHard
-import           Test.StateMachine.Types
-import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Internal.Utils
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
