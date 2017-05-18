@@ -16,14 +16,19 @@ module Test.StateMachine.Internal.IxMap
   , size
   ) where
 
-import           Data.Kind               (type (*))
-import           Data.Map                (Map)
+import           Data.Kind
+                   (type (*))
+import           Data.Map
+                   (Map)
 import qualified Data.Map                as M
-import           Data.Proxy              (Proxy (Proxy))
-import           Data.Singletons.Decide  ((:~:) (Refl), Decision (Proved),
-                                          SDecide, (%~))
-import           Data.Singletons.Prelude (type (@@), Sing, TyFun)
-import           Prelude                 hiding (lookup)
+import           Data.Proxy
+                   (Proxy(Proxy))
+import           Data.Singletons.Decide
+                   ((:~:)(Refl), Decision(Proved), SDecide, (%~))
+import           Data.Singletons.Prelude
+                   (type (@@), Sing, TyFun)
+import           Prelude                 hiding
+                   (lookup)
 
 ------------------------------------------------------------------------
 

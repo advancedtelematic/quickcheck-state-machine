@@ -20,28 +20,35 @@ module Test.StateMachine.Internal.Sequential
   , checkSequentialInvariant
   ) where
 
-import           Control.Monad.State              (StateT, get, lift, modify,
-                                                   runStateT)
-import           Data.Functor.Compose             (Compose (..), getCompose)
-import           Data.Map                         (Map)
+import           Control.Monad.State
+                   (StateT, get, lift, modify, runStateT)
+import           Data.Functor.Compose
+                   (Compose(..), getCompose)
+import           Data.Map
+                   (Map)
 import qualified Data.Map                         as M
-import           Data.Set                         (Set)
+import           Data.Set
+                   (Set)
 import qualified Data.Set                         as S
-import           Data.Singletons.Decide           (SDecide)
-import           Data.Singletons.Prelude          (type (@@), DemoteRep,
-                                                   Proxy (Proxy), Sing,
-                                                   SingKind, fromSing)
-import           Test.QuickCheck                  (Gen, choose, classify,
-                                                   counterexample,
-                                                   label, sized)
-import           Test.QuickCheck.Monadic          (PropertyM, monitor, pre, run)
-import           Test.QuickCheck.Property         (Property)
+import           Data.Singletons.Decide
+                   (SDecide)
+import           Data.Singletons.Prelude
+                   (type (@@), DemoteRep, Proxy(Proxy), Sing, SingKind,
+                   fromSing)
+import           Test.QuickCheck
+                   (Gen, choose, classify, counterexample, label,
+                   sized)
+import           Test.QuickCheck.Monadic
+                   (PropertyM, monitor, pre, run)
+import           Test.QuickCheck.Property
+                   (Property)
 
-import           Test.StateMachine.Internal.IxMap (IxMap)
+import           Test.StateMachine.Internal.IxMap
+                   (IxMap)
 import qualified Test.StateMachine.Internal.IxMap as IxM
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Types
 import           Test.StateMachine.Internal.Utils
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 

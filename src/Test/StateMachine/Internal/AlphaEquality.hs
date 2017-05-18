@@ -12,13 +12,19 @@ module Test.StateMachine.Internal.AlphaEquality
   , alphaEqFork
   ) where
 
-import           Control.Monad                    (forM)
-import           Control.Monad.State              (State, get, put, runState)
-import           Data.Kind                        (type (*))
-import           Data.Singletons.Decide           (SDecide)
-import           Data.Singletons.Prelude          (Proxy (..))
+import           Control.Monad
+                   (forM)
+import           Control.Monad.State
+                   (State, get, put, runState)
+import           Data.Kind
+                   (type (*))
+import           Data.Singletons.Decide
+                   (SDecide)
+import           Data.Singletons.Prelude
+                   (Proxy(..))
 
-import           Test.StateMachine.Internal.IxMap (IxMap)
+import           Test.StateMachine.Internal.IxMap
+                   (IxMap)
 import qualified Test.StateMachine.Internal.IxMap as IxM
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Types

@@ -1,5 +1,5 @@
-{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PolyKinds                  #-}
 
 module Test.StateMachine.Internal.Types.IntRef
   ( IntRef(..)
@@ -9,7 +9,8 @@ module Test.StateMachine.Internal.Types.IntRef
   )
   where
 
-import           Data.Singletons.Prelude          (ConstSym1)
+import           Data.Singletons.Prelude
+                   (ConstSym1)
 
 ------------------------------------------------------------------------
 

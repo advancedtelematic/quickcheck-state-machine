@@ -1,21 +1,22 @@
 {-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE UndecidableSuperClasses   #-}
-{-# LANGUAGE UndecidableInstances      #-}
-{-# LANGUAGE FlexibleInstances         #-}
-{-# LANGUAGE IncoherentInstances       #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE ExplicitNamespaces         #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE IncoherentInstances        #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE UndecidableSuperClasses    #-}
 
 module Test.StateMachine.Types
   ( Signature
@@ -44,13 +45,17 @@ module Test.StateMachine.Types
   ) where
 
 import           Data.Constraint
-import           Data.Proxy (Proxy(..))
 import           Data.Constraint.Forall
-import           Data.Kind                        (Type)
-import           Data.Singletons.Prelude          (type (@@), Apply,
-                                                   Sing, TyFun)
-import           Data.Typeable                    (Typeable)
-import           Test.QuickCheck.Property         (Property)
+import           Data.Kind
+                   (Type)
+import           Data.Proxy
+                   (Proxy(..))
+import           Data.Singletons.Prelude
+                   (type (@@), Apply, Sing, TyFun)
+import           Data.Typeable
+                   (Typeable)
+import           Test.QuickCheck.Property
+                   (Property)
 
 import           Test.StateMachine.Internal.Types.IntRef
 

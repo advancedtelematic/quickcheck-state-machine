@@ -10,9 +10,12 @@ module DieHard
   , prop_dieHard
   ) where
 
-import           Control.Monad.Identity  (Identity, runIdentity)
-import           Data.Singletons.Prelude (ConstSym1)
-import           Test.QuickCheck         (Gen, Property, property, elements)
+import           Control.Monad.Identity
+                   (Identity, runIdentity)
+import           Data.Singletons.Prelude
+                   (ConstSym1)
+import           Test.QuickCheck
+                   (Gen, Property, elements, property)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types

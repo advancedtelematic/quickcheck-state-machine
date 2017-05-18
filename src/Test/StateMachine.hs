@@ -6,20 +6,24 @@ module Test.StateMachine
   , parallelProperty
   ) where
 
-import           Control.Monad.State                   (evalStateT, replicateM_)
+import           Control.Monad.State
+                   (evalStateT, replicateM_)
 import qualified Data.Map                              as M
-import           Data.Singletons.TH                    (DemoteRep, SDecide,
-                                                        SingKind)
-import           Test.QuickCheck                       (Gen)
-import           Test.QuickCheck.Monadic               (monadic, monadicIO, run)
-import           Test.QuickCheck.Property              (Property)
+import           Data.Singletons.TH
+                   (DemoteRep, SDecide, SingKind)
+import           Test.QuickCheck
+                   (Gen)
+import           Test.QuickCheck.Monadic
+                   (monadic, monadicIO, run)
+import           Test.QuickCheck.Property
+                   (Property)
 
 import qualified Test.StateMachine.Internal.IxMap      as IxM
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Types
 import           Test.StateMachine.Internal.Utils
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 

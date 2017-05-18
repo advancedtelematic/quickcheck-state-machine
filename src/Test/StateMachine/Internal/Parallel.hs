@@ -19,41 +19,51 @@ module Test.StateMachine.Internal.Parallel
   , checkParallelInvariant
   ) where
 
-import           Control.Concurrent                    (threadDelay)
-import           Control.Concurrent.ParallelIO.Local   (parallel_, withPool)
-import           Control.Concurrent.STM                (STM, atomically)
-import           Control.Concurrent.STM.TChan          (TChan, newTChanIO,
-                                                        tryReadTChan,
-                                                        writeTChan)
-import           Control.Monad                         (foldM)
-import           Control.Monad.State                   (StateT, evalStateT,
-                                                        execStateT, lift)
-import           Data.Dynamic                          (Dynamic, fromDynamic,
-                                                        toDyn)
-import           Data.Kind                             (type (*))
-import           Data.List                             (partition)
+import           Control.Concurrent
+                   (threadDelay)
+import           Control.Concurrent.ParallelIO.Local
+                   (parallel_, withPool)
+import           Control.Concurrent.STM
+                   (STM, atomically)
+import           Control.Concurrent.STM.TChan
+                   (TChan, newTChanIO, tryReadTChan, writeTChan)
+import           Control.Monad
+                   (foldM)
+import           Control.Monad.State
+                   (StateT, evalStateT, execStateT, lift)
+import           Data.Dynamic
+                   (Dynamic, fromDynamic, toDyn)
+import           Data.Kind
+                   (type (*))
+import           Data.List
+                   (partition)
 import qualified Data.Map                              as M
-import           Data.Maybe                            (fromMaybe)
-import           Data.Singletons.Decide                (SDecide)
-import           Data.Singletons.Prelude               (DemoteRep, SingKind,
-                                                        TyFun, fromSing)
-import           Data.Tree                             (Tree (Node))
-import           Data.Typeable                         (Typeable)
-import           System.Random                         (randomRIO)
-import           Test.QuickCheck                       (Gen, Property,
-                                                        counterexample,
-                                                        property, (.&&.))
-import           Test.QuickCheck.Monadic               (PropertyM)
-import           Text.PrettyPrint.ANSI.Leijen          (Pretty, pretty,
-                                                        prettyList, text, vsep,
-                                                        (<+>))
+import           Data.Maybe
+                   (fromMaybe)
+import           Data.Singletons.Decide
+                   (SDecide)
+import           Data.Singletons.Prelude
+                   (DemoteRep, SingKind, TyFun, fromSing)
+import           Data.Tree
+                   (Tree(Node))
+import           Data.Typeable
+                   (Typeable)
+import           System.Random
+                   (randomRIO)
+import           Test.QuickCheck
+                   (Gen, Property, counterexample, property, (.&&.))
+import           Test.QuickCheck.Monadic
+                   (PropertyM)
+import           Text.PrettyPrint.ANSI.Leijen
+                   (Pretty, pretty, prettyList, text, vsep, (<+>))
 
-import           Test.StateMachine.Internal.IxMap      (IxMap)
+import           Test.StateMachine.Internal.IxMap
+                   (IxMap)
 import qualified Test.StateMachine.Internal.IxMap      as IxM
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Types
 import           Test.StateMachine.Internal.Utils
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 

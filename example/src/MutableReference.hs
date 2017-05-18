@@ -17,18 +17,25 @@ module MutableReference
   , prop_parallel
   ) where
 
-import           Control.Concurrent      (threadDelay)
-import           Control.Monad.IO.Class  (MonadIO, liftIO)
-import           Data.Constraint         ((\\))
-import           Data.IORef              (IORef, atomicModifyIORef', newIORef,
-                                          readIORef, writeIORef)
-import           Data.Map                (Map)
+import           Control.Concurrent
+                   (threadDelay)
+import           Control.Monad.IO.Class
+                   (MonadIO, liftIO)
+import           Data.Constraint
+                   ((\\))
+import           Data.IORef
+                   (IORef, atomicModifyIORef', newIORef, readIORef,
+                   writeIORef)
+import           Data.Map
+                   (Map)
 import qualified Data.Map                as M
-import           Data.Singletons.Prelude (type (@@), ConstSym1, Proxy (..),
-                                          Sing (STuple0))
-import           System.Random           (randomRIO)
-import           Test.QuickCheck         (Gen, Property, arbitrary, ioProperty, frequency,
-                                          property, shrink)
+import           Data.Singletons.Prelude
+                   (type (@@), ConstSym1, Proxy(..), Sing(STuple0))
+import           System.Random
+                   (randomRIO)
+import           Test.QuickCheck
+                   (Gen, Property, arbitrary, frequency, ioProperty,
+                   property, shrink)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
