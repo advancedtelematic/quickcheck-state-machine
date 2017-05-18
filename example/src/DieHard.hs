@@ -12,7 +12,7 @@ module DieHard
 
 import           Control.Monad.Identity  (Identity, runIdentity)
 import           Data.Singletons.Prelude (ConstSym1)
-import           Test.QuickCheck         (Gen, Property, property, frequency)
+import           Test.QuickCheck         (Gen, Property, property, elements)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -65,13 +65,13 @@ smm = StateMachineModel preconditions postconditions transitions initState
 ------------------------------------------------------------------------
 
 gen :: Gen (Untyped Step (RefPlaceholder ()))
-gen = frequency
-  [ (1, return $ Untyped FillBig)
-  , (1, return $ Untyped FillSmall)
-  , (1, return $ Untyped EmptyBig)
-  , (1, return $ Untyped EmptySmall)
-  , (1, return $ Untyped SmallIntoBig)
-  , (1, return $ Untyped BigIntoSmall)
+gen = elements
+  [ Untyped FillBig
+  , Untyped FillSmall
+  , Untyped EmptyBig
+  , Untyped EmptySmall
+  , Untyped SmallIntoBig
+  , Untyped BigIntoSmall
   ]
 
 shrink1 :: Step refs resp -> [Step refs resp ]
