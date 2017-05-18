@@ -32,7 +32,7 @@ import           Data.Singletons.Prelude          (type (@@), DemoteRep,
                                                    Proxy (Proxy), Sing,
                                                    SingKind, fromSing)
 import           Test.QuickCheck                  (Gen, choose, classify,
-                                                   counterexample, frequency,
+                                                   counterexample,
                                                    label, sized)
 import           Test.QuickCheck.Monadic          (PropertyM, monitor, pre, run)
 import           Test.QuickCheck.Property         (Property)
@@ -52,11 +52,11 @@ liftGen
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
+  => Gen (Untyped cmd (RefPlaceholder ix))
   -> Pid
   -> Map ix Int
   -> Gen ([IntRefed cmd], Map ix Int)
-liftGen gens pid ns = sized $ \sz -> runStateT (go sz) ns
+liftGen gen pid ns = sized $ \sz -> runStateT (go sz) ns
   where
 
   translate
@@ -78,7 +78,7 @@ liftGen gens pid ns = sized $ \sz -> runStateT (go sz) ns
     scopes       <- get
 
     Untyped cmd <- lift . genFromMaybe $ do
-      Untyped cmd <- frequency gens
+      Untyped cmd <- gen
       cmd' <- getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
       return $ Untyped <$> cmd'
 

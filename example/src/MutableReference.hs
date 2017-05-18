@@ -11,7 +11,7 @@
 module MutableReference
   ( MemStep(..)
   , Problem(..)
-  , gens
+  , gen
   , shrink1
   , prop_sequential
   , prop_parallel
@@ -27,7 +27,7 @@ import qualified Data.Map                as M
 import           Data.Singletons.Prelude (type (@@), ConstSym1, Proxy (..),
                                           Sing (STuple0))
 import           System.Random           (randomRIO)
-import           Test.QuickCheck         (Gen, Property, arbitrary, ioProperty,
+import           Test.QuickCheck         (Gen, Property, arbitrary, ioProperty, frequency,
                                           property, shrink)
 
 import           Test.StateMachine
@@ -109,8 +109,8 @@ semStep _   (Copy ref)    = do
 
 ------------------------------------------------------------------------
 
-gens :: [(Int, Gen (Untyped MemStep (RefPlaceholder ())))]
-gens =
+gen :: Gen (Untyped MemStep (RefPlaceholder ()))
+gen = frequency
   [ (1, return . Untyped $ New)
   , (5, return . Untyped $ Read STuple0)
   , (5, Untyped . Write STuple0 <$> arbitrary)
@@ -171,7 +171,7 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 prop_sequential :: Problem -> Property
 prop_sequential prb = sequentialProperty
   smm
-  gens
+  gen
   shrink1
   (semStep prb)
   ioProperty
@@ -179,6 +179,6 @@ prop_sequential prb = sequentialProperty
 prop_parallel :: Problem -> Property
 prop_parallel prb = parallelProperty
   smm
-  gens
+  gen
   shrink1
   (semStep prb)

@@ -35,13 +35,13 @@ import           Test.StateMachine.Internal.Utils
 
 prop_genScope :: Property
 prop_genScope = forAllShow
-  (fst <$> liftGen gens (Pid 0) M.empty)
+  (fst <$> liftGen gen (Pid 0) M.empty)
   showIntRefedList
   scopeCheck
 
 prop_genForkScope :: Property
 prop_genForkScope = forAllShow
-  (liftGenFork gens)
+  (liftGenFork gen)
   (showFork showIntRefedList)
   scopeCheckFork
 
@@ -65,7 +65,7 @@ cheat = fmap (map (\ms -> case ms of
 
 prop_shrinkForkSubseq :: Property
 prop_shrinkForkSubseq = forAllShow
-  (liftGenFork gens)
+  (liftGenFork gen)
   (showFork showIntRefedList)
   $ \f@(Fork l p r) ->
     all (\(Fork l' p' r') -> void l' `isSubsequenceOf` void l &&
@@ -75,7 +75,7 @@ prop_shrinkForkSubseq = forAllShow
 
 prop_shrinkForkScope :: Property
 prop_shrinkForkScope = forAllShow
-  (liftGenFork gens)
+  (liftGenFork gen)
   (showFork showIntRefedList)
   $ \f -> all scopeCheckFork (liftShrinkFork shrink1 f)
 
