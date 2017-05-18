@@ -12,7 +12,7 @@ module DieHard
 
 import           Control.Monad.Identity  (Identity, runIdentity)
 import           Data.Singletons.Prelude (ConstSym1)
-import           Test.QuickCheck         (Gen, Property, property)
+import           Test.QuickCheck         (Gen, Property, property, frequency)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -64,8 +64,8 @@ smm = StateMachineModel preconditions postconditions transitions initState
 
 ------------------------------------------------------------------------
 
-gens :: [(Int, Gen (Untyped Step (RefPlaceholder ())))]
-gens =
+gen :: Gen (Untyped Step (RefPlaceholder ()))
+gen = frequency
   [ (1, return $ Untyped FillBig)
   , (1, return $ Untyped FillSmall)
   , (1, return $ Untyped EmptyBig)
@@ -129,7 +129,7 @@ instance ShowCmd Step where
 prop_dieHard :: Property
 prop_dieHard = sequentialProperty
   smm
-  gens
+  gen
   shrink1
   semStep
   runIdentity

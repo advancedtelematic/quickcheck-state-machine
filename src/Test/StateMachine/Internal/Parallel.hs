@@ -63,12 +63,12 @@ liftGenFork
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse   cmd
-  => [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
+  => Gen (Untyped cmd (RefPlaceholder ix))
   -> Gen (Fork [IntRefed cmd])
-liftGenFork gens = do
-  (prefix, ns) <- liftGen gens 0 M.empty
-  left         <- fst <$> liftGen gens 1 ns
-  right        <- fst <$> liftGen gens 2 ns
+liftGenFork gen = do
+  (prefix, ns) <- liftGen gen 0 M.empty
+  left         <- fst <$> liftGen gen 1 ns
+  right        <- fst <$> liftGen gen 2 ns
   return $ Fork
     (map (\(IntRefed cmd miref) ->
             IntRefed (ifmap (fixPid ns) cmd) miref) left)

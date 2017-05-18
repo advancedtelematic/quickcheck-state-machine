@@ -33,7 +33,7 @@ sequentialProperty
   => SingKind  ix
   => DemoteRep ix ~ ix
   => StateMachineModel model cmd
-  -> [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
+  -> Gen (Untyped cmd (RefPlaceholder ix))
   -> (forall resp refs'. Shrinker (cmd refs' resp))
   -> (forall resp. cmd refs resp -> m (Response_ refs resp))
   -> (m Property -> Property)
@@ -58,7 +58,7 @@ parallelProperty
   => IxTraversable  cmd
   => HasResponse    cmd
   => StateMachineModel model cmd
-  -> [(Int, Gen (Untyped cmd (RefPlaceholder ix)))]
+  -> Gen (Untyped cmd (RefPlaceholder ix))
   -> (forall resp refs'. Shrinker (cmd refs' resp))
   -> (forall resp. cmd refs resp -> IO (Response_ refs resp))
   -> Property
