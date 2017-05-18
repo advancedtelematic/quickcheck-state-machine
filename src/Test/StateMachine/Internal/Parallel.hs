@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ExplicitNamespaces        #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
@@ -34,7 +33,7 @@ import           Control.Monad.State
 import           Data.Dynamic
                    (Dynamic, fromDynamic, toDyn)
 import           Data.Kind
-                   (type (*))
+                   (Type)
 import           Data.List
                    (partition)
 import qualified Data.Map                              as M
@@ -252,9 +251,9 @@ runMany kit sem = flip foldM () $ \_ cmd'@(IntRefed cmd iref) -> do
 
 liftSemFork
   :: forall
-     (ix    :: *)
+     (ix    :: Type)
      (cmd   :: Signature ix)
-     (refs  :: TyFun ix * -> *)
+     (refs  :: TyFun ix Type -> Type)
   .  SDecide ix
   => IxFunctor   cmd
   => HasResponse cmd
