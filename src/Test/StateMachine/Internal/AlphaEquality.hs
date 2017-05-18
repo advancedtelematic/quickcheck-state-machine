@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE ExplicitNamespaces  #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -17,7 +16,7 @@ import           Control.Monad
 import           Control.Monad.State
                    (State, get, put, runState)
 import           Data.Kind
-                   (type (*))
+                   (Type)
 import           Data.Singletons.Decide
                    (SDecide)
 import           Data.Singletons.Prelude
@@ -32,7 +31,7 @@ import           Test.StateMachine.Types
 ------------------------------------------------------------------------
 
 canonical'
-  :: forall (ix :: *) (cmd :: Signature ix)
+  :: forall (ix :: Type) (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd

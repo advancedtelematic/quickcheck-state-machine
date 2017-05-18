@@ -17,7 +17,7 @@ module Test.StateMachine.Internal.IxMap
   ) where
 
 import           Data.Kind
-                   (type (*))
+                   (Type)
 import           Data.Map
                    (Map)
 import qualified Data.Map                as M
@@ -32,8 +32,8 @@ import           Prelude                 hiding
 
 ------------------------------------------------------------------------
 
-newtype IxMap (ix :: *) (k :: *) (vs :: TyFun ix * -> *) = IxMap
-  (forall i. Proxy vs -> Sing (i :: ix) -> Map k (vs @@ i))
+newtype IxMap (ix :: Type) (k :: Type) (vs :: TyFun ix Type -> Type)
+  = IxMap (forall i. Proxy vs -> Sing (i :: ix) -> Map k (vs @@ i))
 
 empty :: IxMap i k vs
 empty = IxMap (\_ _ -> M.empty)
