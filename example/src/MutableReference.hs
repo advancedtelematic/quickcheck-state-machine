@@ -21,8 +21,6 @@ import           Control.Concurrent
                    (threadDelay)
 import           Control.Monad.IO.Class
                    (MonadIO, liftIO)
-import           Data.Constraint
-                   ((\\))
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)

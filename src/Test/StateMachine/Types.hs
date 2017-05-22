@@ -44,6 +44,7 @@ module Test.StateMachine.Types
   , IxForallF
   , Ords
   , iinstF
+  , (\\)
   , Ex(..)
   , IxFunctor
   , ifmap
