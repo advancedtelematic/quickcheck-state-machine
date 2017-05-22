@@ -47,7 +47,6 @@ data MemStep :: Signature () where
   Read  :: refs @@ '() ->        MemStep refs ('Response Int)
   Write :: refs @@ '() -> Int -> MemStep refs ('Response   ())
   Inc   :: refs @@ '() ->        MemStep refs ('Response   ())
-  Copy  :: refs @@ '() ->        MemStep refs ('Reference '())
 
 ------------------------------------------------------------------------
 
@@ -56,31 +55,34 @@ newtype Model refs = Model (Map (refs @@ '()) Int)
 initModel :: Model ref
 initModel = Model M.empty
 
-preconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep refs resp -> Bool
+preconditions
+  :: forall refs resp. IxForallF Ord refs
+  => Model refs -> MemStep refs resp -> Bool
 preconditions (Model m) cmd = (case cmd of
   New         -> True
   Read  ref   -> M.member ref m
   Write ref _ -> M.member ref m
-  Inc   ref   -> M.member ref m
-  Copy  ref   -> M.member ref m) \\ (iinstF @'() Proxy :: Ords refs)
+  Inc   ref   -> M.member ref m) \\ (iinstF @'() Proxy :: Ords refs)
 
-transitions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep refs resp
-  -> Response_ refs resp -> Model refs
+transitions
+  :: forall refs resp. IxForallF Ord refs
+  => Model refs -> MemStep refs resp -> Response_ refs resp -> Model refs
 transitions (Model m) cmd resp = (case cmd of
   New         -> Model (M.insert resp 0 m)
   Read  _     -> Model m
   Write ref i -> Model (M.insert ref i m)
   Inc   ref   -> Model (M.insert ref (m M.! ref + 1) m)
-  Copy  ref   -> Model (M.insert resp (m M.! ref) m)) \\ (iinstF @'() Proxy :: Ords refs)
+  ) \\ (iinstF @'() Proxy :: Ords refs)
 
-postconditions :: forall refs resp. IxForallF Ord refs => Model refs -> MemStep refs resp
-  -> Response_ refs resp -> Property
+postconditions
+  :: forall refs resp. IxForallF Ord refs
+  => Model refs -> MemStep refs resp -> Response_ refs resp -> Property
 postconditions (Model m) cmd resp = (case cmd of
   New         -> property True
   Read  ref   -> property $ m  M.! ref == resp
   Write ref i -> property $ m' M.! ref == i
   Inc   ref   -> property $ m' M.! ref == m M.! ref + 1
-  Copy  ref   -> property $ m' M.! resp == m M.! ref) \\ (iinstF @'() Proxy :: Ords refs)
+  ) \\ (iinstF @'() Proxy :: Ords refs)
   where
   Model m' = transitions (Model m) cmd resp
 
@@ -110,9 +112,6 @@ semStep prb (Inc ref)     = liftIO $
     writeIORef ref (i + 1)
   else
     atomicModifyIORef' ref (\i -> (i + 1, ()))
-semStep _   (Copy ref)    = do
-  old <- liftIO (readIORef ref)
-  liftIO (newIORef old)
 
 ------------------------------------------------------------------------
 
@@ -122,7 +121,6 @@ gen = frequency
   , (5, return . Untyped $ Read STuple0)
   , (5, Untyped . Write STuple0 <$> arbitrary)
   , (5, return . Untyped $ Inc STuple0)
-  -- , (5, return . Untyped $ Copy STuple0)
   ]
 
 instance HasResponse MemStep where
@@ -130,7 +128,6 @@ instance HasResponse MemStep where
   response Read  {} = SResponse
   response Write {} = SResponse
   response Inc   {} = SResponse
-  response Copy  {} = SReference STuple0
 
 ------------------------------------------------------------------------
 
@@ -145,21 +142,18 @@ instance IxFunctor MemStep where
   ifmap f (Read  ref)   = Read  (f STuple0 ref)
   ifmap f (Write ref i) = Write (f STuple0 ref) i
   ifmap f (Inc   ref)   = Inc   (f STuple0 ref)
-  ifmap f (Copy  ref)   = Copy  (f STuple0 ref)
 
 instance IxFoldable MemStep where
   ifoldMap _ New           = mempty
   ifoldMap f (Read  ref)   = f STuple0 ref
   ifoldMap f (Write ref _) = f STuple0 ref
   ifoldMap f (Inc   ref)   = f STuple0 ref
-  ifoldMap f (Copy  ref)   = f STuple0 ref
 
 instance IxTraversable MemStep where
   ifor _ New             _ = pure New
   ifor _ (Read  ref)     f = Read  <$> f STuple0 ref
   ifor _ (Write ref val) f = Write <$> f STuple0 ref <*> pure val
   ifor _ (Inc   ref)     f = Inc   <$> f STuple0 ref
-  ifor _ (Copy  ref)     f = Copy  <$> f STuple0 ref
 
 ------------------------------------------------------------------------
 
@@ -168,7 +162,6 @@ instance ShowCmd MemStep where
   showCmd (Read  ref)   = "Read ("  ++ show ref ++ ")"
   showCmd (Write ref i) = "Write (" ++ show ref ++ ") " ++ show i
   showCmd (Inc   ref)   = "Inc ("   ++ show ref ++ ")"
-  showCmd (Copy  ref)   = "Copy ("   ++ show ref ++ ")"
 
 ------------------------------------------------------------------------
 
