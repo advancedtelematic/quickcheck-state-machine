@@ -6,6 +6,18 @@
 {-# LANGUAGE TypeInType         #-}
 {-# LANGUAGE TypeOperators      #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Internal.IxMap
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-----------------------------------------------------------------------------
+
 module Test.StateMachine.Internal.IxMap
   ( IxMap
   , empty

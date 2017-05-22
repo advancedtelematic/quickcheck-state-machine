@@ -1,16 +1,30 @@
 {-# LANGUAGE GADTs      #-}
 {-# LANGUAGE Rank2Types #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- The main module for state machine based testing.
+--
+-----------------------------------------------------------------------------
+
 module Test.StateMachine
-  ( sequentialProperty
+  ( -- * Sequential property helper
+    sequentialProperty
+    -- * Parallel property helper
   , parallelProperty
   ) where
 
 import           Control.Monad.State
                    (evalStateT, replicateM_)
 import qualified Data.Map                              as M
-import           Data.Singletons.TH
-                   (DemoteRep, SDecide, SingKind)
 import           Test.QuickCheck
                    (Gen)
 import           Test.QuickCheck.Monadic
@@ -27,19 +41,15 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+-- | This function builds a property that tests if your model is agrees
+--   with your semantics when running commands sequentially.
 sequentialProperty
-  :: Monad m
-  => ShowCmd cmd
-  => IxTraversable cmd
-  => HasResponse cmd
-  => Ord       ix
-  => SDecide   ix
-  => SingKind  ix
-  => DemoteRep ix ~ ix
-  => StateMachineModel model cmd
-  -> Gen (Untyped cmd (RefPlaceholder ix))
-  -> (forall resp refs'. Shrinker (cmd refs' resp))
-  -> (forall resp. cmd refs resp -> m (Response_ refs resp))
+  :: CommandConstraint ix cmd
+  => Monad m
+  => StateMachineModel model cmd                             -- ^ Model
+  -> Gen (Untyped cmd (RefPlaceholder ix))                   -- ^ Generator
+  -> (forall resp refs'. Shrinker (cmd refs' resp))          -- ^ Shrinker
+  -> (forall resp. cmd refs resp -> m (Response_ refs resp)) -- ^ Semantics
   -> (m Property -> Property)
   -> Property
 sequentialProperty smm gens shrinker sem runM =
@@ -53,18 +63,17 @@ sequentialProperty smm gens shrinker sem runM =
 
 ------------------------------------------------------------------------
 
+-- | This function builds a property that tests your semantics for race
+--   conditions, by runnings commands in parallel and then trying to
+--   linearise the resulting history.
+--
+-- /Note:/ Make sure that your model passes the sequential property first.
 parallelProperty
-  :: Ord       ix
-  => SDecide   ix
-  => SingKind  ix
-  => DemoteRep ix ~ ix
-  => ShowCmd        cmd
-  => IxTraversable  cmd
-  => HasResponse    cmd
-  => StateMachineModel model cmd
-  -> Gen (Untyped cmd (RefPlaceholder ix))
-  -> (forall resp refs'. Shrinker (cmd refs' resp))
-  -> (forall resp. cmd refs resp -> IO (Response_ refs resp))
+  :: CommandConstraint ix cmd
+  => StateMachineModel model cmd                              -- ^ Model
+  -> Gen (Untyped cmd (RefPlaceholder ix))                    -- ^ Generator
+  -> (forall resp refs'. Shrinker (cmd refs' resp))           -- ^ Shrinker
+  -> (forall resp. cmd refs resp -> IO (Response_ refs resp)) -- ^ Semantics
   -> Property
 parallelProperty smm gen shrinker sem
   = forAllShrinkShow
