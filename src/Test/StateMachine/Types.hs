@@ -16,8 +16,21 @@
 {-# LANGUAGE UndecidableInstances      #-}
 {-# LANGUAGE UndecidableSuperClasses   #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Types
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-----------------------------------------------------------------------------
+
 module Test.StateMachine.Types
-  ( Signature
+  ( CommandConstraint
+  , Signature
   , Response(..)
   , SResponse(..)
   , Response_
@@ -50,12 +63,26 @@ import           Data.Proxy
                    (Proxy(..))
 import           Data.Singletons.Prelude
                    (type (@@), Apply, Sing, TyFun)
+import           Data.Singletons.TH
+                   (DemoteRep, SDecide, SingKind)
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck.Property
                    (Property)
 
 import           Test.StateMachine.Internal.Types.IntRef
+
+------------------------------------------------------------------------
+
+type CommandConstraint ix cmd =
+  ( Ord       ix
+  , SDecide   ix
+  , SingKind  ix
+  , DemoteRep ix ~ ix
+  , ShowCmd       cmd
+  , IxTraversable cmd
+  , HasResponse   cmd
+  )
 
 ------------------------------------------------------------------------
 -- * Signatures.
