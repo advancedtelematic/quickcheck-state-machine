@@ -1,5 +1,6 @@
-{-# LANGUAGE GADTs      #-}
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Rank2Types            #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -18,12 +19,13 @@
 module Test.StateMachine
   ( -- * Sequential property helper
     sequentialProperty
+  , sequentialProperty'
     -- * Parallel property helper
   , parallelProperty
   ) where
 
 import           Control.Monad.State
-                   (evalStateT, replicateM_)
+                   (StateT, evalStateT, lift, replicateM_)
 import qualified Data.Map                              as M
 import           Test.QuickCheck
                    (Gen)
@@ -52,9 +54,22 @@ sequentialProperty
   -> (forall resp. cmd refs resp -> m (Response_ refs resp)) -- ^ Semantics
   -> (m Property -> Property)
   -> Property
-sequentialProperty smm gens shrinker sem runM =
+sequentialProperty smm gen shrinker sem runM =
+  sequentialProperty' smm (lift gen) () shrinker sem runM
+
+sequentialProperty'
+  :: CommandConstraint ix cmd
+  => Monad m
+  => StateMachineModel model cmd                             -- ^ Model
+  -> StateT s Gen (Untyped cmd (RefPlaceholder ix))          -- ^ Generator
+  -> s                                                       -- ^ Generator state
+  -> (forall resp refs'. Shrinker (cmd refs' resp))          -- ^ Shrinker
+  -> (forall resp. cmd refs resp -> m (Response_ refs resp)) -- ^ Semantics
+  -> (m Property -> Property)
+  -> Property
+sequentialProperty' smm gen s shrinker sem runM =
   forAllShrinkShow
-    (fst <$> liftGen gens 0 M.empty)
+    (fst <$> liftGen' gen s 0 M.empty)
     (liftShrink shrinker)
     showIntRefedList
     $ \cmds -> collectStats cmds $

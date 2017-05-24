@@ -7,6 +7,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     DieHard
                      , MutableReference
+                     , UnionFind
   build-depends:       base >= 4.7 && < 5
                      , constraints
                      , containers
@@ -23,6 +24,7 @@ test-suite quickcheck-state-machine-example-test
   main-is:             Spec.hs
   other-modules:       DieHardSpec
                      , MutableReferenceSpec
+                     , UnionFindSpec
   build-depends:       base
                      , containers
                      , hspec

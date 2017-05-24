@@ -31,12 +31,12 @@ module Test.StateMachine.Internal.Utils
   , shrinkPair
   ) where
 
-import           Data.Maybe
-                   (fromJust, isJust)
+import           Control.Monad.State
+                   (StateT)
 import           Test.QuickCheck
                    (Gen, Property, Result(Failure), Testable, again,
                    chatty, counterexample, output, property,
-                   quickCheckWithResult, shrinking, stdArgs, suchThat)
+                   quickCheckWithResult, shrinking, stdArgs)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property
@@ -46,8 +46,12 @@ import           Test.QuickCheck.Property
 
 type Shrinker a = a -> [a]
 
-genFromMaybe :: Gen (Maybe a) -> Gen a
-genFromMaybe g = fmap fromJust (g `suchThat` isJust)
+genFromMaybe :: StateT s (StateT t Gen) (Maybe a) -> StateT s (StateT t Gen) a
+genFromMaybe g = do
+  mx <- g
+  case mx of
+    Nothing -> genFromMaybe g
+    Just x  -> return x
 
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)
