@@ -80,21 +80,21 @@ liftGen
 liftGen gen = liftGen' (lift gen) ()
 
 liftGen'
-  :: forall ix cmd s
+  :: forall ix cmd genState
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => StateT s Gen (Untyped cmd (RefPlaceholder ix))
-  -> s
+  => StateT genState Gen (Untyped cmd (RefPlaceholder ix))
+  -> genState
   -> Pid
   -> Map ix Int
   -> Gen ([IntRefed cmd], Map ix Int)
-liftGen' gen s0 pid ns = sized $ \sz -> runStateT (evalStateT (go sz) s0) ns
+liftGen' gen gs pid ns = sized $ \sz -> runStateT (evalStateT (go sz) gs) ns
   where
 
-  go :: Int -> StateT s (StateT (Map ix Int) Gen) [IntRefed cmd]
+  go :: Int -> StateT genState (StateT (Map ix Int) Gen) [IntRefed cmd]
   go 0  = return []
   go sz = do
 
