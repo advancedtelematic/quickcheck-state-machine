@@ -15,7 +15,7 @@
 module UnionFind where
 
 import           Control.Monad.State
-                   (StateT, evalStateT, get, liftIO, modify)
+                   (StateT, evalStateT, get, lift, liftIO, modify)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
 import           Data.Singletons.Prelude
@@ -84,26 +84,18 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 
 ------------------------------------------------------------------------
 
-gen :: Int -> Gen [Untyped Action (RefPlaceholder ())]
-gen 0 = frequency
-  [ (25, do x <- arbitrary
-            (Untyped (New x) :) <$> gen 1
-    )
-  , (1,  pure [])
-  ]
-gen n = frequency
-  [ (1, do x <- arbitrary
-           (Untyped (New x) :) <$> gen (n + 1)
-    )
-  , (5, do i <- choose (0, n - 1)
-           (Untyped (Find i) :) <$> gen n
-    )
-  , (5, do i <- choose (0, n - 1)
-           j <- choose (0, n - 1)
-           (Untyped (Union i j) :) <$> gen n
-    )
-  , (1, pure [])
-  ]
+gen :: StateT Int Gen (Untyped Action (RefPlaceholder ()))
+gen = do
+  n <- get
+  if n == 0
+  then do
+    modify succ
+    lift $ Untyped . New <$> arbitrary
+  else
+    lift $ frequency
+      [ (5, Untyped . Find <$> choose (0, n - 1))
+      , (5, Untyped <$> (Union <$> choose (0, n - 1) <*> choose (0, n - 1)))
+      ]
 
 shrink1 :: Action refs resp -> [Action refs resp]
 shrink1 (New x) = [ New x' | x' <- shrink x ]
@@ -204,7 +196,8 @@ instance ShowCmd Action where
 prop_sequential :: Property
 prop_sequential = sequentialProperty'
   smm
-  (gen 0)
+  gen
+  0
   shrink1
   semantics
   (ioProperty . flip evalStateT [])

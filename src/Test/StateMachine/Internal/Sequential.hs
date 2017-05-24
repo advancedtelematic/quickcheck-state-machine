@@ -34,7 +34,8 @@ module Test.StateMachine.Internal.Sequential
   ) where
 
 import           Control.Monad.State
-                   (StateT, get, lift, modify, runStateT)
+                   (StateT, evalStateT, get, lift, mapStateT, modify,
+                   runStateT)
 import           Data.Functor.Compose
                    (Compose(..), getCompose)
 import           Data.Map
@@ -76,75 +77,43 @@ liftGen
   -> Pid
   -> Map ix Int
   -> Gen ([IntRefed cmd], Map ix Int)
-liftGen gen pid ns = sized $ \sz -> runStateT (go sz) ns
-  where
-
-  translate
-    :: forall (i :: ix)
-    .  Map ix Int
-    -> Sing i
-    -> RefPlaceholder ix @@ i
-    -> Compose Gen Maybe IntRef
-  translate scopes i _ = Compose $ case M.lookup (fromSing i) scopes of
-    Nothing -> return Nothing
-    Just u  -> do
-      v <- choose (0, max 0 (u - 1))
-      return . Just $ IntRef (Ref v) pid
-
-  go :: Int -> StateT (Map ix Int) Gen [IntRefed cmd]
-  go 0  = return []
-  go sz = do
-
-    scopes       <- get
-
-    Untyped cmd <- lift . genFromMaybe $ do
-      Untyped cmd <- gen
-      cmd' <- getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
-      return $ Untyped <$> cmd'
-
-    ixref <- case response cmd of
-      SResponse    -> return ()
-      SReference i -> do
-        modify (M.insertWith (\_ old -> old + 1) (fromSing i) 0)
-        m <- get
-        return $ IntRef (Ref (m M.! fromSing i)) pid
-
-    (IntRefed cmd ixref :) <$> go (pred sz)
+liftGen gen = liftGen' (lift gen) ()
 
 liftGen'
-  :: forall ix cmd
+  :: forall ix cmd s
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => Gen [Untyped cmd (RefPlaceholder ix)]
+  => StateT s Gen (Untyped cmd (RefPlaceholder ix))
+  -> s
   -> Pid
   -> Map ix Int
   -> Gen ([IntRefed cmd], Map ix Int)
-liftGen' gen pid ns = do
-  cmds <- gen
-  runStateT (go cmds) ns
+liftGen' gen s0 pid ns = sized $ \sz -> runStateT (evalStateT (go sz) s0) ns
   where
 
-  go :: [Untyped cmd (RefPlaceholder ix)] -> StateT (Map ix Int) Gen [IntRefed cmd]
-  go []                   = return []
-  go (Untyped cmd0 : cmds) = do
+  go :: Int -> StateT s (StateT (Map ix Int) Gen) [IntRefed cmd]
+  go 0  = return []
+  go sz = do
 
-    scopes <- get
+    scopes <- lift get
 
-    Untyped cmd <- lift . genFromMaybe $ do
-      cmd' <- getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd0 (translate scopes)
+    Untyped cmd <- genFromMaybe $ do
+      Untyped cmd <- mapStateT lift gen
+      cmd' <- lift $ lift $ getCompose $ ifor
+        (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
       return $ Untyped <$> cmd'
 
     ixref <- case response cmd of
       SResponse    -> return ()
       SReference i -> do
-        modify (M.insertWith (\_ old -> old + 1) (fromSing i) 0)
-        m <- get
+        lift $ modify (M.insertWith (\_ old -> old + 1) (fromSing i) 0)
+        m <- lift get
         return $ IntRef (Ref (m M.! fromSing i)) pid
 
-    (IntRefed cmd ixref :) <$> go cmds
+    (IntRefed cmd ixref :) <$> go (sz - 1)
 
   translate
     :: forall (i :: ix)
