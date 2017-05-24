@@ -91,11 +91,16 @@ gen = do
   then do
     modify succ
     lift $ Untyped . New <$> arbitrary
-  else
-    lift $ frequency
-      [ (5, Untyped . Find <$> choose (0, n - 1))
+  else do
+    cmd <- lift $ frequency
+      [ (1, Untyped . New  <$> arbitrary)
+      , (5, Untyped . Find <$> choose (0, n - 1))
       , (5, Untyped <$> (Union <$> choose (0, n - 1) <*> choose (0, n - 1)))
       ]
+    case cmd of
+      Untyped (New _) -> modify succ
+      _               -> return ()
+    return cmd
 
 shrink1 :: Action refs resp -> [Action refs resp]
 shrink1 (New x) = [ New x' | x' <- shrink x ]
