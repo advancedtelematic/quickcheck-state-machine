@@ -37,7 +37,7 @@ type Ref = Int
 data Action :: Signature () where
   New   :: Int        -> Action refs ('Response (Element Int))
   Find  :: Ref        -> Action refs ('Response (Element Int))
-  Union :: Ref -> Ref -> Action refs ('Response ())
+  Union :: Ref -> Ref -> Action refs ('Response (Element Int))
 
 ------------------------------------------------------------------------
 
@@ -51,37 +51,34 @@ initModel = Model []
 preconditions
   :: forall refs resp. IxForallF Ord refs
   => Model refs -> Action refs resp -> Bool
-preconditions (Model m) cmd = (case cmd of
+preconditions (Model m) cmd = case cmd of
   New   _         -> True
   Find  ref       -> ref  < length m
-  Union ref1 ref2 -> ref1 < length m && ref2  < length m
-  ) \\ (iinstF @'() Proxy :: Ords refs)
+  Union ref1 ref2 -> ref1 < length m && ref2 < length m
 
 transitions
   :: forall refs resp. IxForallF Ord refs
   => Model refs -> Action refs resp -> Response_ refs resp -> Model refs
-transitions (Model m) cmd resp = (case cmd of
+transitions (Model m) cmd resp = case cmd of
   New   _         -> Model (m ++ [resp])
   Find  ref       -> Model m
   Union ref1 ref2 ->
-    let z  = m' !! ref1
+    let z  = resp -- which will be the same as `m' !! ref1`.
         m' = [ if z' == m !! ref1 || z' == m !! ref2
                then z else z'
              | z' <- m
              ]
     in Model m'
-  ) \\ (iinstF @'() Proxy :: Ords refs)
 
 postconditions
   :: forall refs resp. IxForallF Ord refs
   => Model refs -> Action refs resp -> Response_ refs resp -> Property
-postconditions (Model m) cmd resp = (case cmd of
+postconditions (Model m) cmd resp = case cmd of
   New   _         -> property True
   Find  ref       -> property (resp == m !! ref)
   Union ref1 ref2 ->
     let z = m' !! ref1
-    in property $ z == m !! ref1 || z == m !! ref2
-  ) \\ (iinstF @'() Proxy :: Ords refs)
+    in property $ (z == m !! ref1 || z == m !! ref2) && z == m' !! ref2
   where
   Model m' = transitions (Model m) cmd resp
 
@@ -138,7 +135,7 @@ findElement (Element x ref) = do
       writeIORef ref (Next last')
       return last'
 
-unionElements :: Element a -> Element a -> IO ()
+unionElements :: Element a -> Element a -> IO (Element a)
 unionElements e1 e2 = do
 
   Element x1 ref1 <- findElement e1
@@ -150,9 +147,11 @@ unionElements e1 e2 = do
   then do
     writeIORef ref1 (Next (Element x2 ref2))
     writeIORef ref2 (Weight (w1 + w2))
+    return (Element x2 ref2)
   else do
     writeIORef ref2 (Next (Element x1 ref1))
     writeIORef ref1 (Weight (w1 + w2))
+    return (Element x1 ref1)
 
 instance Eq (Element a) where
   Element _ ref1 == Element _ ref2 = ref1 == ref2
