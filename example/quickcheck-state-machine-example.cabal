@@ -24,6 +24,7 @@ test-suite quickcheck-state-machine-example-test
   main-is:             Spec.hs
   other-modules:       DieHardSpec
                      , MutableReferenceSpec
+                     , UnionFindSpec
   build-depends:       base
                      , containers
                      , hspec
