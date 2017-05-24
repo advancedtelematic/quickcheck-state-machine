@@ -18,14 +18,11 @@ import           Control.Monad.State
                    (StateT, evalStateT, get, liftIO, modify)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
-import           Data.Map
-                   (Map)
-import qualified Data.Map                as M
 import           Data.Singletons.Prelude
-                   (type (@@), ConstSym1, Proxy(..), Sing(STuple0))
+                   (ConstSym1)
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, choose, frequency,
-                   ioProperty, property, shrink, (.&&.), (==>))
+                   ioProperty, property, shrink)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -61,7 +58,7 @@ transitions
   => Model refs -> Action refs resp -> Response_ refs resp -> Model refs
 transitions (Model m) cmd resp = case cmd of
   New   _         -> Model (m ++ [resp])
-  Find  ref       -> Model m
+  Find  _         -> Model m
   Union ref1 ref2 ->
     let z  = resp -- which will be the same as `m' !! ref1`.
         m' = [ if z' == m !! ref1 || z' == m !! ref2
@@ -183,19 +180,19 @@ instance HasResponse Action where
   response Union {} = SResponse
 
 instance IxFunctor Action where
-  ifmap _ (New   x)         = New  x
-  ifmap f (Find  ref)       = Find  ref
-  ifmap f (Union ref1 ref2) = Union ref1 ref2
+  ifmap _ (New   x)         = New   x
+  ifmap _ (Find  ref)       = Find  ref
+  ifmap _ (Union ref1 ref2) = Union ref1 ref2
 
 instance IxFoldable Action where
-  ifoldMap _ (New   _)         = mempty
-  ifoldMap f (Find  ref)       = mempty
-  ifoldMap f (Union ref1 ref2) = mempty
+  ifoldMap _ (New   _)   = mempty
+  ifoldMap _ (Find  _)   = mempty
+  ifoldMap _ (Union _ _) = mempty
 
 instance IxTraversable Action where
   ifor _ (New   x)         _ = pure (New x)
-  ifor _ (Find  ref)       f = pure (Find  ref)
-  ifor _ (Union ref1 ref2) f = pure (Union ref1 ref2)
+  ifor _ (Find  ref)       _ = pure (Find  ref)
+  ifor _ (Union ref1 ref2) _ = pure (Union ref1 ref2)
 
 instance ShowCmd Action where
   showCmd (New   x)         = "New "    ++ show x
