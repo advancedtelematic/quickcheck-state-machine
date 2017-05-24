@@ -22,6 +22,7 @@ module Test.StateMachine
   , sequentialProperty'
     -- * Parallel property helper
   , parallelProperty
+  , module Test.StateMachine.Types
   ) where
 
 import           Control.Monad.State
@@ -48,6 +49,7 @@ import           Test.StateMachine.Types
 sequentialProperty
   :: CommandConstraint ix cmd
   => Monad m
+  => Show (model ConstIntRef)
   => StateMachineModel model cmd                             -- ^ Model
   -> Gen (Untyped cmd (RefPlaceholder ix))                   -- ^ Generator
   -> (forall resp refs'. Shrinker (cmd refs' resp))          -- ^ Shrinker
@@ -55,16 +57,20 @@ sequentialProperty
   -> (m Property -> Property)
   -> Property
 sequentialProperty smm gen shrinker sem runM =
-  sequentialProperty' smm (lift gen) () shrinker sem runM
+  sequentialProperty' smm (lift gen) () shrinker (const (const sem)) runM
 
 sequentialProperty'
   :: CommandConstraint ix cmd
+  => Show (model ConstIntRef)
   => Monad m
   => StateMachineModel model cmd                             -- ^ Model
   -> StateT s Gen (Untyped cmd (RefPlaceholder ix))          -- ^ Generator
   -> s                                                       -- ^ Generator state
   -> (forall resp refs'. Shrinker (cmd refs' resp))          -- ^ Shrinker
-  -> (forall resp. cmd refs resp -> m (Response_ refs resp)) -- ^ Semantics
+  -> (forall resp. model ConstIntRef ->
+        MayResponse_ ConstIntRef resp ->
+        cmd refs resp ->
+        m (Response_ refs resp))                             -- ^ Semantics
   -> (m Property -> Property)
   -> Property
 sequentialProperty' smm gen s shrinker sem runM =

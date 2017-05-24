@@ -25,7 +25,6 @@ import           Test.QuickCheck
                    ioProperty, property, shrink)
 
 import           Test.StateMachine
-import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
@@ -39,6 +38,7 @@ data Action :: Signature () where
 ------------------------------------------------------------------------
 
 newtype Model refs = Model [Element Int]
+  deriving Show
 
 initModel :: Model refs
 initModel = Model []
@@ -204,5 +204,5 @@ prop_sequential = sequentialProperty'
   gen
   0
   shrink1
-  semantics
+  (const (const semantics))
   (ioProperty . flip evalStateT [])

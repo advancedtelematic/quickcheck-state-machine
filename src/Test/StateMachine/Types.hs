@@ -43,6 +43,7 @@ module Test.StateMachine.Types
   , showCmd
   , IxForallF
   , Ords
+  , Ords'
   , iinstF
   , (\\)
   , Ex(..)
@@ -53,7 +54,12 @@ module Test.StateMachine.Types
   , itoList
   , iany
   , IxTraversable
+  , itraverse
   , ifor
+  , type (@@)
+  , Property
+  , property
+  , Proxy(..)
   ) where
 
 import           Data.Constraint
@@ -69,7 +75,7 @@ import           Data.Singletons.TH
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck.Property
-                   (Property)
+                   (Property, property)
 
 import           Test.StateMachine.Internal.Types.IntRef
 
@@ -155,6 +161,8 @@ iinstF _ = Sub $
     Sub Dict -> Dict
 
 type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
+
+type Ords' refs i = IxForallF Ord refs :- Ord (refs @@ i)
 
 ------------------------------------------------------------------------
 

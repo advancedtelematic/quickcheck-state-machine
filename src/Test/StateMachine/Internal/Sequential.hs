@@ -214,10 +214,12 @@ checkSequentialInvariant
   => Monad m
   => SDecide   ix
   => IxFunctor cmd
+  => Show (model ConstIntRef)
   => HasResponse cmd
   => StateMachineModel model cmd
   -> model ConstIntRef
-  -> (forall resp. cmd refs resp -> m (Response_ refs resp))
+  -> (forall resp. model ConstIntRef -> MayResponse_ ConstIntRef resp -> cmd refs resp ->
+        m (Response_ refs resp))
   -> [IntRefed cmd]
   -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
 checkSequentialInvariant _ _ _ []                              = return ()
@@ -226,8 +228,8 @@ checkSequentialInvariant
     let s = takeWhile (/= ' ') $ showCmd cmd
     monitor $ label s
     pre $ precondition m cmd
-    resp <- run $ liftSem sem cmd miref
+    resp <- run $ liftSem (sem m miref) cmd miref
     liftProperty $
-      counterexample ("The post-condition for `" ++ s ++ "' failed!") $
+      counterexample ("\nThe post-condition for `" ++ s ++ "' failed!\n\n" ++ show m) $
         postcondition m cmd resp
     checkSequentialInvariant smm (transition m cmd resp) sem cmds

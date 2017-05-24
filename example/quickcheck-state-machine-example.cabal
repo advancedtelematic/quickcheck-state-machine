@@ -5,7 +5,8 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     DieHard
+  exposed-modules:     DeviceUpdates
+                     , DieHard
                      , MutableReference
                      , UnionFind
   build-depends:       base >= 4.7 && < 5
@@ -22,7 +23,8 @@ test-suite quickcheck-state-machine-example-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  other-modules:       DieHardSpec
+  other-modules:       DeviceUpdatesSpec
+                     , DieHardSpec
                      , MutableReferenceSpec
                      , UnionFindSpec
   build-depends:       base

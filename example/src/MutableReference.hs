@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE ExplicitNamespaces    #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -36,7 +37,6 @@ import           Test.QuickCheck
                    property, shrink)
 
 import           Test.StateMachine
-import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
@@ -49,6 +49,9 @@ data MemStep :: Signature () where
 ------------------------------------------------------------------------
 
 newtype Model refs = Model (Map (refs @@ '()) Int)
+
+instance Show (Model refs) where
+  show _ = "Model <...>"
 
 initModel :: Model ref
 initModel = Model M.empty
