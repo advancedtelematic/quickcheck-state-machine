@@ -206,9 +206,9 @@ instance ShowCmd Action where
 ------------------------------------------------------------------------
 
 prop_sequential :: Property
-prop_sequential = sequentialProperty
+prop_sequential = sequentialProperty'
   smm
-  undefined -- gen
+  (gen 0)
   shrink1
   semantics
   (ioProperty . flip evalStateT [])

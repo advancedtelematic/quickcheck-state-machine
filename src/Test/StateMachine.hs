@@ -18,6 +18,7 @@
 module Test.StateMachine
   ( -- * Sequential property helper
     sequentialProperty
+  , sequentialProperty'
     -- * Parallel property helper
   , parallelProperty
   ) where
@@ -60,6 +61,25 @@ sequentialProperty smm gens shrinker sem runM =
     $ \cmds -> collectStats cmds $
         monadic (runM . flip evalStateT IxM.empty) $
           checkSequentialInvariant smm (initialModel smm) sem cmds
+
+sequentialProperty'
+  :: CommandConstraint ix cmd
+  => Monad m
+  => StateMachineModel model cmd                             -- ^ Model
+  -> Gen [Untyped cmd (RefPlaceholder ix)]                   -- ^ Generator
+  -> (forall resp refs'. Shrinker (cmd refs' resp))          -- ^ Shrinker
+  -> (forall resp. cmd refs resp -> m (Response_ refs resp)) -- ^ Semantics
+  -> (m Property -> Property)
+  -> Property
+sequentialProperty' smm gens shrinker sem runM =
+  forAllShrinkShow
+    (fst <$> liftGen' gens 0 M.empty)
+    (liftShrink shrinker)
+    showIntRefedList
+    $ \cmds -> collectStats cmds $
+        monadic (runM . flip evalStateT IxM.empty) $
+          checkSequentialInvariant smm (initialModel smm) sem cmds
+
 
 ------------------------------------------------------------------------
 

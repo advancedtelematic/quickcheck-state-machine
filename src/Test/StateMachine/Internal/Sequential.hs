@@ -24,6 +24,7 @@
 
 module Test.StateMachine.Internal.Sequential
   ( liftGen
+  , liftGen'
   , liftShrinker
   , liftShrink
   , liftSem
@@ -109,6 +110,53 @@ liftGen gen pid ns = sized $ \sz -> runStateT (go sz) ns
         return $ IntRef (Ref (m M.! fromSing i)) pid
 
     (IntRefed cmd ixref :) <$> go (pred sz)
+
+liftGen'
+  :: forall ix cmd
+  .  Ord       ix
+  => SingKind  ix
+  => DemoteRep ix ~ ix
+  => IxTraversable cmd
+  => HasResponse cmd
+  => Gen [Untyped cmd (RefPlaceholder ix)]
+  -> Pid
+  -> Map ix Int
+  -> Gen ([IntRefed cmd], Map ix Int)
+liftGen' gen pid ns = do
+  cmds <- gen
+  runStateT (go cmds) ns
+  where
+
+  go :: [Untyped cmd (RefPlaceholder ix)] -> StateT (Map ix Int) Gen [IntRefed cmd]
+  go []                   = return []
+  go (Untyped cmd0 : cmds) = do
+
+    scopes <- get
+
+    Untyped cmd <- lift . genFromMaybe $ do
+      cmd' <- getCompose $ ifor (Proxy :: Proxy ConstIntRef) cmd0 (translate scopes)
+      return $ Untyped <$> cmd'
+
+    ixref <- case response cmd of
+      SResponse    -> return ()
+      SReference i -> do
+        modify (M.insertWith (\_ old -> old + 1) (fromSing i) 0)
+        m <- get
+        return $ IntRef (Ref (m M.! fromSing i)) pid
+
+    (IntRefed cmd ixref :) <$> go cmds
+
+  translate
+    :: forall (i :: ix)
+    .  Map ix Int
+    -> Sing i
+    -> RefPlaceholder ix @@ i
+    -> Compose Gen Maybe IntRef
+  translate scopes i _ = Compose $ case M.lookup (fromSing i) scopes of
+    Nothing -> return Nothing
+    Just u  -> do
+      v <- choose (0, max 0 (u - 1))
+      return . Just $ IntRef (Ref v) pid
 
 ------------------------------------------------------------------------
 
