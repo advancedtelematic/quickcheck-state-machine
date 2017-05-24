@@ -14,59 +14,37 @@
 
 module UnionFind where
 
+import           Control.Monad.State
+                   (StateT, evalStateT, get, liftIO, modify)
 import           Data.IORef
+                   (IORef, newIORef, readIORef, writeIORef)
 import           Data.Map
                    (Map)
 import qualified Data.Map                as M
 import           Data.Singletons.Prelude
                    (type (@@), ConstSym1, Proxy(..), Sing(STuple0))
 import           Test.QuickCheck
-                   (Gen, Property, choose, frequency, ioProperty,
-                   property, shrink, (.&&.), (==>))
+                   (Gen, Property, arbitrary, choose, frequency,
+                   ioProperty, property, shrink, (.&&.), (==>))
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+type Ref = Int
+
 data Action :: Signature () where
-  New   :: Int                        -> Action refs ('Reference '())
-  Find  :: refs @@ '()                -> Action refs ('Reference '())
-  Union :: refs @@ '() -> refs @@ '() -> Action refs ('Response ())
+  New   :: Int        -> Action refs ('Response (Element Int))
+  Find  :: Ref        -> Action refs ('Response (Element Int))
+  Union :: Ref -> Ref -> Action refs ('Response ())
 
 ------------------------------------------------------------------------
 
-newtype Model refs = Model (Map (refs @@ '()) (refs @@ '()))
+newtype Model refs = Model [Element Int]
 
 initModel :: Model refs
-initModel = Model M.empty
-
-(!!!) :: Ord k => Map k k -> k -> k
-m !!! ref =
-  let ref' = m M.! ref
-  in if ref == ref'
-     then ref
-     else m !!! ref'
-
-prop_eqRel :: [(Bool, Bool)] -> Property
-prop_eqRel xys0 = reflexive .&&. symmetric .&&. transitive
-  where
-  reflexive  x     = x .~. x
-  symmetric  x y   = (x .~. y) <==> (y .~. x)
-  transitive x y z = ((x .~. y) && (y .~. z)) ==> (x .~. z)
-
-  (<==>) x y = (x ==> y) .&&. (y ==> x)
-
-  x .~. y = let m = mkRel xys0 in
-    x == y ||
-    if x `elem` M.keys m &&
-       y `elem` M.keys m
-    then m !!! x == m !!! y
-    else False
-
-  mkRel []             = M.empty
-  mkRel ((x, y) : xys) =
-    M.insert x x $ M.insert y y $ M.insert x y $ M.insert y x $ mkRel xys
+initModel = Model []
 
 ------------------------------------------------------------------------
 
@@ -75,17 +53,23 @@ preconditions
   => Model refs -> Action refs resp -> Bool
 preconditions (Model m) cmd = (case cmd of
   New   _         -> True
-  Find  ref       -> M.member ref  m
-  Union ref1 ref2 -> M.member ref1 m && M.member ref2 m
+  Find  ref       -> ref  < length m
+  Union ref1 ref2 -> ref1 < length m && ref2  < length m
   ) \\ (iinstF @'() Proxy :: Ords refs)
 
 transitions
   :: forall refs resp. IxForallF Ord refs
   => Model refs -> Action refs resp -> Response_ refs resp -> Model refs
 transitions (Model m) cmd resp = (case cmd of
-  New   _         -> Model (M.insert resp resp m)
-  Find  ref       -> Model (M.insert resp resp $ M.insert ref resp m)
-  Union ref1 ref2 -> Model (M.insert ref1 (m !!! ref2) m)
+  New   _         -> Model (m ++ [resp])
+  Find  ref       -> Model m
+  Union ref1 ref2 ->
+    let z  = m' !! ref1
+        m' = [ if z' == m !! ref1 || z' == m !! ref2
+               then z else z'
+             | z' <- m
+             ]
+    in Model m'
   ) \\ (iinstF @'() Proxy :: Ords refs)
 
 postconditions
@@ -93,10 +77,10 @@ postconditions
   => Model refs -> Action refs resp -> Response_ refs resp -> Property
 postconditions (Model m) cmd resp = (case cmd of
   New   _         -> property True
-  Find  ref       -> property (resp == m' !!! ref)
+  Find  ref       -> property (resp == m !! ref)
   Union ref1 ref2 ->
-    let z = m' !!! ref1
-    in property $ z == m !!! ref1 || z == m !!! ref2
+    let z = m' !! ref1
+    in property $ z == m !! ref1 || z == m !! ref2
   ) \\ (iinstF @'() Proxy :: Ords refs)
   where
   Model m' = transitions (Model m) cmd resp
@@ -106,11 +90,25 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 
 ------------------------------------------------------------------------
 
-gen :: Gen (Untyped Action (RefPlaceholder ()))
-gen = frequency
-  [ (1, Untyped . New <$> choose (0, 100))
-  , (5, return . Untyped $ Find STuple0)
-  , (5, return . Untyped $ Union STuple0 STuple0)
+gen :: Int -> Gen [Untyped Action (RefPlaceholder ())]
+gen 0 = frequency
+  [ (25, do x <- arbitrary
+            (Untyped (New x) :) <$> gen 1
+    )
+  , (1,  pure [])
+  ]
+gen n = frequency
+  [ (1, do x <- arbitrary
+           (Untyped (New x) :) <$> gen (n + 1)
+    )
+  , (5, do i <- choose (0, n - 1)
+           (Untyped (Find i) :) <$> gen n
+    )
+  , (5, do i <- choose (0, n - 1)
+           j <- choose (0, n - 1)
+           (Untyped (Union i j) :) <$> gen n
+    )
+  , (1, pure [])
   ]
 
 shrink1 :: Action refs resp -> [Action refs resp]
@@ -159,36 +157,46 @@ unionElements e1 e2 = do
 instance Eq (Element a) where
   Element _ ref1 == Element _ ref2 = ref1 == ref2
 
+instance Show a => Show (Element a) where
+  show (Element x _) = "Element " ++ show x
+
 ------------------------------------------------------------------------
 
 semantics
   :: Action (ConstSym1 (Element Int)) resp
-  -> IO (Response_ (ConstSym1 (Element Int)) resp)
-semantics (New   x)     = newElement x
-semantics (Find  e)     = findElement e
-semantics (Union e1 e2) = unionElements e1 e2
+  -> StateT [Element Int] IO (Response_ (ConstSym1 (Element Int)) resp)
+semantics (New   x)     = do
+  e <- liftIO (newElement x)
+  modify (++ [e])
+  return e
+semantics (Find  r)     = do
+  env <- get
+  liftIO (findElement (env !! r))
+semantics (Union r1 r2) = do
+  env <- get
+  liftIO (unionElements (env !! r1) (env !! r2))
 
 ------------------------------------------------------------------------
 
 instance HasResponse Action where
-  response New   {} = SReference STuple0
-  response Find  {} = SReference STuple0
+  response New   {} = SResponse
+  response Find  {} = SResponse
   response Union {} = SResponse
 
 instance IxFunctor Action where
   ifmap _ (New   x)         = New  x
-  ifmap f (Find  ref)       = Find  (f STuple0 ref)
-  ifmap f (Union ref1 ref2) = Union (f STuple0 ref1) (f STuple0 ref2)
+  ifmap f (Find  ref)       = Find  ref
+  ifmap f (Union ref1 ref2) = Union ref1 ref2
 
 instance IxFoldable Action where
   ifoldMap _ (New   _)         = mempty
-  ifoldMap f (Find  ref)       = f STuple0 ref
-  ifoldMap f (Union ref1 ref2) = f STuple0 ref1  `mappend` f STuple0 ref2
+  ifoldMap f (Find  ref)       = mempty
+  ifoldMap f (Union ref1 ref2) = mempty
 
 instance IxTraversable Action where
   ifor _ (New   x)         _ = pure (New x)
-  ifor _ (Find  ref)       f = Find  <$> f STuple0 ref
-  ifor _ (Union ref1 ref2) f = Union <$> f STuple0 ref1 <*> f STuple0 ref2
+  ifor _ (Find  ref)       f = pure (Find  ref)
+  ifor _ (Union ref1 ref2) f = pure (Union ref1 ref2)
 
 instance ShowCmd Action where
   showCmd (New   x)         = "New "    ++ show x
@@ -200,7 +208,7 @@ instance ShowCmd Action where
 prop_sequential :: Property
 prop_sequential = sequentialProperty
   smm
-  gen
+  undefined -- gen
   shrink1
   semantics
-  ioProperty
+  (ioProperty . flip evalStateT [])
