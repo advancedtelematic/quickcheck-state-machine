@@ -22,6 +22,7 @@ module Test.StateMachine
   , sequentialProperty'
     -- * Parallel property helper
   , parallelProperty
+  , parallelProperty'
   , module Test.StateMachine.Types
   ) where
 
@@ -75,7 +76,7 @@ sequentialProperty'
   -> Property
 sequentialProperty' smm gen s shrinker sem runM =
   forAllShrinkShow
-    (fst <$> liftGen' gen s 0 M.empty)
+    (fst . fst <$> liftGen' gen s 0 M.empty)
     (liftShrink shrinker)
     showIntRefedList
     $ \cmds -> collectStats cmds $
@@ -97,10 +98,23 @@ parallelProperty
   -> (forall resp. cmd refs resp -> IO (Response_ refs resp)) -- ^ Semantics
   -> Property
 parallelProperty smm gen shrinker sem
+  = parallelProperty' smm (lift gen) () shrinker sem (return ())
+
+parallelProperty'
+  :: CommandConstraint ix cmd
+  => StateMachineModel model cmd                              -- ^ Model
+  -> StateT genState Gen (Untyped cmd (RefPlaceholder ix))    -- ^ Generator
+  -> genState
+  -> (forall resp refs'. Shrinker (cmd refs' resp))           -- ^ Shrinker
+  -> (forall resp. cmd refs resp -> IO (Response_ refs resp)) -- ^ Semantics
+  -> IO ()                                                    -- ^ Cleanup
+  -> Property
+parallelProperty' smm gen genState shrinker sem clean
   = forAllShrinkShow
-      (liftGenFork gen)
+      (liftGenFork' gen genState)
       (liftShrinkFork shrinker)
       (showFork showIntRefedList)
       $ \fork -> monadicIO $ replicateM_ 10 $ do
+          run clean
           hist <- run $ liftSemFork sem fork
           checkParallelInvariant smm hist

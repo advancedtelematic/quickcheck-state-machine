@@ -25,6 +25,7 @@
 
 module Test.StateMachine.Internal.Parallel
   ( liftGenFork
+  , liftGenFork'
   , liftShrinkFork
   , liftSemFork
   , checkParallelInvariant
@@ -86,10 +87,21 @@ liftGenFork
   => HasResponse   cmd
   => Gen (Untyped cmd (RefPlaceholder ix))
   -> Gen (Fork [IntRefed cmd])
-liftGenFork gen = do
-  (prefix, ns) <- liftGen gen 0 M.empty
-  left         <- fst <$> liftGen gen 1 ns
-  right        <- fst <$> liftGen gen 2 ns
+liftGenFork gen = liftGenFork' (lift gen) ()
+
+liftGenFork'
+  :: Ord       ix
+  => SingKind  ix
+  => DemoteRep ix ~ ix
+  => IxTraversable cmd
+  => HasResponse   cmd
+  => StateT genState Gen (Untyped cmd (RefPlaceholder ix))
+  -> genState
+  -> Gen (Fork [IntRefed cmd])
+liftGenFork' gen gs = do
+  ((prefix, gs'), ns) <- liftGen' gen gs 0 M.empty
+  left                <- fst . fst <$> liftGen' gen gs' 1 ns
+  right               <- fst . fst <$> liftGen' gen gs' 2 ns
   return $ Fork
     (map (\(IntRefed cmd miref) ->
             IntRefed (ifmap (fixPid ns) cmd) miref) left)

@@ -34,8 +34,7 @@ module Test.StateMachine.Internal.Sequential
   ) where
 
 import           Control.Monad.State
-                   (StateT, evalStateT, get, lift, mapStateT, modify,
-                   runStateT)
+                   (StateT, get, lift, mapStateT, modify, runStateT)
 import           Data.Functor.Compose
                    (Compose(..), getCompose)
 import           Data.Map
@@ -77,7 +76,9 @@ liftGen
   -> Pid
   -> Map ix Int
   -> Gen ([IntRefed cmd], Map ix Int)
-liftGen gen = liftGen' (lift gen) ()
+liftGen gen pid
+  = fmap (\((rs, _), ns) -> (rs, ns))
+  . liftGen' (lift gen) () pid
 
 liftGen'
   :: forall ix cmd genState
@@ -90,8 +91,8 @@ liftGen'
   -> genState
   -> Pid
   -> Map ix Int
-  -> Gen ([IntRefed cmd], Map ix Int)
-liftGen' gen gs pid ns = sized $ \sz -> runStateT (evalStateT (go sz) gs) ns
+  -> Gen (([IntRefed cmd], genState), Map ix Int)
+liftGen' gen gs pid ns = sized $ \sz -> runStateT (runStateT (go sz) gs) ns
   where
 
   go :: Int -> StateT genState (StateT (Map ix Int) Gen) [IntRefed cmd]
