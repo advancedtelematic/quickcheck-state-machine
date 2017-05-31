@@ -9,15 +9,19 @@ library
                      , DieHard
                      , MutableReference
                      , MutableReference.Prop
+                     , TicketDispenser
                      , UnionFind
   build-depends:       base >= 4.7 && < 5
                      , constraints
                      , containers
+                     , directory
+                     , filelock
                      , mtl
                      , QuickCheck
                      , quickcheck-state-machine
                      , random
                      , singletons
+                     , strict
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-example-test
@@ -27,6 +31,7 @@ test-suite quickcheck-state-machine-example-test
   other-modules:       DeviceUpdatesSpec
                      , DieHardSpec
                      , MutableReferenceSpec
+                     , TicketDispenserSpec
                      , UnionFindSpec
   build-depends:       base
                      , containers
