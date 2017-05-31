@@ -13,6 +13,11 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
+-- This module provides scope-checking for internal commands. This
+-- functionality isn't used anywhere in the library, but can be useful
+-- for writing
+-- <https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference/Prop.hs metaproperties>.
+--
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.ScopeCheck
@@ -25,6 +30,8 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+-- | Scope-check a list of untyped internal commands, i.e. make sure
+--   that no command uses a reference that doesn't exist.
 scopeCheck
   :: forall cmd. (IxFoldable cmd, HasResponse cmd)
   => [IntRefed cmd] -> Bool
@@ -40,6 +47,7 @@ scopeCheck = go []
       all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
       go refs cs
 
+-- | Same as above, but for forks rather than lists.
 scopeCheckFork
   :: (IxFoldable cmd, HasResponse cmd)
   => Fork [IntRefed cmd] -> Bool

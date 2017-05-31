@@ -16,6 +16,11 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
+-- This module provides \(\alpha\)-equality for internal commands. This
+-- functionality isn't used anywhere in the library, but can be useful
+-- for writing
+-- <https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference/Prop.hs metaproperties>.
+--
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.AlphaEquality
@@ -87,24 +92,28 @@ canonicalFork (Fork l p r) = Fork l' p' r'
   l'        = fst $ canonical' im' l
   r'        = fst $ canonical' im' r
 
+-- | Check if two lists of commands are equal modulo
+--   \(\alpha\)-conversion.
 alphaEq
   :: forall ix (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd
   => Eq (IntRefed cmd)
-  => [IntRefed cmd]
-  -> [IntRefed cmd]
+  => [IntRefed cmd]     -- ^ The two
+  -> [IntRefed cmd]     -- ^ input lists.
   -> Bool
 alphaEq c0 c1 = canonical c0 == canonical c1
 
+-- | Check if two forks of commands are equal modulo
+--   \(\alpha\)-conversion.
 alphaEqFork
   :: forall ix (cmd :: Signature ix)
   .  SDecide ix
   => IxTraversable cmd
   => HasResponse   cmd
   => Eq (IntRefed  cmd)
-  => Fork [IntRefed cmd]
-  -> Fork [IntRefed cmd]
+  => Fork [IntRefed cmd]  -- ^ The two
+  -> Fork [IntRefed cmd]  -- ^ input forks.
   -> Bool
 alphaEqFork f1 f2 = canonicalFork f1 == canonicalFork f2

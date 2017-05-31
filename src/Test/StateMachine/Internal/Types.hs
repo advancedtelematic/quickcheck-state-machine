@@ -18,6 +18,8 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
+-- This module exports some types that are used internally by the library.
+--
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Types
@@ -49,16 +51,21 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+-- | Type-level function that maybe returns a reference.
 type family MayResponse_ (refs :: TyFun ix k -> Type) (resp :: Response ix) :: k where
   MayResponse_ refs ('Response  t) = ()
   MayResponse_ refs ('Reference i) = refs @@ i
 
+-- | Internal untyped commands.
 data IntRefed (f :: Signature ix) where
   IntRefed :: ( Show     (Response_ ConstIntRef resp)
               , Typeable (Response_ ConstIntRef resp)
               , Typeable resp
               ) => f ConstIntRef resp -> MayResponse_ ConstIntRef resp -> IntRefed f
 
+-- | Forks are used to represent parallel programs. They have a sequential
+--   prefix (the middle argument of the constructor), and two parallel suffixes
+--   (the left- and right-most argument of the constructor).
 data Fork a = Fork a a a
   deriving (Eq, Functor, Show, Ord, Read)
 
@@ -73,10 +80,12 @@ instance Pretty a => Pretty (Fork a) where
 
 ------------------------------------------------------------------------
 
-showFork:: (a -> String) -> Fork a -> String
+-- | Show function for forks.
+showFork :: (a -> String) -> Fork a -> String
 showFork showx (Fork l p r) =
   "Fork (" ++ showx l ++ ") (" ++ showx p ++ ") (" ++ showx r ++ ")"
 
+-- | Show function for lists of untyped internal commands.
 showIntRefedList :: (ShowCmd cmd, HasResponse cmd) => [IntRefed cmd] -> String
 showIntRefedList = showList'
   (\(IntRefed cmd miref) -> showCmd cmd ++ " " ++

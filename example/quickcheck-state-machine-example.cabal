@@ -1,7 +1,9 @@
 name:                quickcheck-state-machine-example
 version:             1
 build-type:          Simple
+extra-source-files:  README.md
 cabal-version:       >=1.10
+tested-with:         GHC == 8.0.2
 
 library
   hs-source-dirs:      src

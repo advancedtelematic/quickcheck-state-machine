@@ -59,6 +59,7 @@ sequentialProperty
 sequentialProperty smm gen shrinker sem runM =
   sequentialProperty' smm (lift gen) () shrinker (const (const sem)) runM
 
+-- | Same as above, except it provides more flexibility.
 sequentialProperty'
   :: CommandConstraint ix cmd
   => Show (model ConstIntRef)

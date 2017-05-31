@@ -21,6 +21,9 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
+-- This module contains the building blocks needed to implement the
+-- 'Test.StateMachine.parallelProperty' helper.
+--
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Parallel
@@ -78,13 +81,15 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+-- | Lift a generator of untyped commands with reference placeholders
+--   into a generator of forks of untyped internal commands.
 liftGenFork
   :: Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse   cmd
-  => Gen (Untyped cmd (RefPlaceholder ix))
+  => Gen (Untyped cmd (RefPlaceholder ix))  -- ^ Generator to be lifted.
   -> Gen (Fork [IntRefed cmd])
 liftGenFork gen = do
   (prefix, ns) <- liftGen gen 0 M.empty
@@ -103,11 +108,13 @@ liftGenFork gen = do
 
 ------------------------------------------------------------------------
 
+-- | Lift a shrinker of internal commands into a shrinker of forks of
+--   untyped internal commands.
 liftShrinkFork
   :: forall cmd
   .  IxFoldable  cmd
   => HasResponse cmd
-  => (forall resp. Shrinker (cmd ConstIntRef resp))
+  => (forall resp. Shrinker (cmd ConstIntRef resp)) -- ^ Shrinker to be lifted.
   -> Shrinker (Fork [IntRefed cmd])
 liftShrinkFork shrinker f@(Fork l0 p0 r0) =
 
@@ -261,6 +268,11 @@ runMany kit sem = flip foldM () $ \_ cmd'@(IntRefed cmd iref) -> do
     atomically $ writeTChan (getHistoryChannel kit) $
       ResponseEvent (toDyn resp) (getProcessIdHistory kit)
 
+-- | Lift the semantics of a single typed command into a semantics for
+--   forks of untyped internal commands. The prefix of the fork is
+--   executed sequentially, while the two suffixes are executed in
+--   parallel, and the result (or trace) is collected in a so called
+--   history.
 liftSemFork
   :: forall
      (ix    :: Type)
@@ -269,7 +281,8 @@ liftSemFork
   .  SDecide ix
   => IxFunctor   cmd
   => HasResponse cmd
-  => (forall resp. cmd refs resp -> IO (Response_ refs resp))
+  => (forall resp. cmd refs resp ->
+        IO (Response_ refs resp))       -- ^ Semantics to be lifted.
   -> Fork [IntRefed cmd]
   -> IO (History cmd)
 liftSemFork sem (Fork left prefix right) = do
@@ -292,6 +305,7 @@ liftSemFork sem (Fork left prefix right) = do
         Just x  -> go $ x : acc
         Nothing -> return acc
 
+-- | Check if a history can be linearised.
 checkParallelInvariant
   :: ShowCmd cmd
   => StateMachineModel model cmd -> History cmd -> PropertyM IO ()
