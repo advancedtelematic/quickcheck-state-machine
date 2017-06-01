@@ -79,7 +79,7 @@ sequentialProperty' smm gen s shrinker sem runM =
   forAllShrinkShow
     (fst . fst <$> liftGen' gen s 0 M.empty)
     (liftShrink shrinker)
-    showIntRefedList
+    show
     $ \cmds -> collectStats cmds $
         monadic (runM . flip evalStateT IxM.empty) $
           checkSequentialInvariant smm (initialModel smm) sem cmds
@@ -114,7 +114,7 @@ parallelProperty' smm gen genState shrinker sem clean
   = forAllShrinkShow
       (liftGenFork' gen genState)
       (liftShrinkFork shrinker)
-      (showFork showIntRefedList)
+      show
       $ \fork -> monadicIO $ replicateM_ 10 $ do
           run clean
           hist <- run $ liftSemFork sem fork

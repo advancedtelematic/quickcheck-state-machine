@@ -100,9 +100,6 @@ spec =
 deriving instance Show (Step resp refs)
 deriving instance Eq   (Step resp refs)
 
-instance Show (IntRefed Step) where
-  show (IntRefed cmd _) = show cmd
-
 instance Eq (IntRefed Step) where
   IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
 

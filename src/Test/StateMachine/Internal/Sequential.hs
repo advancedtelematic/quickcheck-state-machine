@@ -42,10 +42,10 @@ import           Data.Functor.Compose
                    (Compose(..), getCompose)
 import           Data.Map
                    (Map)
-import qualified Data.Map                         as M
+import qualified Data.Map                                as M
 import           Data.Set
                    (Set)
-import qualified Data.Set                         as S
+import qualified Data.Set                                as S
 import           Data.Singletons.Decide
                    (SDecide)
 import           Data.Singletons.Prelude
@@ -61,8 +61,10 @@ import           Test.QuickCheck.Property
 
 import           Test.StateMachine.Internal.IxMap
                    (IxMap)
-import qualified Test.StateMachine.Internal.IxMap as IxM
+import qualified Test.StateMachine.Internal.IxMap        as IxM
 import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Internal.Types.IntRef
+                   (showRef)
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Types
 
@@ -249,7 +251,7 @@ checkSequentialInvariant
 checkSequentialInvariant _ _ _ []                              = return ()
 checkSequentialInvariant
   smm@StateMachineModel {..} m sem (IntRefed cmd miref : cmds) = do
-    let s = takeWhile (/= ' ') $ showCmd cmd
+    let s = takeWhile (/= ' ') $ showCmd $ ifmap (const showRef) cmd
     monitor $ label s
     pre $ precondition m cmd
     resp <- run $ liftSem (sem m miref) cmd miref

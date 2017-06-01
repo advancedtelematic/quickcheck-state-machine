@@ -52,7 +52,7 @@ import           Data.Kind
                    (Type)
 import           Data.List
                    (partition)
-import qualified Data.Map                              as M
+import qualified Data.Map                                as M
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Singletons.Decide
@@ -74,9 +74,11 @@ import           Text.PrettyPrint.ANSI.Leijen
 
 import           Test.StateMachine.Internal.IxMap
                    (IxMap)
-import qualified Test.StateMachine.Internal.IxMap      as IxM
+import qualified Test.StateMachine.Internal.IxMap        as IxM
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Internal.Types.IntRef
+                   (showRef)
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Types
 
@@ -175,14 +177,15 @@ getProcessIdEvent (InvocationEvent _ pid) = pid
 getProcessIdEvent (ResponseEvent   _ pid) = pid
 
 data Operation cmd = forall resp.
-  (Show (Response_ ConstIntRef resp),
+  (Show (GetResponse_ resp),
+   HasResponse cmd,
    Typeable resp,
    Typeable (Response_ ConstIntRef resp)) =>
   Operation (cmd ConstIntRef resp) (Response_ ConstIntRef resp) Pid
 
-instance ShowCmd cmd => Pretty (Operation cmd) where
+instance (ShowCmd cmd, IxFunctor cmd) => Pretty (Operation cmd) where
   pretty (Operation cmd resp _) =
-    text (showCmd cmd) <+> text "-->" <+> text (show resp)
+    text (showCmd $ ifmap (const showRef) cmd) <+> text "-->" <+> text (showResponse_ (response cmd) resp)
   prettyList                     = vsep . map pretty
 
 takeInvocations :: History cmd -> [HistoryEvent (IntRefed cmd)]
@@ -196,7 +199,7 @@ findCorrespondingResp pid (ResponseEvent resp pid' : es) | pid == pid' = [(resp,
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
-linearTree :: History cmd -> [Tree (Operation cmd)]
+linearTree :: HasResponse cmd => History cmd -> [Tree (Operation cmd)]
 linearTree [] = []
 linearTree es =
   [ Node (Operation cmd (dynResp resp) pid) (linearTree es')
@@ -217,7 +220,8 @@ linearTree es =
 
 linearise
   :: forall cmd model
-  .  StateMachineModel model cmd
+  .  HasResponse cmd
+  => StateMachineModel model cmd
   -> History cmd
   -> Property
 linearise _                        [] = property True
@@ -234,7 +238,7 @@ linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ x
 
 ------------------------------------------------------------------------
 
-toForkOfOps :: forall cmd. History cmd -> Fork [Operation cmd]
+toForkOfOps :: forall cmd. HasResponse cmd => History cmd -> Fork [Operation cmd]
 toForkOfOps h = Fork (mkOps l) p' (mkOps r)
   where
   (p, h') = partition (\e -> getProcessIdEvent e == 0) h
@@ -319,7 +323,7 @@ liftSemFork sem (Fork left prefix right) = do
 
 -- | Check if a history can be linearised.
 checkParallelInvariant
-  :: ShowCmd cmd
+  :: (ShowCmd cmd, IxFunctor cmd, HasResponse cmd)
   => StateMachineModel model cmd -> History cmd -> PropertyM IO ()
 checkParallelInvariant smm hist
   = liftProperty
