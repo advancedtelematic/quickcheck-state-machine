@@ -20,8 +20,7 @@ module Test.StateMachine.Internal.Types.IntRef
   , Pid(..)
   , Ref(..)
   , ConstIntRef
-  )
-  where
+  ) where
 
 import           Data.Singletons.Prelude
                    (ConstSym1)

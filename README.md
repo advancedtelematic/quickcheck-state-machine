@@ -150,6 +150,13 @@ To get a better feel for the examples it might be helpful to `git clone` this
 repo, `cd` into the `example/` directory and fire up `stack ghci` and run the
 different properties interactively.
 
+### How to contribute
+
+The `quickcheck-state-machine` library is still very experimental.
+
+We would like to encourage users to try it out, and join the discussion of how
+we can improve it on the issue tracker!
+
 ### Also see
 
   * The QuickCheck
@@ -186,3 +193,7 @@ different properties interactively.
         Software Engineering
       - [Abstract State Machines](http://www.di.unipi.it/~boerger/AsmBook/): A
         Method for High-Level System Design and Analysis
+
+### License
+
+BSD-style (see the file LICENSE).
