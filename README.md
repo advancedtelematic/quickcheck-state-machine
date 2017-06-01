@@ -8,12 +8,39 @@ stateful programs. The library is different from
 the
 [`Test.QuickCheck.Monadic`](https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck-Monadic.html) approach
 in that it lets the user specify the correctness by means of a state machine
-based model using pre- and post-conditions.
+based model using pre- and post-conditions. The advantage of the state machine
+approach is twofold: 1) specifying the correctness of your programs becomes less
+adhoc, and 2) you get testing for race conditions for free.
 
 The combination of state machine based model specification and property based
 testing first appeard in Erlang's proprietary QuickCheck. The
 `quickcheck-state-machine` library can be seen as an attempt to provide similar
 functionality to Haskell's QuickCheck library.
+
+### Sample run (teaser)
+
+Here's a sample output from when we look for race conditions in the mutable
+reference example:
+
+```
+> quickCheck (MutableReference.prop_parallel RaceCondition)
+*** Failed! (after 5 tests and 6 shrinks):
+
+Couldn't linearise:
+
+Prefix:
+     New --> $0
+Parallel:
+  1. Inc $0 --> ()
+  2. Inc $0 --> ()
+     Read $0 --> 1
+```
+
+Clearly, if we increment a mutable reference in parallel we can end up with a
+race condition. We shall come back to this example below, but if your are
+impatient you can find the full source
+code
+[here](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference.hs).
 
 ### How it works
 
