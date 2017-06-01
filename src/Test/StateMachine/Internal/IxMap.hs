@@ -16,6 +16,9 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
+-- This module provides indexed maps. These are used to implement support for
+-- multiple references.
+--
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.IxMap
@@ -44,21 +47,27 @@ import           Prelude                 hiding
 
 ------------------------------------------------------------------------
 
+-- | An 'ix'-indexed family of maps.
 newtype IxMap (ix :: Type) (k :: Type) (vs :: TyFun ix Type -> Type)
   = IxMap (forall i. Proxy vs -> Sing (i :: ix) -> Map k (vs @@ i))
 
+-- | The empty map.
 empty :: IxMap i k vs
 empty = IxMap (\_ _ -> M.empty)
 
+-- | Partial lookup function.
 (!) :: Ord k => IxMap ix k vs -> (Sing i, k) -> vs @@ i
 IxMap m ! (i, k) = m Proxy i M.! k
 
+-- | Total version of the above.
 lookup :: Ord k => Sing i -> k -> IxMap ix k vs -> Maybe (vs @@ i)
 lookup i k (IxMap m) = M.lookup k (m Proxy i)
 
+-- | Key membership check.
 member :: Ord k => Sing (i :: ix) -> k -> IxMap ix k vs -> Bool
 member i k (IxMap m) = M.member k (m Proxy i)
 
+-- | Map insertion.
 insert
   :: (Ord k, SDecide ix)
   => Sing i -> k -> vs @@ i -> IxMap ix k vs -> IxMap ix k vs
@@ -66,5 +75,6 @@ insert i k v (IxMap m) = IxMap $ \_ j -> case i %~ j of
   Proved Refl -> M.insert k v (m Proxy i)
   _           -> m Proxy j
 
+-- | Size of the key set.
 size :: Sing (i :: ix) -> IxMap ix k vs -> Int
 size i (IxMap m) = M.size (m Proxy i)

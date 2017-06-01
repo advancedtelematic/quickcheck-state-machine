@@ -20,6 +20,9 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
+-- This module contains the building blocks needed to implement the
+-- 'Test.StateMachine.sequentialProperty' helper.
+--
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Sequential
@@ -65,6 +68,8 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+-- | Lift a generator of untyped commands with reference placeholders
+--   into a generator of lists of untyped internal commands.
 liftGen
   :: forall ix cmd
   .  Ord       ix
@@ -72,14 +77,17 @@ liftGen
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => Gen (Untyped cmd (RefPlaceholder ix))
-  -> Pid
-  -> Map ix Int
+  => Gen (Untyped cmd (RefPlaceholder ix))  -- ^ Generator to be lifted.
+  -> Pid                                    -- ^ Process id.
+  -> Map ix Int                             -- ^ Keeps track of how many
+                                            --   refereces of sort 'ix' are in
+                                            --   scope.
   -> Gen ([IntRefed cmd], Map ix Int)
 liftGen gen pid
   = fmap (\((rs, _), ns) -> (rs, ns))
   . liftGen' (lift gen) () pid
 
+-- | Same as the above, but for stateful generators.
 liftGen'
   :: forall ix cmd genState
   .  Ord       ix
@@ -87,8 +95,12 @@ liftGen'
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => StateT genState Gen (Untyped cmd (RefPlaceholder ix))
-  -> genState
+  => StateT genState Gen (Untyped cmd (RefPlaceholder ix)) -- ^ Stateful
+                                                           -- generator to be
+                                                           -- lifted.
+
+  -> genState                                              -- ^ Initial
+                                                           -- generator state.
   -> Pid
   -> Map ix Int
   -> Gen (([IntRefed cmd], genState), Map ix Int)
@@ -130,16 +142,20 @@ liftGen' gen gs pid ns = sized $ \sz -> runStateT (runStateT (go sz) gs) ns
 
 ------------------------------------------------------------------------
 
+-- | A shrinker of typed commands can be lifted to a shrinker of untyped
+--   commands.
 liftShrinker :: (forall resp. Shrinker (cmd ConstIntRef resp)) -> Shrinker (IntRefed cmd)
 liftShrinker shrinker (IntRefed cmd miref) =
   [ IntRefed cmd' miref
   | cmd' <- shrinker cmd
   ]
 
+-- | Lift a shrinker of internal commands into a shrinker of lists of
+--   untyped internal commands.
 liftShrink
   :: IxFoldable  cmd
   => HasResponse cmd
-  => (forall resp. Shrinker (cmd ConstIntRef resp))
+  => (forall resp. Shrinker (cmd ConstIntRef resp)) -- ^ Shrinker to be lifted.
   -> Shrinker [IntRefed cmd]
 liftShrink shrinker = go
   where
@@ -149,12 +165,15 @@ liftShrink shrinker = go
     [ removeCommands c cs ] ++
     [ c' : cs' | (c', cs') <- shrinkPair (liftShrinker shrinker) go (c, cs) ]
 
+-- | Remove commands that uses a reference.
 removeCommands
   :: forall cmd
   .  IxFoldable cmd
   => HasResponse cmd
-  => IntRefed cmd
-  -> [IntRefed cmd]
+  => IntRefed cmd    -- ^ If this command returns a reference, then
+  -> [IntRefed cmd]  -- ^ remove all commands that use that reference in
+                     --   this list. If a command we remove uses another
+                     --   reference, then we proceed recursively.
   -> [IntRefed cmd]
 removeCommands (IntRefed cmd0 miref0) cmds0 =
   case response cmd0 of
@@ -175,13 +194,15 @@ uses cmd xs = iany (\_ iref -> iref `S.member` xs) cmd
 
 ------------------------------------------------------------------------
 
+-- | Lift semantics of typed commands with external references, into
+--   semantics for typed commands with internal references.
 liftSem
   :: forall ix cmd refs resp m
   .  SDecide ix
   => Monad m
   => IxFunctor cmd
   => HasResponse cmd
-  => (cmd refs resp -> m (Response_ refs resp))
+  => (cmd refs resp -> m (Response_ refs resp)) -- ^ Semantics to be lifted.
   -> cmd ConstIntRef resp
   -> MayResponse_ ConstIntRef resp
   -> StateT (IxMap ix IntRef refs) m (Response_ ConstIntRef resp)
@@ -199,6 +220,7 @@ liftSem sem cmd iref = do
 
 ------------------------------------------------------------------------
 
+-- | Collects length statistics about the input list.
 collectStats :: [a] -> Property -> Property
 collectStats cmds
   = classify (len == 0)              "0     commands"
@@ -210,6 +232,7 @@ collectStats cmds
 
 ------------------------------------------------------------------------
 
+-- | Check that the pre- and post-conditions hold in a sequential way.
 checkSequentialInvariant
   :: ShowCmd cmd
   => Monad m
@@ -221,7 +244,7 @@ checkSequentialInvariant
   -> model ConstIntRef
   -> (forall resp. model ConstIntRef -> MayResponse_ ConstIntRef resp -> cmd refs resp ->
         m (Response_ refs resp))
-  -> [IntRefed cmd]
+  -> [IntRefed cmd]                 -- ^ List of commands to check.
   -> PropertyM (StateT (IxMap ix IntRef refs) m) ()
 checkSequentialInvariant _ _ _ []                              = return ()
 checkSequentialInvariant
