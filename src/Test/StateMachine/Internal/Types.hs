@@ -1,12 +1,13 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveFunctor      #-}
-{-# LANGUAGE ExplicitNamespaces #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE PolyKinds          #-}
-{-# LANGUAGE TypeFamilies       #-}
-{-# LANGUAGE TypeInType         #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE ExplicitNamespaces   #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeInType           #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -31,6 +32,7 @@ module Test.StateMachine.Internal.Types
   , Fork(..)
   , showFork
   , showIntRefedList
+  , showResponse_
   , MayResponse_
   ) where
 
@@ -58,10 +60,16 @@ type family MayResponse_ (refs :: TyFun ix k -> Type) (resp :: Response ix) :: k
 
 -- | Internal untyped commands.
 data IntRefed (f :: Signature ix) where
-  IntRefed :: ( Show     (Response_ ConstIntRef resp)
+  IntRefed :: ( Show     (GetResponse_ resp)
               , Typeable (Response_ ConstIntRef resp)
               , Typeable resp
               ) => f ConstIntRef resp -> MayResponse_ ConstIntRef resp -> IntRefed f
+
+instance (IxFunctor cmd, ShowCmd cmd, HasResponse cmd) => Show (IntRefed cmd) where
+  show (IntRefed cmd miref) = showCmd (ifmap (\ _ r -> "(" ++ show r ++ ")") cmd) ++ " " ++
+       case response cmd of
+         SResponse    -> "()"
+         SReference _ -> "(" ++ show miref ++ ")"
 
 -- | Forks are used to represent parallel programs. They have a sequential
 --   prefix (the middle argument of the constructor), and two parallel suffixes
@@ -86,12 +94,12 @@ showFork showx (Fork l p r) =
   "Fork (" ++ showx l ++ ") (" ++ showx p ++ ") (" ++ showx r ++ ")"
 
 -- | Show function for lists of untyped internal commands.
-showIntRefedList :: (ShowCmd cmd, HasResponse cmd) => [IntRefed cmd] -> String
+showIntRefedList :: (IxFunctor cmd, ShowCmd cmd, HasResponse cmd) => [IntRefed cmd] -> String
 showIntRefedList = showList'
-  (\(IntRefed cmd miref) -> showCmd cmd ++ " " ++
+  (\(IntRefed cmd miref) -> showCmd (ifmap (const showRef) cmd) ++ " " ++
        case response cmd of
          SResponse    -> "()"
-         SReference _ -> "(" ++ show miref ++ ")")
+         SReference _ -> "(" ++ showRef miref ++ ")")
   where
   showList' :: (a -> String) ->  [a] -> String
   showList' _     []       = "[]"
@@ -99,3 +107,7 @@ showIntRefedList = showList'
     where
     showl []       = "]"
     showl (y : ys) = ',' : showx y ++ showl ys
+
+showResponse_ :: Show (GetResponse_ resp) => SResponse ix resp -> Response_ ConstIntRef resp -> String
+showResponse_ SResponse      = show
+showResponse_ (SReference _) = showRef

@@ -20,6 +20,7 @@ module Test.StateMachine.Internal.Types.IntRef
   , Pid(..)
   , Ref(..)
   , ConstIntRef
+  , showRef
   ) where
 
 import           Data.Singletons.Prelude
@@ -46,3 +47,8 @@ newtype Ref = Ref Int
 
 -- | Type-level function that constantly returns an internal reference.
 type ConstIntRef = ConstSym1 IntRef
+
+showRef :: IntRef -> String
+showRef (IntRef (Ref ref) (Pid pid)) = case pid of
+  0 -> '$':show ref
+  _ -> '$':show ref ++ "::" ++ show pid

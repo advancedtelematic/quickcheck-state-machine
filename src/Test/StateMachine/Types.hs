@@ -40,6 +40,7 @@ module Test.StateMachine.Types
   , Response(..)
   , SResponse(..)
   , Response_
+  , GetResponse_
   , HasResponse
   , response
   , CommandConstraint
@@ -76,7 +77,7 @@ import           Data.Kind
 import           Data.Proxy
                    (Proxy(..))
 import           Data.Singletons.Prelude
-                   (type (@@), Apply, Sing, TyFun)
+                   (type (@@), Apply, ConstSym1, Sing, TyFun)
 import           Data.Singletons.TH
                    (DemoteRep, SDecide, SingKind)
 import           Data.Typeable
@@ -103,7 +104,7 @@ data StateMachineModel model cmd = StateMachineModel
 class ShowCmd (cmd :: Signature ix) where
 
   -- | How to show a typed command with internal refereces.
-  showCmd :: forall resp. cmd ConstIntRef resp -> String
+  showCmd :: forall resp. cmd (ConstSym1 String) resp -> String
 
 ------------------------------------------------------------------------
 
@@ -136,6 +137,11 @@ type family Response_ (refs :: TyFun ix Type -> Type)
   Response_ refs ('Response  t) = t
   Response_ refs ('Reference i) = refs @@ i
 
+-- | Type-level function that maybe returns a response.
+type family GetResponse_ (resp :: Response ix) :: k where
+  GetResponse_ ('Response  t) = t
+  GetResponse_ ('Reference i) = ()
+
 ------------------------------------------------------------------------
 
 -- | The constraints on commands (and their indices) that the
@@ -156,7 +162,7 @@ type CommandConstraint ix cmd =
 -- | Untyped commands are command where we hide the response type. This
 --   is used in generation of commands.
 data Untyped (f :: Signature ix) refs where
-  Untyped :: ( Show     (Response_ ConstIntRef resp)
+  Untyped :: ( Show     (GetResponse_ resp)
              , Typeable (Response_ ConstIntRef resp)
              , Typeable resp
              ) => f refs resp -> Untyped f refs

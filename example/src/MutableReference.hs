@@ -160,9 +160,9 @@ instance IxTraversable MemStep where
 
 instance ShowCmd MemStep where
   showCmd New           = "New"
-  showCmd (Read  ref)   = "Read ("  ++ show ref ++ ")"
-  showCmd (Write ref i) = "Write (" ++ show ref ++ ") " ++ show i
-  showCmd (Inc   ref)   = "Inc ("   ++ show ref ++ ")"
+  showCmd (Read  ref)   = "Read "  ++ ref
+  showCmd (Write ref i) = "Write " ++ ref ++ " " ++ show i
+  showCmd (Inc   ref)   = "Inc "   ++ ref
 
 ------------------------------------------------------------------------
 

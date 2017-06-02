@@ -178,11 +178,11 @@ debugSemantics m miref cmd = case cmd of
 instance ShowCmd Action where
   showCmd  AddDevice                 = "AddDevice"
   showCmd (AddUpdate update)         = "AddUpdate ("      ++ show update ++ ")"
-  showCmd (ScheduleUpdate uref dref) = "ScheduleUpdate (" ++ show uref ++
-                                         ") (" ++ show dref ++ ")"
-  showCmd (UpdateReports  dref)      = "UpdateReports ("  ++ show dref ++ ")"
-  showCmd (PullUpdates    dref)      = "PullUpdates ("    ++ show dref ++ ")"
-  showCmd (ViewUpdates    dref)      = "ViewUpdates ("    ++ show dref ++ ")"
+  showCmd (ScheduleUpdate uref dref) = "ScheduleUpdate " ++ uref ++
+                                         " " ++ dref ++ ""
+  showCmd (UpdateReports  dref)      = "UpdateReports "  ++ dref
+  showCmd (PullUpdates    dref)      = "PullUpdates "    ++ dref
+  showCmd (ViewUpdates    dref)      = "ViewUpdates "    ++ dref
 
 instance HasResponse Action where
   response AddDevice         = SReference SDeviceRef
