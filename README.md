@@ -146,6 +146,13 @@ examples:
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
     [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)] papers.
 
+All examples have an associated `Spec` module located in
+the
+[`example/test`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/example/test) directory.
+These make use of the properties in the examples, and get tested as part
+of
+[Travis CI](https://travis-ci.org/advancedtelematic/quickcheck-state-machine).
+
 To get a better feel for the examples it might be helpful to `git clone` this
 repo, `cd` into the `example/` directory and fire up `stack ghci` and run the
 different properties interactively.
