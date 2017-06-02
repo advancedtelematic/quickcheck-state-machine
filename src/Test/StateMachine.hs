@@ -34,7 +34,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadic, monadicIO, run)
 import           Test.QuickCheck.Property
-                   (Property)
+                   (Property, forAllShrink)
 
 import qualified Test.StateMachine.Internal.IxMap      as IxM
 import           Test.StateMachine.Internal.Parallel
@@ -76,10 +76,9 @@ sequentialProperty'
   -> (m Property -> Property)
   -> Property
 sequentialProperty' smm gen s shrinker sem runM =
-  forAllShrinkShow
+  forAllShrink
     (fst . fst <$> liftGen' gen s 0 M.empty)
     (liftShrink shrinker)
-    show
     $ \cmds -> collectStats cmds $
         monadic (runM . flip evalStateT IxM.empty) $
           checkSequentialInvariant smm (initialModel smm) sem cmds
@@ -111,10 +110,9 @@ parallelProperty'
   -> IO ()                                                    -- ^ Cleanup
   -> Property
 parallelProperty' smm gen genState shrinker sem clean
-  = forAllShrinkShow
+  = forAllShrink
       (liftGenFork' gen genState)
       (liftShrinkFork shrinker)
-      show
       $ \fork -> monadicIO $ replicateM_ 10 $ do
           run clean
           hist <- run $ liftSemFork sem fork

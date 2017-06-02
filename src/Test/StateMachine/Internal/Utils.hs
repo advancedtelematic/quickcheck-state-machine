@@ -26,8 +26,6 @@ module Test.StateMachine.Internal.Utils
   ( Shrinker
   , genFromMaybe
   , anyP
-  , forAllShrinkShow
-  , forAllShow
   , liftProperty
   , shrinkPropertyHelper
   , shrinkPropertyHelper'
@@ -37,13 +35,13 @@ module Test.StateMachine.Internal.Utils
 import           Control.Monad.State
                    (StateT)
 import           Test.QuickCheck
-                   (Gen, Property, Result(Failure), Testable, again,
-                   chatty, counterexample, output, property,
-                   quickCheckWithResult, shrinking, stdArgs)
+                   (Gen, Property, Result(Failure), chatty,
+                   counterexample, output, property,
+                   quickCheckWithResult, stdArgs)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property
-                   (Property(MkProperty), unProperty, (.&&.), (.||.))
+                   ((.&&.), (.||.))
 
 ------------------------------------------------------------------------
 
@@ -61,25 +59,6 @@ genFromMaybe g = do
 -- | Lifts 'Prelude.any' to properties.
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)
-
--- | A variant of 'Test.QuickCheck.Monadic.forAllShrink' with an explicit show
---   function.
-forAllShrinkShow
-  :: Testable prop
-  => Gen a -> Shrinker a -> (a -> String) -> (a -> prop) -> Property
-forAllShrinkShow gen shrinker shower pf =
-  again $
-  MkProperty $
-  gen >>= \x ->
-    unProperty $
-    shrinking shrinker x $ \x' ->
-      counterexample (shower x') (pf x')
-
--- | Same as above, but without shrinking.
-forAllShow
-  :: Testable prop
-  => Gen a -> (a -> String) -> (a -> prop) -> Property
-forAllShow gen = forAllShrinkShow gen (const [])
 
 -- | Lifts a plain property into a monadic property.
 liftProperty :: Monad m => Property -> PropertyM m ()
