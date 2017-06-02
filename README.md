@@ -194,6 +194,19 @@ we can improve it on the issue tracker!
       - [Abstract State Machines](http://www.di.unipi.it/~boerger/AsmBook/): A
         Method for High-Level System Design and Analysis
 
+    The books contain general advice how to model systems using state machines,
+    and are hence relevant to us. For shorter texts on why state machines are
+    important for modeling, see:
+
+      - Lamport's
+        [*Computation and State Machines*](https://www.microsoft.com/en-us/research/publication/computation-state-machines/);
+
+      - Gurevich's
+        [*Evolving Algebras 1993: Lipari Guide*](https://www.microsoft.com/en-us/research/publication/103-evolving-algebras-1993-lipari-guide/) and
+        *Sequential Abstract State Machines Capture Sequential
+        Algorithms*
+        [[PDF](http://delta-apache-vm.cs.tau.ac.il/~nachumd/models/gurevich.pdf)].
+
 ### License
 
 BSD-style (see the file LICENSE).
