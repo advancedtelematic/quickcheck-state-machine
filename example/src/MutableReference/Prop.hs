@@ -32,7 +32,7 @@ import qualified Data.Map                                 as M
 import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Test.QuickCheck
-                   (Property)
+                   (Property, forAll)
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
@@ -51,15 +51,13 @@ import           MutableReference
 ------------------------------------------------------------------------
 
 prop_genScope :: Property
-prop_genScope = forAllShow
+prop_genScope = forAll
   (fst <$> liftGen gen (Pid 0) M.empty)
-  showIntRefedList
   scopeCheck
 
 prop_genForkScope :: Property
-prop_genForkScope = forAllShow
+prop_genForkScope = forAll
   (liftGenFork gen)
-  (showFork showIntRefedList)
   scopeCheckFork
 
 prop_sequentialShrink :: Property
@@ -81,9 +79,8 @@ cheat = fmap (map (\ms -> case ms of
   _                         -> ms))
 
 prop_shrinkForkSubseq :: Property
-prop_shrinkForkSubseq = forAllShow
+prop_shrinkForkSubseq = forAll
   (liftGenFork gen)
-  (showFork showIntRefedList)
   $ \f@(Fork l p r) ->
     all (\(Fork l' p' r') -> void l' `isSubsequenceOf` void l &&
                              void p' `isSubsequenceOf` void p &&
@@ -91,9 +88,8 @@ prop_shrinkForkSubseq = forAllShow
         (liftShrinkFork shrink1 (cheat f))
 
 prop_shrinkForkScope :: Property
-prop_shrinkForkScope = forAllShow
+prop_shrinkForkScope = forAll
   (liftGenFork gen)
-  (showFork showIntRefedList)
   $ \f -> all scopeCheckFork (liftShrinkFork shrink1 f)
 
 ------------------------------------------------------------------------

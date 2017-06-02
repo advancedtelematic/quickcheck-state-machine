@@ -30,8 +30,6 @@ module Test.StateMachine.Internal.Types
   , ConstIntRef
   , IntRefed(..)
   , Fork(..)
-  , showFork
-  , showIntRefedList
   , showResponse_
   , MayResponse_
   ) where
@@ -88,26 +86,9 @@ instance Pretty a => Pretty (Fork a) where
 
 ------------------------------------------------------------------------
 
--- | Show function for forks.
-showFork :: (a -> String) -> Fork a -> String
-showFork showx (Fork l p r) =
-  "Fork (" ++ showx l ++ ") (" ++ showx p ++ ") (" ++ showx r ++ ")"
-
--- | Show function for lists of untyped internal commands.
-showIntRefedList :: (IxFunctor cmd, ShowCmd cmd, HasResponse cmd) => [IntRefed cmd] -> String
-showIntRefedList = showList'
-  (\(IntRefed cmd miref) -> showCmd (ifmap (const showRef) cmd) ++ " " ++
-       case response cmd of
-         SResponse    -> "()"
-         SReference _ -> "(" ++ showRef miref ++ ")")
-  where
-  showList' :: (a -> String) ->  [a] -> String
-  showList' _     []       = "[]"
-  showList' showx (x : xs) = '[' : showx x ++ showl xs
-    where
-    showl []       = "]"
-    showl (y : ys) = ',' : showx y ++ showl ys
-
-showResponse_ :: Show (GetResponse_ resp) => SResponse ix resp -> Response_ ConstIntRef resp -> String
+-- | Show function for 'Response_'.
+showResponse_
+  :: Show (GetResponse_ resp)
+  => SResponse ix resp -> Response_ ConstIntRef resp -> String
 showResponse_ SResponse      = show
 showResponse_ (SReference _) = showRef
