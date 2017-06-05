@@ -52,7 +52,7 @@ import           Data.Kind
                    (Type)
 import           Data.List
                    (partition)
-import qualified Data.Map                                as M
+import qualified Data.Map                                   as M
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Singletons.Decide
@@ -70,16 +70,17 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (PropertyM)
 import           Text.PrettyPrint.ANSI.Leijen
-                   (Pretty, pretty, prettyList, text, vsep, (<+>))
+                   (Doc, Pretty, pretty, prettyList, text, vsep, (<+>))
 
 import           Test.StateMachine.Internal.IxMap
                    (IxMap)
-import qualified Test.StateMachine.Internal.IxMap        as IxM
+import qualified Test.StateMachine.Internal.IxMap           as IxM
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.IntRef
                    (showRef)
 import           Test.StateMachine.Internal.Utils
+import           Test.StateMachine.Internal.Utils.BoxDrawer
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
@@ -254,6 +255,21 @@ toForkOfOps h = Fork (mkOps l) p' (mkOps r)
     dynResp = fromMaybe (error "toForkOfOps: impossible.") . fromDynamic
   mkOps _  = error "mkOps: Impossible."
 
+toBoxDrawings :: forall cmd. (IxFunctor cmd, ShowCmd cmd, HasResponse cmd) => History cmd -> Doc
+toBoxDrawings h = exec evT (fmap out (toForkOfOps h))
+  where
+    out :: [Operation cmd] -> [String]
+    out [] = []
+    out (Operation cmd resp _ : os) = showCmd (ifmap (const showRef) cmd)
+                                  : showResponse_ (response cmd) resp
+                                  : out os
+    toEventType :: History cmd -> [(EventType, Pid)]
+    toEventType = map $ \e -> case e of
+      InvocationEvent _ pid -> (Open, pid)
+      ResponseEvent _ pid   -> (Close, pid)
+    evT :: [(EventType, Pid)]
+    evT = toEventType (filter (\e -> getProcessIdEvent e `elem` [1,2]) h)
+
 ------------------------------------------------------------------------
 
 data HistoryKit cmd refs = HistoryKit
@@ -327,5 +343,5 @@ checkParallelInvariant
   => StateMachineModel model cmd -> History cmd -> PropertyM IO ()
 checkParallelInvariant smm hist
   = liftProperty
-  . counterexample (("Couldn't linearise:\n\n" ++) $ show $ pretty $ toForkOfOps hist)
+  . counterexample (("Couldn't linearise:\n\n" ++) $ show $ toBoxDrawings hist)
   $ linearise smm hist
