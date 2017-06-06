@@ -28,12 +28,24 @@ reference example:
 
 Couldn't linearise:
 
-Prefix:
-     New --> $0
-Parallel:
-  1. Inc $0 --> ()
-  2. Inc $0 --> ()
-     Read $0 --> 1
+┌──────────────────────┐
+│ New                  │
+│                 ⟶ $0 │
+└──────────────────────┘
+            │ ┌────────┐
+            │ │ Inc $0 │
+┌─────────┐ │ │        │
+│ Inc $0  │ │ │        │
+│         │ │ │   ⟶ () │
+│         │ │ └────────┘
+│    ⟶ () │ │           
+└─────────┘ │           
+┌─────────┐ │           
+│ Read $0 │ │           
+│     ⟶ 1 │ │           
+└─────────┘ │           
+
+
 ```
 
 Clearly, if we increment a mutable reference in parallel we can end up with a
