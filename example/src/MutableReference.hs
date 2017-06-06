@@ -9,6 +9,20 @@
 {-# LANGUAGE TypeInType            #-}
 {-# LANGUAGE TypeOperators         #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  MutableReference
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- This module contains a specification of mutable references.
+--
+-----------------------------------------------------------------------------
+
 module MutableReference
   ( MemStep(..)
   , Problem(..)
@@ -40,6 +54,12 @@ import           Test.StateMachine
 
 ------------------------------------------------------------------------
 
+-- Mutable references can be created, read from, written to and
+-- incremented. Note that the @New@ action returns a @Reference '()@,
+-- and all other actions take references, @refs \@\@ '()@, as arguments
+-- -- these are special library constructs that help you work with
+-- actions that have a reference-like nature.
+
 data MemStep :: Signature () where
   New   ::                       MemStep refs ('Reference '())
   Read  :: refs @@ '() ->        MemStep refs ('Response Int)
@@ -47,6 +67,8 @@ data MemStep :: Signature () where
   Inc   :: refs @@ '() ->        MemStep refs ('Response   ())
 
 ------------------------------------------------------------------------
+
+-- The model is a map from the references to their current value.
 
 newtype Model refs = Model (Map (refs @@ '()) Int)
 
@@ -87,7 +109,19 @@ postconditions (Model m) cmd resp = (case cmd of
   where
   Model m' = transitions (Model m) cmd resp
 
+-- The occurences of @iinstF \@'() Proxy :: Ords refs@ are needed
+-- because @refs@ is a indexed family of references in general and
+-- Haskell has no way to express universal constraint -- so we have to
+-- use the <https://hackage.haskell.org/package/constraints constraints>
+-- library.
+
+smm :: StateMachineModel Model MemStep
+smm = StateMachineModel preconditions postconditions transitions initModel
+
 ------------------------------------------------------------------------
+
+-- To make things interesting we parametrised the semantics on a
+-- problems.
 
 data Problem = None | Bug | RaceCondition
   deriving Eq
@@ -100,12 +134,15 @@ semStep _   New           = liftIO (newIORef 0)
 semStep _   (Read  ref)   = liftIO (readIORef  ref)
 semStep prb (Write ref i) = liftIO (writeIORef ref i')
   where
-  -- Introduce bug:
+
+  -- One of the problems is a bug that writes a wrong value to the
+  -- reference.
   i' | i `elem` [5..10] = if prb == Bug then i + 1 else i
      | otherwise        = i
 semStep prb (Inc ref)     = liftIO $
 
-  -- Possible race condition:
+  -- The other problem is that we introduce a possible race condition
+  -- when incrementing.
   if prb == RaceCondition
   then do
     i <- readIORef ref
@@ -116,6 +153,11 @@ semStep prb (Inc ref)     = liftIO $
 
 ------------------------------------------------------------------------
 
+-- We don't have to generate references, merely indicate which reference
+-- the library should generate. In this case we only have one type of
+-- reference and hence @STuple0@, constructor for the singleton type of
+-- @()@, is used.
+
 gen :: Gen (Untyped MemStep (RefPlaceholder ()))
 gen = frequency
   [ (1, return . Untyped $ New)
@@ -124,19 +166,19 @@ gen = frequency
   , (5, return . Untyped $ Inc STuple0)
   ]
 
-instance HasResponse MemStep where
-  response New   {} = SReference STuple0
-  response Read  {} = SResponse
-  response Write {} = SResponse
-  response Inc   {} = SResponse
-
-------------------------------------------------------------------------
+-- The only thing we shrink is the value that we write.
 
 shrink1 :: MemStep refs resp -> [MemStep refs resp]
 shrink1 (Write ref i) = [ Write ref i' | i' <- shrink i ]
 shrink1 _             = []
 
 ------------------------------------------------------------------------
+
+instance HasResponse MemStep where
+  response New   {} = SReference STuple0
+  response Read  {} = SResponse
+  response Write {} = SResponse
+  response Inc   {} = SResponse
 
 instance IxFunctor MemStep where
   ifmap _ New           = New
@@ -156,8 +198,6 @@ instance IxTraversable MemStep where
   ifor _ (Write ref val) f = Write <$> f STuple0 ref <*> pure val
   ifor _ (Inc   ref)     f = Inc   <$> f STuple0 ref
 
-------------------------------------------------------------------------
-
 instance ShowCmd MemStep where
   showCmd New           = "New"
   showCmd (Read  ref)   = "Read "  ++ ref
@@ -166,8 +206,15 @@ instance ShowCmd MemStep where
 
 ------------------------------------------------------------------------
 
-smm :: StateMachineModel Model MemStep
-smm = StateMachineModel preconditions postconditions transitions initModel
+-- If we run @quickCheck (prop_sequential None)@, then the property
+-- passes.
+--
+-- If we however run @quickCheck (prop_sequential Bug), it will fail
+-- with the minimal counterexample: @New, Write $0 5, Read $0@.
+--
+-- Running @quickCheck (prop_sequential RaceCondition)@ will not uncover
+-- the race condition, but @quickCheck (prop_parallel RaceCondition)@
+-- will!
 
 prop_sequential :: Problem -> Property
 prop_sequential prb = sequentialProperty

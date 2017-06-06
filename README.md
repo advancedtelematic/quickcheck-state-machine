@@ -124,7 +124,11 @@ examples:
     to compare the solution to the one that appears in the paper *Testing
     Monadic Code with
     QuickCheck* [[PS](http://www.cse.chalmers.se/~rjmh/Papers/QuickCheckST.ps)],
-    which is the `Test.QuickCheck.Monadic` module is based on;
+    which is
+    the
+    [`Test.QuickCheck.Monadic`](https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck-Monadic.html) module
+    is based on;
+
 
   * Mutable
     reference
