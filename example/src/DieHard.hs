@@ -197,11 +197,44 @@ prop_dieHard = sequentialProperty
 --
 -- Let's check if that's a valid solution by writing out the state after each action:
 --
---   1. FillBig:      (5, 0)
---   2. BigIntoSmall: (2, 3)
---   3. EmptySmall:   (2, 0)
---   4. BigIntoSmall: (0, 2)
---   5. FillBig:      (5, 2)
---   6. BigIntoSmall: (4, 3)
+--   { bigJug   = 0
+--   , smallJug = 0
+--   }
+--
+--   == FillBig ==>
+--
+--   { bigJug   = 5
+--   , smallJug = 0
+--   }
+--
+--   == BigIntoSmall ==>
+--
+--   { bigJug   = 2
+--   , smallJug = 3
+--   }
+--
+--   == EmptySmall ==>
+--
+--   { bigJug   = 2
+--   , smallJug = 0
+--   }
+--
+--   == BigIntoSmall ==>
+--
+--   { bigJug   = 0
+--   , smallJug = 2
+--   }
+--
+--   == FillBig ==>
+--
+--   { bigJug   = 5
+--   , smallJug = 2
+--   }
+--
+--   == BigIntoSmall ==>
+--
+--   { bigJug   = 4
+--   , smallJug = 3
+--   }
 --
 -- Good.
