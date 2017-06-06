@@ -12,6 +12,21 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  UnionFind
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- This module contains a specification for an imperative-style union/find
+-- algorithm.
+--
+-----------------------------------------------------------------------------
+
 module UnionFind where
 
 import           Control.Monad.State
@@ -28,14 +43,78 @@ import           Test.StateMachine
 
 ------------------------------------------------------------------------
 
-type Ref = Int
+-- The union/find algorithm is basically an efficient way of
+-- implementing an equivalence relation.
+--
+-- This example is borrowed from the paper
+-- <http://www.cse.chalmers.se/~rjmh/Papers/QuickCheckST.ps *Testing
+-- monadic code with QuickCheck*> by Koen Claessen and John Hughes
+-- (2002).
+--
+-- Let's start with the implementation of the algorithm, which we have
+-- taken verbatim from the paper:
+
+data Element a = Element a (IORef (Link a))
+
+data Link a
+  = Weight Int
+  | Next (Element a)
+
+newElement :: a -> IO (Element a)
+newElement x = do
+  ref <- newIORef (Weight 1)
+  return (Element x ref)
+
+findElement :: Element a -> IO (Element a)
+findElement (Element x ref) = do
+  e <- readIORef ref
+  case e of
+    Weight _  -> return (Element x ref)
+    Next next -> do
+      last' <- findElement next
+      writeIORef ref (Next last')
+      return last'
+
+unionElements :: Element a -> Element a -> IO (Element a)
+unionElements e1 e2 = do
+
+  Element x1 ref1 <- findElement e1
+  Element x2 ref2 <- findElement e2
+  Weight w1       <- readIORef ref1
+  Weight w2       <- readIORef ref2
+
+  if w1 <= w2
+  then do
+    writeIORef ref1 (Next (Element x2 ref2))
+    writeIORef ref2 (Weight (w1 + w2))
+    return (Element x2 ref2)
+  else do
+    writeIORef ref2 (Next (Element x1 ref1))
+    writeIORef ref1 (Weight (w1 + w2))
+    return (Element x1 ref1)
+
+instance Eq (Element a) where
+  Element _ ref1 == Element _ ref2 = ref1 == ref2
+
+instance Show a => Show (Element a) where
+  show (Element x _) = "Element " ++ show x
+
+------------------------------------------------------------------------
+
+-- We represent actions in the same way as they do in section 11 of the
+-- paper.
+
+type Var = Int
 
 data Action :: Signature () where
   New   :: Int        -> Action refs ('Response (Element Int))
-  Find  :: Ref        -> Action refs ('Response (Element Int))
-  Union :: Ref -> Ref -> Action refs ('Response (Element Int))
+  Find  :: Var        -> Action refs ('Response (Element Int))
+  Union :: Var -> Var -> Action refs ('Response (Element Int))
 
 ------------------------------------------------------------------------
+
+-- The model corresponds closely to the *relational specification* given
+-- in section 12 of the paper.
 
 newtype Model refs = Model [Element Int]
   deriving Show
@@ -84,6 +163,9 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 
 ------------------------------------------------------------------------
 
+-- The generation of actions is parametrised by the number of @New@'s
+-- that have been generated.
+
 gen :: StateT Int Gen (Untyped Action (RefPlaceholder ()))
 gen = do
   n <- get
@@ -105,53 +187,6 @@ gen = do
 shrink1 :: Action refs resp -> [Action refs resp]
 shrink1 (New x) = [ New x' | x' <- shrink x ]
 shrink1 _       = []
-
-------------------------------------------------------------------------
-
-data Element a = Element a (IORef (Link a))
-
-data Link a
-  = Weight Int
-  | Next (Element a)
-
-newElement :: a -> IO (Element a)
-newElement x = do
-  ref <- newIORef (Weight 1)
-  return (Element x ref)
-
-findElement :: Element a -> IO (Element a)
-findElement (Element x ref) = do
-  e <- readIORef ref
-  case e of
-    Weight _  -> return (Element x ref)
-    Next next -> do
-      last' <- findElement next
-      writeIORef ref (Next last')
-      return last'
-
-unionElements :: Element a -> Element a -> IO (Element a)
-unionElements e1 e2 = do
-
-  Element x1 ref1 <- findElement e1
-  Element x2 ref2 <- findElement e2
-  Weight w1       <- readIORef ref1
-  Weight w2       <- readIORef ref2
-
-  if w1 <= w2
-  then do
-    writeIORef ref1 (Next (Element x2 ref2))
-    writeIORef ref2 (Weight (w1 + w2))
-    return (Element x2 ref2)
-  else do
-    writeIORef ref2 (Next (Element x1 ref1))
-    writeIORef ref1 (Weight (w1 + w2))
-    return (Element x1 ref1)
-
-instance Eq (Element a) where
-  Element _ ref1 == Element _ ref2 = ref1 == ref2
-
-instance Show a => Show (Element a) where
-  show (Element x _) = "Element " ++ show x
 
 ------------------------------------------------------------------------
 
