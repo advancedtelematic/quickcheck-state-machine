@@ -39,12 +39,12 @@ Couldn't linearise:
 │ Inc $0  │ │ │        │
 │         │ │ │   ⟶ () │
 │         │ │ └────────┘
-│    ⟶ () │ │           
-└─────────┘ │           
-┌─────────┐ │           
-│ Read $0 │ │           
-│     ⟶ 1 │ │           
-└─────────┘ │           
+│    ⟶ () │ │
+└─────────┘ │
+┌─────────┐ │
+│ Read $0 │ │
+│     ⟶ 1 │ │
+└─────────┘ │
 
 
 ```
@@ -181,7 +181,7 @@ The `quickcheck-state-machine` library is still very experimental.
 We would like to encourage users to try it out, and join the discussion of how
 we can improve it on the issue tracker!
 
-### Also see
+### See also
 
   * The QuickCheck
     bugtrack [issue](https://github.com/nick8325/quickcheck/issues/139) -- where
