@@ -196,9 +196,13 @@ prop_dieHard = sequentialProperty
 --     *** Failed! Falsifiable (after 32 tests and 16 shrinks):
 --     [FillBig (),BigIntoSmall (),EmptySmall (),BigIntoSmall (),FillBig (),BigIntoSmall ()]
 --
---     The post-condition for `BigIntoSmall' failed!
+--     The model when the post-condition for `BigIntoSmall' fails is:
 --
---     State {bigJug = 4, smallJug = 3}
+--         State {bigJug = 5, smallJug = 2}
+--
+--     The model transitions into:
+--
+--         State {bigJug = 4, smallJug = 3}
 -- @
 --
 -- Let's check if that's a valid solution by writing out the state after each action:

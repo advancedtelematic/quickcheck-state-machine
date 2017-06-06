@@ -257,6 +257,9 @@ checkSequentialInvariant
     resp <- run $ liftSem (sem m miref) cmd miref
     let m' = transition m cmd resp
     liftProperty $
-      counterexample ("\nThe post-condition for `" ++ s ++ "' failed!\n\n" ++ show m') $
-        postcondition m cmd resp
+      counterexample
+        ("\nThe model when the post-condition for `" ++ s ++
+         "' fails is:\n\n    "  ++ show m ++ "\n\n" ++
+         "The model transitions into:\n\n    " ++ show m'
+        ) $ postcondition m cmd resp
     checkSequentialInvariant smm m' sem cmds
