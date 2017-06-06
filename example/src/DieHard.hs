@@ -140,8 +140,8 @@ semStep BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
--- What follows are a bunch of bolierplate code, we hope to automate
--- these away in the future.
+-- What follows are a bunch of bolierplate instances, we hope to
+-- automate these away in the future.
 
 instance HasResponse Step where
   response FillBig      = SResponse
@@ -192,8 +192,14 @@ prop_dieHard = sequentialProperty
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --
+-- @
 --     *** Failed! Falsifiable (after 32 tests and 16 shrinks):
 --     [FillBig (),BigIntoSmall (),EmptySmall (),BigIntoSmall (),FillBig (),BigIntoSmall ()]
+--
+--     The post-condition for `BigIntoSmall' failed!
+--
+--     State {bigJug = 4, smallJug = 3}
+-- @
 --
 -- Let's check if that's a valid solution by writing out the state after each action:
 --

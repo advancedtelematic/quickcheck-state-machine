@@ -255,7 +255,8 @@ checkSequentialInvariant
     monitor $ label s
     pre $ precondition m cmd
     resp <- run $ liftSem (sem m miref) cmd miref
+    let m' = transition m cmd resp
     liftProperty $
-      counterexample ("\nThe post-condition for `" ++ s ++ "' failed!\n\n" ++ show m) $
+      counterexample ("\nThe post-condition for `" ++ s ++ "' failed!\n\n" ++ show m') $
         postcondition m cmd resp
-    checkSequentialInvariant smm (transition m cmd resp) sem cmds
+    checkSequentialInvariant smm m' sem cmds
