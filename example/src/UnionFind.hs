@@ -52,8 +52,10 @@ import           Test.StateMachine
 -- (2002).
 --
 -- Let's start with the implementation of the algorithm, which we have
--- taken verbatim from the paper:
+-- taken from the paper.
 
+-- Our implementation is slightly different in that we use @IORef@s
+-- instead of @STRef@s (see issue #84).
 data Element a = Element a (IORef (Link a))
 
 data Link a
@@ -75,6 +77,8 @@ findElement (Element x ref) = do
       writeIORef ref (Next last')
       return last'
 
+-- Another difference is that the union operation returns the element
+-- that became the new root, rather than returning @()@.
 unionElements :: Element a -> Element a -> IO (Element a)
 unionElements e1 e2 = do
 
@@ -139,7 +143,10 @@ transitions (Model m) cmd resp = case cmd of
   New   _         -> Model (m ++ [resp])
   Find  _         -> Model m
   Union ref1 ref2 ->
-    let z  = resp -- which will be the same as `m' !! ref1`.
+    let z  = resp -- In the relational specifiaction in the paper @m' !!
+                  -- ref1@ is used instead of @resp@ here. With our
+                  -- modification to the return type of union, we see
+                  -- that this is the same thing.
         m' = [ if z' == m !! ref1 || z' == m !! ref2
                then z else z'
              | z' <- m
