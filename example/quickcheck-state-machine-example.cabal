@@ -29,10 +29,11 @@ library
 test-suite quickcheck-state-machine-example-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
-  main-is:             Spec.hs
+  main-is:             Main.hs
   other-modules:       DeviceUpdatesSpec
                      , DieHardSpec
                      , MutableReferenceSpec
+                     , Spec
                      , TicketDispenserSpec
                      , UnionFindSpec
   build-depends:       base
