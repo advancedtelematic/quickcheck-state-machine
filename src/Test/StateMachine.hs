@@ -98,7 +98,8 @@ parallelProperty
   -> (forall resp. cmd refs resp -> IO (Response_ refs resp)) -- ^ Semantics
   -> Property
 parallelProperty smm gen shrinker sem
-  = parallelProperty' smm (lift gen) () shrinker sem (return ())
+  = parallelProperty' smm (lift gen) () shrinker (return ())
+      (const sem) (const (return ()))
 
 parallelProperty'
   :: CommandConstraint ix cmd
@@ -106,14 +107,17 @@ parallelProperty'
   -> StateT genState Gen (Untyped cmd (RefPlaceholder ix))    -- ^ Generator
   -> genState
   -> (forall resp refs'. Shrinker (cmd refs' resp))           -- ^ Shrinker
-  -> (forall resp. cmd refs resp -> IO (Response_ refs resp)) -- ^ Semantics
-  -> IO ()                                                    -- ^ Cleanup
+  -> IO setup                                                 -- ^ Setup
+  -> (forall resp. setup -> cmd refs resp ->
+        IO (Response_ refs resp))                             -- ^ Semantics
+  -> (setup -> IO ())                                         -- ^ Cleanup
   -> Property
-parallelProperty' smm gen genState shrinker sem clean
+parallelProperty' smm gen genState shrinker setup sem clean
   = forAllShrink
       (liftGenFork' gen genState)
-      (liftShrinkFork shrinker)
-      $ \fork -> monadicIO $ replicateM_ 10 $ do
-          run clean
-          hist <- run $ liftSemFork sem fork
+      (liftShrinkFork shrinker) $ \fork -> monadicIO $ do
+        res <- run setup
+        replicateM_ 10 $ do
+          hist <- run $ liftSemFork (sem res) fork
+          run (clean res)
           checkParallelInvariant smm hist
