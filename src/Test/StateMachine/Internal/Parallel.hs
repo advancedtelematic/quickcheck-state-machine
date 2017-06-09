@@ -97,14 +97,18 @@ liftGenFork
   -> Gen (Fork [IntRefed cmd])
 liftGenFork gen = liftGenFork' (lift gen) ()
 
+-- | Same as above, but with the ability to do stateful generation.
 liftGenFork'
   :: Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse   cmd
-  => StateT genState Gen (Untyped cmd (RefPlaceholder ix))
-  -> genState
+  => StateT genState Gen (Untyped cmd (RefPlaceholder ix)) -- ^ Stateful
+                                                           -- generator.
+  -> genState                                              -- ^ Initial
+                                                           -- generator
+                                                           -- state.
   -> Gen (Fork [IntRefed cmd])
 liftGenFork' gen gs = do
   ((prefix, gs'), ns) <- liftGen' gen gs 0 M.empty

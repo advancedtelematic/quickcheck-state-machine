@@ -101,6 +101,9 @@ parallelProperty smm gen shrinker sem
   = parallelProperty' smm (lift gen) () shrinker (return ())
       (const sem) (const (return ()))
 
+-- | Same as above, but with the possibility of stateful generation, and
+--   setting up and tearing down some resource used by the semantics.
+--   The later can be useful for connecting to a database for example.
 parallelProperty'
   :: CommandConstraint ix cmd
   => StateMachineModel model cmd                              -- ^ Model

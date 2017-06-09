@@ -156,9 +156,11 @@ examples:
   * Ticket
     dispenser
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/TicketDispenser.hs) --
-    a simpler example where the parallel property is used once again to find a
-    race condition. This is an example used in the *Testing a Database for Race
-    Conditions with QuickCheck* and *Testing the Hard Stuff and Staying
+    a simple example where the parallel property is used once again to find a
+    race condition. The semantics in this example uses a simple database file
+    that needs to be setup and teared down. This example also appears in the
+    *Testing a Database for Race Conditions with QuickCheck* and *Testing the
+    Hard Stuff and Staying
     Sane*
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
     [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)] papers.
