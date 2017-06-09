@@ -18,6 +18,8 @@ import           System.Directory
                    (removePathForcibly)
 import           System.FileLock
                    (SharedExclusive(..), lockFile, unlockFile)
+import           System.IO
+                   (hClose, openTempFile)
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
@@ -80,21 +82,19 @@ shrink1 _ = []
 
 ------------------------------------------------------------------------
 
-ticketDb, ticketLock :: FilePath
-ticketDb   = "/tmp/ticket-dispenser.db"
-ticketLock = "/tmp/ticket-dispenser.lock"
-
-semantics :: SharedExclusive -> Action ConstIntRef resp -> IO (Response_ ConstIntRef resp)
-semantics se cmd = case cmd of
+semantics
+  :: SharedExclusive -> (FilePath, FilePath) -> Action ConstIntRef resp
+  -> IO (Response_ ConstIntRef resp)
+semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
-    lock <- lockFile ticketLock se
-    i <- read <$> readFile ticketDb
-    writeFile ticketDb (show (i + 1))
+    lock <- lockFile tlock se
+    i <- read <$> readFile tdb
+    writeFile tdb (show (i + 1))
     unlockFile lock
     return (i + 1)
   Reset      -> do
-    lock <- lockFile ticketLock se
-    writeFile ticketDb (show (0 :: Integer))
+    lock <- lockFile tlock se
+    writeFile tdb (show (0 :: Integer))
     unlockFile lock
 
 ------------------------------------------------------------------------
@@ -127,8 +127,12 @@ prop_sequential = sequentialProperty'
   gen
   False
   shrink1
-  (const (const (semantics Shared)))
+  (const (const (semantics Shared (ticketDb, ticketLock))))
   ioProperty
+  where
+  ticketDb, ticketLock :: FilePath
+  ticketDb   = "/tmp/ticket-dispenser.db"
+  ticketLock = "/tmp/ticket-dispenser.lock"
 
 prop_parallel :: SharedExclusive -> Property
 prop_parallel se = parallelProperty'
@@ -136,9 +140,20 @@ prop_parallel se = parallelProperty'
   gen
   False
   shrink1
+  setup
   (semantics se)
-  (removePathForcibly ticketDb >>
-   removePathForcibly ticketLock)
+  cleanup
+  where
+  setup = do
+    (tdb,   dbh)   <- openTempFile "/tmp/" "ticket-dispenser.db"
+    hClose dbh
+    (tlock, lockh) <- openTempFile "/tmp/" "ticket-dispenser.lock"
+    hClose lockh
+    return (tdb, tlock)
+
+  cleanup (tdb, tlock) = do
+    removePathForcibly tdb
+    removePathForcibly tlock
 
 prop_parallelOK :: Property
 prop_parallelOK = prop_parallel Exclusive
