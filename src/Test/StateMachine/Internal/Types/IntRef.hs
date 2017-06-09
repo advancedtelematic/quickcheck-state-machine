@@ -48,6 +48,7 @@ newtype Ref = Ref Int
 -- | Type-level function that constantly returns an internal reference.
 type ConstIntRef = ConstSym1 IntRef
 
+-- | Show function for internal references.
 showRef :: IntRef -> String
 showRef (IntRef (Ref ref) (Pid pid)) = case pid of
   0 -> '$':show ref

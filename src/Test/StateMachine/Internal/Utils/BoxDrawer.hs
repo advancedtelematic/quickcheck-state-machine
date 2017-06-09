@@ -15,8 +15,8 @@
 
 module Test.StateMachine.Internal.Utils.BoxDrawer
   ( EventType(..)
-  , exec)
-  where
+  , exec
+  ) where
 
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc, text, vsep)
@@ -26,6 +26,9 @@ import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.IntRef
                    (Pid(..))
 
+------------------------------------------------------------------------
+
+-- | Event invocation or response.
 data EventType = Open | Close
   deriving (Show)
 
