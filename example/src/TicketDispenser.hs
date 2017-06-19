@@ -26,6 +26,8 @@ module TicketDispenser
 
 import           Control.Monad.State
                    (StateT, get, lift, modify)
+import           Data.Void
+                   (Void)
 import           Prelude                          hiding
                    (readFile)
 import           System.Directory
@@ -46,7 +48,7 @@ import           Test.StateMachine.Internal.Types
 
 -- The actions of the ticket dispenser are:
 
-data Action :: Signature () where
+data Action :: Signature Void where
   TakeTicket :: Action refs ('Response Int)
   Reset      :: Action refs ('Response ())
 
@@ -88,7 +90,7 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-gen :: StateT Bool Gen (Untyped Action (RefPlaceholder ()))
+gen :: StateT Bool Gen (Untyped Action (RefPlaceholder Void))
 gen = do
   initialised <- get
   if not initialised
