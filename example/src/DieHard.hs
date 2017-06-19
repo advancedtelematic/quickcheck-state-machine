@@ -29,6 +29,8 @@ import           Control.Monad.Identity
                    (Identity, runIdentity)
 import           Data.Singletons.Prelude
                    (ConstSym1)
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Gen, Property, elements, property)
 
@@ -42,7 +44,7 @@ import           Test.StateMachine
 -- We start of defining the different actions (or commands) that are
 -- allowed:
 
-data Step :: Signature () where
+data Step :: Signature Void where
   FillBig      :: Step refs ('Response ())  -- Fill the 5-liter jug.
   FillSmall    :: Step refs ('Response ())  -- Fill the 3-liter jug.
   EmptyBig     :: Step refs ('Response ())  -- Empty the 5-liter jug.
@@ -110,7 +112,7 @@ smm = StateMachineModel preconditions postconditions transitions initState
 -- The generator of actions is simple, with equal distribution pick an
 -- action.
 
-gen :: Gen (Untyped Step (RefPlaceholder ()))
+gen :: Gen (Untyped Step (RefPlaceholder Void))
 gen = elements
   [ Untyped FillBig
   , Untyped FillSmall
@@ -130,7 +132,7 @@ shrink1 _ = []
 -- We are not modeling an actual program here, so there's no semantics
 -- for our actions. We are merely doing model-checking here.
 
-semStep :: Step (ConstSym1 ()) resp -> Identity (Response_ (ConstSym1 ()) resp)
+semStep :: Step (ConstSym1 Void) resp -> Identity (Response_ (ConstSym1 Void) resp)
 semStep FillBig      = return ()
 semStep FillSmall    = return ()
 semStep EmptyBig     = return ()

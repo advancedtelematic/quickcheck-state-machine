@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-orphans      #-}
+
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -71,7 +73,9 @@ module Test.StateMachine.Types
   ) where
 
 import           Data.Constraint
+                   ((:-)(Sub), Constraint, Dict(Dict), (\\))
 import           Data.Constraint.Forall
+                   (Forall, inst)
 import           Data.Kind
                    (Type)
 import           Data.Proxy
@@ -79,9 +83,12 @@ import           Data.Proxy
 import           Data.Singletons.Prelude
                    (type (@@), Apply, ConstSym1, Sing, TyFun)
 import           Data.Singletons.TH
-                   (DemoteRep, SDecide, SingKind)
+                   (DemoteRep, SDecide, SingKind, fromSing, toSing,
+                   (%~))
 import           Data.Typeable
                    (Typeable)
+import           Data.Void
+                   (Void, absurd)
 import           Test.QuickCheck.Property
                    (Property, property)
 
@@ -254,3 +261,13 @@ type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
 
 -- | Same as the above.
 type Ords' refs i = IxForallF Ord refs :- Ord (refs @@ i)
+
+------------------------------------------------------------------------
+
+instance SingKind Void where
+  type DemoteRep Void = Void
+  fromSing x = absurd (fromSing x)
+  toSing   x = absurd x
+
+instance SDecide Void where
+  x %~ _ = absurd (fromSing x)

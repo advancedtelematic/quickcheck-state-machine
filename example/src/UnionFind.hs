@@ -35,6 +35,8 @@ import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
 import           Data.Singletons.Prelude
                    (ConstSym1)
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, choose, frequency,
                    ioProperty, property, shrink)
@@ -110,7 +112,7 @@ instance Show a => Show (Element a) where
 
 type Var = Int
 
-data Action :: Signature () where
+data Action :: Signature Void where
   New   :: Int        -> Action refs ('Response (Element Int))
   Find  :: Var        -> Action refs ('Response (Element Int))
   Union :: Var -> Var -> Action refs ('Response (Element Int))
@@ -173,7 +175,7 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 -- The generation of actions is parametrised by the number of @New@'s
 -- that have been generated.
 
-gen :: StateT Int Gen (Untyped Action (RefPlaceholder ()))
+gen :: StateT Int Gen (Untyped Action (RefPlaceholder Void))
 gen = do
   n <- get
   if n == 0
