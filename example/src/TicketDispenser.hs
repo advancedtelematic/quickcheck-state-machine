@@ -26,6 +26,8 @@ module TicketDispenser
 
 import           Control.Monad.State
                    (StateT, get, lift, modify)
+import           Data.Singletons.Prelude
+                   (ConstSym1)
 import           Data.Void
                    (Void)
 import           Prelude                          hiding
@@ -42,7 +44,6 @@ import           Test.QuickCheck
                    (Gen, frequency, ioProperty, property, (===))
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Types
 
 ------------------------------------------------------------------------
 
@@ -112,8 +113,24 @@ shrink1 _ = []
 -- stores the next number. A file lock is used to allow concurrent use.
 
 semantics
-  :: SharedExclusive -> (FilePath, FilePath) -> Action ConstIntRef resp
-  -> IO (Response_ ConstIntRef resp)
+  :: SharedExclusive                       -- ^ Indicates if the file
+                                           -- lock should be shared
+                                           -- between threads or if it
+                                           -- should be exclusive.
+                                           -- Sharing it could cause
+                                           -- race conditions.
+
+  -> (FilePath, FilePath)                  -- ^ File paths to the
+                                           -- database storing the
+                                           -- ticket counter and the
+                                           -- file lock used for
+                                           -- synchronisation.
+
+  -> Action (ConstSym1 Void) resp          -- ^ This example doesn't use
+                                           -- any references, hence
+                                           -- @ConstSym1 Void@ is used.
+
+  -> IO (Response_ (ConstSym1 Void) resp)
 semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
     lock <- lockFile tlock se
