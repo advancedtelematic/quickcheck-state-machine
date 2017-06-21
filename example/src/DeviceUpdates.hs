@@ -14,8 +14,6 @@
 
 module DeviceUpdates where
 
-import           Control.Monad.Trans
-                   (lift)
 import           Data.Constraint
                    ((:-))
 import           Data.Map
@@ -224,8 +222,7 @@ instance IxTraversable Action where
 prop_sequential :: Property
 prop_sequential = sequentialProperty'
   smm
-  (lift gen)
-  ()
+  (liftGenerator gen)
   shrink1
   debugSemantics
   ioProperty

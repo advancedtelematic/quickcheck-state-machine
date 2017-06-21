@@ -27,9 +27,10 @@
 
 module Test.StateMachine.Internal.Sequential
   ( liftGen
-  , liftGen'
+  , liftGenHelper
   , liftShrinker
   , liftShrink
+  , liftShrinkHelper
   , liftSem
   , removeCommands
   , collectStats
@@ -37,7 +38,8 @@ module Test.StateMachine.Internal.Sequential
   ) where
 
 import           Control.Monad.State
-                   (StateT, get, lift, mapStateT, modify, runStateT)
+                   (StateT, get, lift, mapStateT, modify, put,
+                   runStateT)
 import           Data.Functor.Compose
                    (Compose(..), getCompose)
 import           Data.Map
@@ -53,7 +55,7 @@ import           Data.Singletons.Prelude
                    fromSing)
 import           Test.QuickCheck
                    (Gen, choose, classify, counterexample, label,
-                   sized)
+                   sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, monitor, pre, run)
 import           Test.QuickCheck.Property
@@ -73,53 +75,54 @@ import           Test.StateMachine.Types
 -- | Lift a generator of untyped commands with reference placeholders
 --   into a generator of lists of untyped internal commands.
 liftGen
-  :: forall ix cmd
+  :: forall ix cmd gstate
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => Gen (Untyped cmd (RefPlaceholder ix))  -- ^ Generator to be lifted.
-  -> Pid                                    -- ^ Process id.
-  -> Map ix Int                             -- ^ Keeps track of how many
-                                            --   refereces of sort 'ix' are in
-                                            --   scope.
+  => Generator ix cmd gstate
+  -> Pid                       -- ^ Process id.
+  -> Map ix Int                -- ^ Keeps track of how many refereces of
+                               --   sort 'ix' are in scope.
   -> Gen ([IntRefed cmd], Map ix Int)
-liftGen gen pid
-  = fmap (\((rs, _), ns) -> (rs, ns))
-  . liftGen' (lift gen) () pid
+liftGen gen@Generator {..} pid
+  = fmap (\((cmds, _), ns) -> (cmds, ns))
+  . liftGenHelper gen pid
 
--- | Same as the above, but for stateful generators.
-liftGen'
-  :: forall ix cmd genState
+-- | Same as above, but also gives back the generator state (this is
+--   used when generating parallel programs).
+liftGenHelper
+  :: forall ix cmd gstate
   .  Ord       ix
   => SingKind  ix
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse cmd
-  => StateT genState Gen (Untyped cmd (RefPlaceholder ix)) -- ^ Stateful
-                                                           -- generator to be
-                                                           -- lifted.
-
-  -> genState                                              -- ^ Initial
-                                                           -- generator state.
+  => Generator ix cmd gstate
   -> Pid
   -> Map ix Int
-  -> Gen (([IntRefed cmd], genState), Map ix Int)
-liftGen' gen gs pid ns = sized $ \sz -> runStateT (runStateT (go sz) gs) ns
+  -> Gen (([IntRefed cmd], gstate), Map ix Int)
+liftGenHelper Generator {..} pid ns = sized $ \sz ->
+  runStateT (runStateT (go sz) initGenState) ns
   where
 
-  go :: Int -> StateT genState (StateT (Map ix Int) Gen) [IntRefed cmd]
+  go :: Int -> StateT gstate (StateT (Map ix Int) Gen) [IntRefed cmd]
   go 0  = return []
   go sz = do
 
     scopes <- lift get
+    gstate <- get
+
+    let gen = generator gstate `suchThat` \(Untyped cmd) -> gprecondition gstate cmd
 
     Untyped cmd <- genFromMaybe $ do
-      Untyped cmd <- mapStateT lift gen
+      Untyped cmd <- mapStateT lift (lift gen)
       cmd' <- lift $ lift $ getCompose $ ifor
         (Proxy :: Proxy ConstIntRef) cmd (translate scopes)
       return $ Untyped <$> cmd'
+
+    put (gtransition gstate cmd)
 
     ixref <- case response cmd of
       SResponse    -> return ()
@@ -157,9 +160,21 @@ liftShrinker shrinker (IntRefed cmd miref) =
 liftShrink
   :: IxFoldable  cmd
   => HasResponse cmd
+  => Generator ix cmd gstate
+  -> (forall resp. Shrinker (cmd ConstIntRef resp)) -- ^ Shrinker to be lifted.
+  -> Shrinker [IntRefed cmd]
+liftShrink gen shrinker
+  = map (filterPrecondition gen)
+  . liftShrinkHelper shrinker
+
+-- | Same as above, but doesn't filter out commands that don't respect
+--   the pre-conditions.
+liftShrinkHelper
+  :: IxFoldable  cmd
+  => HasResponse cmd
   => (forall resp. Shrinker (cmd ConstIntRef resp)) -- ^ Shrinker to be lifted.
   -> Shrinker [IntRefed cmd]
-liftShrink shrinker = go
+liftShrinkHelper shrinker = go
   where
   go []       = []
   go (c : cs) =

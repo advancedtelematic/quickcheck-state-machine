@@ -27,7 +27,7 @@ module Test.StateMachine
   ) where
 
 import           Control.Monad.State
-                   (StateT, evalStateT, lift, replicateM_)
+                   (evalStateT, replicateM_)
 import qualified Data.Map                              as M
 import           Test.QuickCheck
                    (Gen)
@@ -58,7 +58,7 @@ sequentialProperty
   -> (m Property -> Property)
   -> Property
 sequentialProperty smm gen shrinker sem runM =
-  sequentialProperty' smm (lift gen) () shrinker (const (const sem)) runM
+  sequentialProperty' smm (liftGenerator gen) shrinker (const (const sem)) runM
 
 -- | Same as above, except it provides more flexibility.
 sequentialProperty'
@@ -66,8 +66,7 @@ sequentialProperty'
   => Show (model ConstIntRef)
   => Monad m
   => StateMachineModel model cmd                             -- ^ Model
-  -> StateT s Gen (Untyped cmd (RefPlaceholder ix))          -- ^ Generator
-  -> s                                                       -- ^ Generator state
+  -> Generator ix cmd gstate
   -> (forall resp refs'. Shrinker (cmd refs' resp))          -- ^ Shrinker
   -> (forall resp. model ConstIntRef ->
         MayResponse_ ConstIntRef resp ->
@@ -75,10 +74,10 @@ sequentialProperty'
         m (Response_ refs resp))                             -- ^ Semantics
   -> (m Property -> Property)
   -> Property
-sequentialProperty' smm gen s shrinker sem runM =
+sequentialProperty' smm gen shrinker sem runM =
   forAllShrink
-    (fst . fst <$> liftGen' gen s 0 M.empty)
-    (liftShrink shrinker)
+    (fst <$> liftGen gen 0 M.empty)
+    (liftShrink gen shrinker)
     $ \cmds -> collectStats cmds $
         monadic (runM . flip evalStateT IxM.empty) $
           checkSequentialInvariant smm (initialModel smm) sem cmds
@@ -98,27 +97,26 @@ parallelProperty
   -> (forall resp. cmd refs resp -> IO (Response_ refs resp)) -- ^ Semantics
   -> Property
 parallelProperty smm gen shrinker sem
-  = parallelProperty' smm (lift gen) () shrinker (return ())
+  = parallelProperty' smm (liftGenerator gen) shrinker (return ())
       (const sem) (const (return ()))
 
 -- | Same as above, but with the possibility of stateful generation, and
 --   setting up and tearing down some resource used by the semantics.
---   The later can be useful for connecting to a database for example.
+--   The latter can be useful for connecting to a database for example.
 parallelProperty'
   :: CommandConstraint ix cmd
   => StateMachineModel model cmd                              -- ^ Model
-  -> StateT genState Gen (Untyped cmd (RefPlaceholder ix))    -- ^ Generator
-  -> genState
+  -> Generator ix cmd gstate
   -> (forall resp refs'. Shrinker (cmd refs' resp))           -- ^ Shrinker
   -> IO setup                                                 -- ^ Setup
   -> (forall resp. setup -> cmd refs resp ->
         IO (Response_ refs resp))                             -- ^ Semantics
   -> (setup -> IO ())                                         -- ^ Cleanup
   -> Property
-parallelProperty' smm gen genState shrinker setup sem clean
+parallelProperty' smm gen shrinker setup sem clean
   = forAllShrink
-      (liftGenFork' gen genState)
-      (liftShrinkFork shrinker) $ \fork -> monadicIO $ do
+      (liftGenFork gen)
+      (liftShrinkFork gen shrinker) $ \fork -> monadicIO $ do
         res <- run setup
         replicateM_ 10 $ do
           hist <- run $ liftSemFork (sem res) fork

@@ -19,8 +19,8 @@
 
 module DieHard
   ( Step(..)
-  , State(..)
-  , initState
+  , Model(..)
+  , initModel
   , transitions
   , prop_dieHard
   ) where
@@ -56,39 +56,39 @@ data Step :: Signature Void where
 
 ------------------------------------------------------------------------
 
--- The state (or model) keeps track of what amount of water is in the
+-- The model (or state) keeps track of what amount of water is in the
 -- two jugs.
 
-data State refs = State
+data Model refs = Model
   { bigJug   :: Int
   , smallJug :: Int
   } deriving (Show, Eq)
 
-initState :: State refs
-initState = State 0 0
+initModel :: Model refs
+initModel = Model 0 0
 
 ------------------------------------------------------------------------
 
 -- There are no pre-conditions for our actions. That simply means that
 -- any action can happen at any state.
 
-preconditions :: State refs -> Step refs resp -> Bool
+preconditions :: Model refs -> Step refs resp -> Bool
 preconditions _ _ = True
 
 -- The transitions describe how the actions change the state.
 
-transitions :: State refs -> Step refs resp -> Response_ refs resp -> State refs
+transitions :: Model refs -> Step refs resp -> Response_ refs resp -> Model refs
 transitions s FillBig   _  = s { bigJug   = 5 }
 transitions s FillSmall _  = s { smallJug = 3 }
 transitions s EmptyBig  _  = s { bigJug   = 0 }
 transitions s EmptySmall _ = s { smallJug = 0 }
-transitions (State big small) SmallIntoBig _ =
+transitions (Model big small) SmallIntoBig _ =
             let big' = min 5 (big + small) in
-            State { bigJug = big'
+            Model { bigJug = big'
                   , smallJug = small - (big' - big) }
-transitions (State big small) BigIntoSmall _ =
+transitions (Model big small) BigIntoSmall _ =
     let small' = min 3 (big + small) in
-    State { bigJug = big - (small' - small)
+    Model { bigJug = big - (small' - small)
           , smallJug = small' }
 
 -- The post-condition is used in a bit of a funny way. Recall that we
@@ -99,13 +99,13 @@ transitions (State big small) BigIntoSmall _ =
 -- actually does contain 4 liters, then a minimal counter example will
 -- be presented -- this will be our solution.
 
-postconditions :: State refs -> Step refs resp -> Response_ refs resp -> Property
+postconditions :: Model refs -> Step refs resp -> Response_ refs resp -> Property
 postconditions s c r = property (bigJug (transitions s c r) /= 4)
 
 -- (We pack all our model related stuff up into a record is it's easier
 -- to pass around.)
-smm :: StateMachineModel State Step
-smm = StateMachineModel preconditions postconditions transitions initState
+smm :: StateMachineModel Model Step
+smm = StateMachineModel preconditions postconditions transitions initModel
 
 ------------------------------------------------------------------------
 
@@ -200,11 +200,11 @@ prop_dieHard = sequentialProperty
 --
 --     The model when the post-condition for `BigIntoSmall' fails is:
 --
---         State {bigJug = 5, smallJug = 2}
+--         Model {bigJug = 5, smallJug = 2}
 --
 --     The model transitions into:
 --
---         State {bigJug = 4, smallJug = 3}
+--         Model {bigJug = 4, smallJug = 3}
 -- @
 --
 -- Let's check if that's a valid solution by writing out the state after each action:

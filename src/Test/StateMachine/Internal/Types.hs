@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeInType           #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -32,6 +33,7 @@ module Test.StateMachine.Internal.Types
   , Fork(..)
   , showResponse_
   , MayResponse_
+  , filterPrecondition
   ) where
 
 import           Data.Kind
@@ -92,3 +94,13 @@ showResponse_
   => SResponse ix resp -> Response_ ConstIntRef resp -> String
 showResponse_ SResponse      = show
 showResponse_ (SReference _) = showRef
+
+-- | Remove commands whose pre-condition isn't satisfied.
+filterPrecondition
+  :: Generator ix cmd gstate -> [IntRefed cmd] -> [IntRefed cmd]
+filterPrecondition Generator {..} = go initGenState
+  where
+  go _  [] = []
+  go gs (cmd'@(IntRefed cmd _) : cmds)
+    | gprecondition gs cmd = cmd' : go (gtransition gs cmd) cmds
+    | otherwise            =        go gs                   cmds

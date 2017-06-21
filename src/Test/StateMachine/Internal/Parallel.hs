@@ -28,7 +28,6 @@
 
 module Test.StateMachine.Internal.Parallel
   ( liftGenFork
-  , liftGenFork'
   , liftShrinkFork
   , liftSemFork
   , checkParallelInvariant
@@ -93,27 +92,13 @@ liftGenFork
   => DemoteRep ix ~ ix
   => IxTraversable cmd
   => HasResponse   cmd
-  => Gen (Untyped cmd (RefPlaceholder ix))  -- ^ Generator to be lifted.
+  => Generator ix cmd gstate
   -> Gen (Fork [IntRefed cmd])
-liftGenFork gen = liftGenFork' (lift gen) ()
-
--- | Same as above, but with the ability to do stateful generation.
-liftGenFork'
-  :: Ord       ix
-  => SingKind  ix
-  => DemoteRep ix ~ ix
-  => IxTraversable cmd
-  => HasResponse   cmd
-  => StateT genState Gen (Untyped cmd (RefPlaceholder ix)) -- ^ Stateful
-                                                           -- generator.
-  -> genState                                              -- ^ Initial
-                                                           -- generator
-                                                           -- state.
-  -> Gen (Fork [IntRefed cmd])
-liftGenFork' gen gs = do
-  ((prefix, gs'), ns) <- liftGen' gen gs 0 M.empty
-  left                <- fst . fst <$> liftGen' gen gs' 1 ns
-  right               <- fst . fst <$> liftGen' gen gs' 2 ns
+liftGenFork gen = do
+  ((prefix, gs'), ns) <- liftGenHelper gen 0 M.empty
+  let gen'            =  gen { initGenState = gs' }
+  left                <- fst . fst <$> liftGenHelper gen' 1 ns
+  right               <- fst . fst <$> liftGenHelper gen' 2 ns
   return $ Fork
     (map (\(IntRefed cmd miref) ->
             IntRefed (ifmap (fixPid ns) cmd) miref) left)
@@ -130,17 +115,19 @@ liftGenFork' gen gs = do
 -- | Lift a shrinker of internal commands into a shrinker of forks of
 --   untyped internal commands.
 liftShrinkFork
-  :: forall cmd
+  :: forall ix cmd gstate
   .  IxFoldable  cmd
   => HasResponse cmd
-  => (forall resp. Shrinker (cmd ConstIntRef resp)) -- ^ Shrinker to be lifted.
+  => Generator ix cmd gstate
+  -> (forall resp. Shrinker (cmd ConstIntRef resp)) -- ^ Shrinker to be lifted.
   -> Shrinker (Fork [IntRefed cmd])
-liftShrinkFork shrinker f@(Fork l0 p0 r0) =
+liftShrinkFork gen shrinker f@(Fork l0 p0 r0)
+  = fmap (fmap (filterPrecondition gen)) $
 
   -- Only shrink the branches:
   [ Fork l' p0 r'
-  | (l', r') <- shrinkPair (liftShrink shrinker)
-                           (liftShrink shrinker)
+  | (l', r') <- shrinkPair (liftShrinkHelper shrinker)
+                           (liftShrinkHelper shrinker)
                            (l0, r0)
   ] ++
 

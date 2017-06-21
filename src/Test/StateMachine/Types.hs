@@ -36,6 +36,8 @@
 
 module Test.StateMachine.Types
   ( StateMachineModel(..)
+  , Generator(..)
+  , liftGenerator
   , ShowCmd
   , showCmd
   , Signature
@@ -89,8 +91,8 @@ import           Data.Typeable
                    (Typeable)
 import           Data.Void
                    (Void, absurd)
-import           Test.QuickCheck.Property
-                   (Property, property)
+import           Test.QuickCheck
+                   (Property, property, Gen)
 
 import           Test.StateMachine.Internal.Types.IntRef
 
@@ -105,6 +107,24 @@ data StateMachineModel model cmd = StateMachineModel
   , transition    :: forall refs resp. IxForallF Ord refs =>
       model refs -> cmd refs resp -> Response_ refs resp -> model refs
   , initialModel  :: forall refs. model refs
+  }
+
+-- | A stateful generator.
+data Generator (ix :: Type) (cmd :: Signature ix) (gstate :: Type) = Generator
+  { generator     :: gstate -> Gen (Untyped cmd (RefPlaceholder ix))
+  , gprecondition :: forall refs resp. gstate -> cmd refs resp -> Bool
+  , gtransition   :: forall refs resp. gstate -> cmd refs resp -> gstate
+  , initGenState  :: gstate
+  }
+
+-- | A simple generator for untyped commands can be lifted to a stateful
+--   generator.
+liftGenerator :: Gen (Untyped cmd (RefPlaceholder ix)) -> Generator ix cmd ()
+liftGenerator gen = Generator
+  { generator     = const gen
+  , gprecondition = const (const True)
+  , gtransition   = const (const ())
+  , initGenState  = ()
   }
 
 -- | Given a command, how can we show it?
