@@ -189,8 +189,10 @@ gen = Generator
   where
   gprecondition' :: Int -> Action refs resp -> Bool
   gprecondition' _ (New   _)   = True
-  gprecondition' n (Find  _)   = n > 0
-  gprecondition' n (Union _ _) = n > 0
+  gprecondition' n (Find  i)   = withIn n i
+  gprecondition' n (Union i j) = withIn n i && withIn n j
+
+  withIn n i = 0 <= i && i < n
 
   gtransition' :: Int -> Action refs resp -> Int
   gtransition' n (New _) = n + 1
