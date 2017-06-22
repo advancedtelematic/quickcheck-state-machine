@@ -39,6 +39,7 @@ import           Text.Read
                    (choice, lift, parens, readListPrec,
                    readListPrecDefault, readPrec)
 
+import           Test.StateMachine.Types
 import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.ScopeCheck
@@ -52,12 +53,12 @@ import           MutableReference
 
 prop_genScope :: Property
 prop_genScope = forAll
-  (fst <$> liftGen gen (Pid 0) M.empty)
+  (fst <$> liftGen (liftGenerator gen) (Pid 0) M.empty)
   scopeCheck
 
 prop_genForkScope :: Property
 prop_genForkScope = forAll
-  (liftGenFork gen)
+  (liftGenFork (liftGenerator gen))
   scopeCheckFork
 
 prop_sequentialShrink :: Property
@@ -80,17 +81,17 @@ cheat = fmap (map (\ms -> case ms of
 
 prop_shrinkForkSubseq :: Property
 prop_shrinkForkSubseq = forAll
-  (liftGenFork gen)
+  (liftGenFork (liftGenerator gen))
   $ \f@(Fork l p r) ->
     all (\(Fork l' p' r') -> void l' `isSubsequenceOf` void l &&
                              void p' `isSubsequenceOf` void p &&
                              void r' `isSubsequenceOf` void r)
-        (liftShrinkFork shrink1 (cheat f))
+        (liftShrinkFork (liftGenerator gen) shrink1 (cheat f))
 
 prop_shrinkForkScope :: Property
 prop_shrinkForkScope = forAll
-  (liftGenFork gen)
-  $ \f -> all scopeCheckFork (liftShrinkFork shrink1 f)
+  (liftGenFork (liftGenerator gen))
+  $ \f -> all scopeCheckFork (liftShrinkFork (liftGenerator gen) shrink1 f)
 
 ------------------------------------------------------------------------
 
@@ -102,7 +103,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   hasMinimalShrink :: Fork [IntRefed MemStep] -> Bool
   hasMinimalShrink
     = anyTree isMinimal
-    . unfoldTree (id &&& liftShrinkFork shrink1)
+    . unfoldTree (id &&& liftShrinkFork (liftGenerator gen) shrink1)
     where
     anyTree :: (a -> Bool) -> Tree a -> Bool
     anyTree p = foldTree (\x ih -> p x || or ih)

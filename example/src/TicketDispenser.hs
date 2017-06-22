@@ -24,8 +24,8 @@ module TicketDispenser
   , prop_parallelBad
   ) where
 
-import           Control.Monad.State
-                   (StateT, get, lift, modify)
+import           Data.Char
+                   (isSpace)
 import           Data.Singletons.Prelude
                    (ConstSym1)
 import           Data.Void
@@ -41,9 +41,11 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Gen, frequency, ioProperty, property, (===))
+                   (frequency, ioProperty, property, (===))
 
 import           Test.StateMachine
+import           Test.StateMachine.Internal.Utils
+                   (shrinkPropertyHelper)
 
 ------------------------------------------------------------------------
 
@@ -91,18 +93,24 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-gen :: StateT Bool Gen (Untyped Action (RefPlaceholder Void))
-gen = do
-  initialised <- get
-  if not initialised
-  then do
-    modify not
-    lift $ pure (Untyped Reset)
-  else do
-    lift $ frequency
-      [ (1, pure (Untyped Reset))
-      , (8, pure (Untyped TakeTicket))
-      ]
+gen :: Generator Void Action Bool
+gen = Generator
+  { generator     = const $ frequency
+     [ (1, pure (Untyped Reset))
+     , (8, pure (Untyped TakeTicket))
+     ]
+  , gprecondition = gprecondition'
+  , gtransition   = gtransition'
+  , initGenState  = False
+  }
+  where
+  gprecondition' :: Bool -> Action refs resp -> Bool
+  gprecondition' _ Reset      = True
+  gprecondition' b TakeTicket = b
+
+  gtransition' :: Bool -> Action refs resp -> Bool
+  gtransition' _ Reset      = True
+  gtransition' b TakeTicket = b
 
 shrink1 :: Action refs resp -> [Action refs resp]
 shrink1 _ = []
@@ -131,6 +139,7 @@ semantics
                                            -- @ConstSym1 Void@ is used.
 
   -> IO (Response_ (ConstSym1 Void) resp)
+
 semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
     lock <- lockFile tlock se
@@ -174,7 +183,6 @@ prop_sequential :: Property
 prop_sequential = sequentialProperty'
   smm
   gen
-  False
   shrink1
   (const (const (semantics Shared (ticketDb, ticketLock))))
   ioProperty
@@ -188,7 +196,6 @@ prop_parallel :: SharedExclusive -> Property
 prop_parallel se = parallelProperty'
   smm
   gen
-  False
   shrink1
   setup
   (semantics se)
@@ -215,6 +222,14 @@ prop_parallelOK :: Property
 prop_parallelOK = prop_parallel Exclusive
 
 -- If we allow file locks to be shared, then we get race conditions as
--- expected.
+-- expected. The following property asserts that one of the smallest
+-- counterexamples are found.
 prop_parallelBad :: Property
-prop_parallelBad = prop_parallel Shared
+prop_parallelBad = shrinkPropertyHelper (prop_parallel Shared) $ \output ->
+  let counterExample = dropWhile isSpace (lines output !! 1) in
+  counterExample `elem`
+    [ "Fork [Reset ()] [] [Reset ()]"
+    , "Fork [TakeTicket ()] [Reset ()] [TakeTicket ()]"
+    , "Fork [TakeTicket ()] [Reset ()] [Reset ()]"
+    , "Fork [Reset ()] [Reset ()] [TakeTicket ()]"
+    ]

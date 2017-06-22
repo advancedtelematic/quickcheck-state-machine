@@ -30,7 +30,7 @@
 module UnionFind where
 
 import           Control.Monad.State
-                   (StateT, evalStateT, get, lift, liftIO, modify)
+                   (StateT, evalStateT, get, liftIO, modify)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
 import           Data.Singletons.Prelude
@@ -38,8 +38,8 @@ import           Data.Singletons.Prelude
 import           Data.Void
                    (Void)
 import           Test.QuickCheck
-                   (Gen, Property, arbitrary, choose, frequency,
-                   ioProperty, property, shrink)
+                   (Property, arbitrary, choose, frequency, ioProperty,
+                   property, shrink)
 
 import           Test.StateMachine
 
@@ -175,23 +175,26 @@ smm = StateMachineModel preconditions postconditions transitions initModel
 -- The generation of actions is parametrised by the number of @New@'s
 -- that have been generated.
 
-gen :: StateT Int Gen (Untyped Action (RefPlaceholder Void))
-gen = do
-  n <- get
-  if n == 0
-  then do
-    modify succ
-    lift $ Untyped . New <$> arbitrary
-  else do
-    cmd <- lift $ frequency
-      [ (1, Untyped . New  <$> arbitrary)
-      , (5, Untyped . Find <$> choose (0, n - 1))
-      , (5, Untyped <$> (Union <$> choose (0, n - 1) <*> choose (0, n - 1)))
-      ]
-    case cmd of
-      Untyped (New _) -> modify succ
-      _               -> return ()
-    return cmd
+gen :: Generator Void Action Int
+gen = Generator
+  { generator     = \n -> frequency
+     [ (1, Untyped .    New   <$> arbitrary)
+     , (5, Untyped .    Find  <$> choose (0, n - 1))
+     , (5, Untyped <$> (Union <$> choose (0, n - 1) <*> choose (0, n - 1)))
+     ]
+  , gprecondition = gprecondition'
+  , gtransition   = gtransition'
+  , initGenState  = 0
+  }
+  where
+  gprecondition' :: Int -> Action refs resp -> Bool
+  gprecondition' _ (New   _)   = True
+  gprecondition' n (Find  _)   = n > 0
+  gprecondition' n (Union _ _) = n > 0
+
+  gtransition' :: Int -> Action refs resp -> Int
+  gtransition' n (New _) = n + 1
+  gtransition' n _       = n
 
 shrink1 :: Action refs resp -> [Action refs resp]
 shrink1 (New x) = [ New x' | x' <- shrink x ]
@@ -246,7 +249,6 @@ prop_sequential :: Property
 prop_sequential = sequentialProperty'
   smm
   gen
-  0
   shrink1
   (const (const semantics))
   (ioProperty . flip evalStateT [])

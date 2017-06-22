@@ -73,7 +73,7 @@ validSolutions =
 testValidSolutions :: Bool
 testValidSolutions = all ((/= 4) . bigJug . run) validSolutions
   where
-  run = foldr (\c s -> transitions s c ()) initState
+  run = foldr (\c s -> transitions s c ()) initModel
 
 prop_bigJug4 :: Property
 prop_bigJug4 = shrinkPropertyHelper' prop_dieHard $ \output ->
