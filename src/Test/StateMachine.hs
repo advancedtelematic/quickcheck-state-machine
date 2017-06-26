@@ -34,7 +34,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadic, monadicIO, run)
 import           Test.QuickCheck.Property
-                   (Property, forAllShrink)
+                   (Property, forAllShrink, ioProperty)
 
 import qualified Test.StateMachine.Internal.IxMap      as IxM
 import           Test.StateMachine.Internal.Parallel
@@ -57,30 +57,40 @@ sequentialProperty
   -> (forall resp. cmd refs resp -> m (Response_ refs resp)) -- ^ Semantics
   -> (m Property -> Property)
   -> Property
-sequentialProperty smm gen shrinker sem runM =
-  sequentialProperty' smm (liftGenerator gen) shrinker (const (const sem)) runM
+sequentialProperty smm gen shrinker sem runner =
+  sequentialProperty' smm (liftGenerator gen) shrinker (const (const sem))
+    (return ()) (const runner) (const (return ()))
 
 -- | Same as above, except it provides more flexibility.
 sequentialProperty'
   :: CommandConstraint ix cmd
   => Show (model ConstIntRef)
   => Monad m
-  => StateMachineModel model cmd                             -- ^ Model
+  => StateMachineModel model cmd
   -> Generator ix cmd gstate
-  -> (forall resp refs'. Shrinker (cmd refs' resp))          -- ^ Shrinker
+  -> (forall resp refs'. Shrinker (cmd refs' resp))
   -> (forall resp. model ConstIntRef ->
         MayResponse_ ConstIntRef resp ->
         cmd refs resp ->
         m (Response_ refs resp))                             -- ^ Semantics
-  -> (m Property -> Property)
+  -> IO setup                                                -- ^ Setup
+  -> (setup -> m Property -> Property)
+  -> (setup -> IO ())                                        -- ^ Cleanup
   -> Property
-sequentialProperty' smm gen shrinker sem runM =
+sequentialProperty' model gen shrinker semantics setup runner cleanup =
   forAllShrink
     (fst <$> liftGen gen 0 M.empty)
     (liftShrink gen shrinker)
     $ \cmds -> collectStats cmds $
-        monadic (runM . flip evalStateT IxM.empty) $
-          checkSequentialInvariant smm (initialModel smm) sem cmds
+        monadic (ioProperty . runnerWithSetup)
+          (checkSequentialInvariant model
+             (initialModel model) semantics cmds)
+  where
+  runnerWithSetup mp = do
+    s <- setup
+    let prop = runner s (evalStateT mp IxM.empty)
+    cleanup s
+    return prop
 
 ------------------------------------------------------------------------
 

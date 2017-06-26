@@ -253,4 +253,6 @@ prop_sequential = sequentialProperty'
   gen
   shrink1
   (const (const semantics))
-  (ioProperty . flip evalStateT [])
+  (return ())
+  (const (ioProperty . flip evalStateT []))
+  (const (return ()))

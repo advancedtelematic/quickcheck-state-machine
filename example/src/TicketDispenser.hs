@@ -185,7 +185,9 @@ prop_sequential = sequentialProperty'
   gen
   shrink1
   (const (const (semantics Shared (ticketDb, ticketLock))))
-  ioProperty
+  (return ())
+  (const ioProperty)
+  (const (return ()))
   where
   -- Predefined files are used for the database and the file lock.
   ticketDb, ticketLock :: FilePath

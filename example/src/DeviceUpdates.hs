@@ -225,4 +225,6 @@ prop_sequential = sequentialProperty'
   (liftGenerator gen)
   shrink1
   debugSemantics
-  ioProperty
+  (return ())
+  (const ioProperty)
+  (const (return ()))
