@@ -24,6 +24,8 @@ module TicketDispenser
   , prop_parallelBad
   ) where
 
+import           Control.Concurrent
+                   (threadDelay)
 import           Data.Char
                    (isSpace)
 import           Data.Singletons.Prelude
@@ -144,6 +146,7 @@ semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
     lock <- lockFile tlock se
     i <- read <$> readFile tdb
+    threadDelay 1000
     writeFile tdb (show (i + 1))
     unlockFile lock
     return (i + 1)
@@ -234,4 +237,20 @@ prop_parallelBad = shrinkPropertyHelper (prop_parallel Shared) $ \output ->
     , "Fork [TakeTicket ()] [Reset ()] [TakeTicket ()]"
     , "Fork [TakeTicket ()] [Reset ()] [Reset ()]"
     , "Fork [Reset ()] [Reset ()] [TakeTicket ()]"
+
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),TakeTicket ()] [TakeTicket (),TakeTicket ()]"
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),TakeTicket ()] [TakeTicket (),Reset ()]"
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),TakeTicket ()] [Reset (),TakeTicket ()]"
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),TakeTicket ()] [Reset (),Reset ()]"
+
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),TakeTicket ()] [TakeTicket (),TakeTicket ()]"
+    , "Fork [TakeTicket (),Reset ()] [Reset (),TakeTicket ()] [TakeTicket (),TakeTicket ()]"
+    , "Fork [Reset (),TakeTicket ()] [Reset (),TakeTicket ()] [TakeTicket (),TakeTicket ()]"
+    , "Fork [Reset (),Reset ()] [Reset (),TakeTicket ()] [TakeTicket (),TakeTicket ()]"
+
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),Reset ()] [TakeTicket (),TakeTicket ()]"
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),Reset ()] [TakeTicket (),Reset ()]"
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),Reset ()] [Reset (),TakeTicket ()]"
+    , "Fork [TakeTicket (),TakeTicket ()] [Reset (),Reset ()] [Reset (),Reset ()]"
+
     ]
