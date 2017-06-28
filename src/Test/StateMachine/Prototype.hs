@@ -27,6 +27,8 @@ import           Data.Functor.Classes
                    (Eq1(..), Ord1(..), Show1(..), showsPrec1)
 import           Data.Functor.Const (Const(..))
 import           Data.IORef
+import           Data.List
+                   (partition)
 import           Data.Map
                    (Map)
 import qualified Data.Map                            as M
@@ -36,8 +38,13 @@ import qualified Data.Set                            as Set
 import           Data.Tree
 import           System.Random
                    (randomRIO)
+import           Text.PrettyPrint.ANSI.Leijen
+                   (Doc)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
+
+import           Test.StateMachine.Internal.Utils.BoxDrawer
+import qualified Test.StateMachine.Internal.Types as INTERNAL
 
 ------------------------------------------------------------------------
 
@@ -151,10 +158,10 @@ reify vars =
 type Untyped act = Untyped' act Symbolic
 
 data Untyped' (act :: (* -> *) -> * -> *) (v :: * -> *) where
-  Untyped :: Typeable resp => act v resp -> Untyped' act v
+  Untyped :: (Typeable resp, Show resp) => act v resp -> Untyped' act v
 
 data Internal (act :: (* -> *) -> * -> *) where
-  Internal :: Typeable resp => act Symbolic resp -> Symbolic resp -> Internal act
+  Internal :: (Typeable resp, Show resp) => act Symbolic resp -> Symbolic resp -> Internal act
 
 liftProperty :: Monad m => Property -> PropertyM m ()
 liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
@@ -420,11 +427,11 @@ newtype Pid = Pid Int
 
 data HistoryEvent act
   = InvocationEvent act     String Pid
-  | ResponseEvent   Dynamic Pid
+  | ResponseEvent   Dynamic String Pid
 
 getProcessIdEvent :: HistoryEvent act -> Pid
 getProcessIdEvent (InvocationEvent _ _ pid) = pid
-getProcessIdEvent (ResponseEvent   _   pid) = pid
+getProcessIdEvent (ResponseEvent   _ _ pid) = pid
 
 data Operation act = forall resp. Typeable resp =>
   Operation (act Concrete resp) String (Concrete resp) Pid
@@ -436,7 +443,7 @@ takeInvocations = takeWhile $ \h -> case h of
 
 findCorrespondingResp :: Pid -> History act -> [(Dynamic, History act)]
 findCorrespondingResp _   [] = []
-findCorrespondingResp pid (ResponseEvent resp pid' : es) | pid == pid' = [(resp, es)]
+findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
@@ -480,6 +487,23 @@ linearise next post init es = anyP (step init) . linearTree $ es
 
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)
+
+toBoxDrawings :: History act -> Doc
+toBoxDrawings h = exec evT (fmap (fmap out) $ INTERNAL.Fork l p r)
+  where
+    (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
+    (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
+
+    out :: HistoryEvent act -> String
+    out (InvocationEvent _ str pid) = str
+    out (ResponseEvent _ str pid)   = str
+
+    toEventType :: History cmd -> [(EventType, INTERNAL.Pid)]
+    toEventType = map $ \e -> case e of
+      InvocationEvent _ _ (Pid pid) -> (Open, INTERNAL.Pid pid)
+      ResponseEvent _ _ (Pid pid)   -> (Close, INTERNAL.Pid pid)
+    evT :: [(EventType, INTERNAL.Pid)]
+    evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
 
 ------------------------------------------------------------------------
 
@@ -574,7 +598,7 @@ runMany sem hchan pid = flip foldM () $ \_ act@(Internal act' sym) -> do
   modify (insertConcrete sym (Concrete resp))
   lift $ do
     threadDelay =<< randomRIO (0, 20)
-    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) pid
+    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
 
 checkParallelInvariant
   :: Precondition  model act
@@ -585,9 +609,9 @@ checkParallelInvariant
   -> PropertyM IO ()
 checkParallelInvariant pre next post initial hist
   = liftProperty
-  . counterexample ("Couldn't linearise:\n\n" ++ show hist)  -- XXX: box drawing.
+  . counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings hist))
   $ linearise next post initial hist
 
 instance Show (HistoryEvent (Untyped' act Concrete)) where
   show (InvocationEvent _ str _) = str
-  show (ResponseEvent d _)       = show d
+  show (ResponseEvent   _ str _) = str
