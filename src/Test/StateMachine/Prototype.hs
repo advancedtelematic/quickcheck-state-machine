@@ -81,8 +81,11 @@ instance Ord1 Symbolic where
 
 newtype ShowSymbolic a = ShowSymbolic Var
 
+showVar :: Var -> String
+showVar (Var i) = "$" ++ show i
+
 instance Show1 ShowSymbolic where
-  liftShowsPrec _ _ p (ShowSymbolic (Var i)) _ = "$" ++ show i
+  liftShowsPrec _ _ p (ShowSymbolic var) _ = showVar var
 
 newtype Concrete a where
   Concrete :: a -> Concrete a
@@ -518,7 +521,7 @@ toBoxDrawings knownVars h = exec evT (fmap (fmap out) $ INTERNAL.Fork l p r)
     (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
 
     out :: HistoryEvent act -> String
-    out (InvocationEvent _ str var pid) | var `Set.member` knownVars = show var ++ " ← " ++ str
+    out (InvocationEvent _ str var pid) | var `Set.member` knownVars = showVar var ++ " ← " ++ str
                                         | otherwise = str
     out (ResponseEvent _ str pid) = str
 
