@@ -27,6 +27,8 @@ import           Data.Functor.Classes
                    (Eq1(..), Ord1(..), Show1(..), showsPrec1)
 import           Data.Functor.Const (Const(..))
 import           Data.IORef
+import           Data.List
+                   (partition)
 import           Data.Map
                    (Map)
 import qualified Data.Map                            as M
@@ -36,8 +38,13 @@ import qualified Data.Set                            as Set
 import           Data.Tree
 import           System.Random
                    (randomRIO)
+import           Text.PrettyPrint.ANSI.Leijen
+                   (Doc)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
+
+import           Test.StateMachine.Internal.Utils.BoxDrawer
+import qualified Test.StateMachine.Internal.Types as INTERNAL
 
 ------------------------------------------------------------------------
 
@@ -72,6 +79,11 @@ instance Eq1 Symbolic where
 instance Ord1 Symbolic where
   liftCompare _ (Symbolic x) (Symbolic y) = compare x y
 
+newtype ShowSymbolic a = ShowSymbolic Var
+
+instance Show1 ShowSymbolic where
+  liftShowsPrec _ _ p (ShowSymbolic (Var i)) _ = "$" ++ show i
+
 newtype Concrete a where
   Concrete :: a -> Concrete a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
@@ -96,6 +108,14 @@ class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
 
 class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
   htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
+
+data ShowResponse resp = ShowResponse
+  { theAction :: String
+  , showResp  :: resp -> String
+  }
+
+class ShowAction (act :: (* -> *) -> * -> *) where
+  showAction :: Show1 v => act v resp -> ShowResponse resp
 
 newtype Environment =
   Environment {
@@ -151,10 +171,10 @@ reify vars =
 type Untyped act = Untyped' act Symbolic
 
 data Untyped' (act :: (* -> *) -> * -> *) (v :: * -> *) where
-  Untyped :: Typeable resp => act v resp -> Untyped' act v
+  Untyped :: (Typeable resp, Show resp) => act v resp -> Untyped' act v
 
 data Internal (act :: (* -> *) -> * -> *) where
-  Internal :: Typeable resp => act Symbolic resp -> Symbolic resp -> Internal act
+  Internal :: (Typeable resp, Show resp) => act Symbolic resp -> Symbolic resp -> Internal act
 
 liftProperty :: Monad m => Property -> PropertyM m ()
 liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
@@ -202,6 +222,12 @@ instance Show (Internal Action) where
   show (Internal (Read  ref)   _) = "Read ("  ++ show ref ++ ")"
   show (Internal (Write ref i) _) = "Write (" ++ show ref ++ ") " ++ show i
   show (Internal (Inc   ref)   _) = "Inc ("   ++ show ref ++ ")"
+
+instance ShowAction Action where
+  showAction New           = ShowResponse "New"                                   show
+  showAction (Read ref)    = ShowResponse ("Read " ++ show ref)                   show
+  showAction (Write ref i) = ShowResponse ("Write " ++ show ref ++ " " ++ show i) show
+  showAction (Inc ref)     = ShowResponse ("Inc " ++ show ref)                    show
 
 instance HFunctor Action
 instance HFoldable Action
@@ -386,7 +412,8 @@ prop_references = sequentialProperty generator shrink1 precondition
 ------------------------------------------------------------------------
 
 parallelProperty
-  :: Show (Internal act)
+  :: ShowAction act
+  => Show (Internal act) -- used by the forAllShrink
   => HTraversable act
   => Generator model act
   -> (forall resp v. act v resp -> [act v resp])          -- ^ Shrinker
@@ -402,7 +429,7 @@ parallelProperty gen shrinker precond trans postcond initial sem =
     (liftShrinkFork shrinker precond trans initial) $ \fork -> monadicIO $ do
       replicateM_ 10 $ do
         hist <- run $ liftSemFork sem fork
-        checkParallelInvariant precond trans postcond initial hist
+        checkParallelInvariant precond trans postcond initial fork hist
 
 prop_parallelReferences :: Property
 prop_parallelReferences = parallelProperty generator shrink1 precondition
@@ -413,30 +440,33 @@ prop_parallelReferences = parallelProperty generator shrink1 precondition
 data Fork a = Fork a a a
   deriving Show
 
+instance Functor Fork where
+  fmap f (Fork l p r) = Fork (f l) (f p) (f r)
+
 type History act = [HistoryEvent (Untyped' act Concrete)]
 
 newtype Pid = Pid Int
   deriving Eq
 
 data HistoryEvent act
-  = InvocationEvent act     String Pid
-  | ResponseEvent   Dynamic Pid
+  = InvocationEvent act     String Var Pid
+  | ResponseEvent   Dynamic String     Pid
 
 getProcessIdEvent :: HistoryEvent act -> Pid
-getProcessIdEvent (InvocationEvent _ _ pid) = pid
-getProcessIdEvent (ResponseEvent   _   pid) = pid
+getProcessIdEvent (InvocationEvent _ _ _ pid) = pid
+getProcessIdEvent (ResponseEvent   _ _ pid) = pid
 
 data Operation act = forall resp. Typeable resp =>
   Operation (act Concrete resp) String (Concrete resp) Pid
 
 takeInvocations :: [HistoryEvent a] -> [HistoryEvent a]
 takeInvocations = takeWhile $ \h -> case h of
-  InvocationEvent _ _ _ -> True
-  _                     -> False
+  InvocationEvent _ _ _ _ -> True
+  _                       -> False
 
 findCorrespondingResp :: Pid -> History act -> [(Dynamic, History act)]
 findCorrespondingResp _   [] = []
-findCorrespondingResp pid (ResponseEvent resp pid' : es) | pid == pid' = [(resp, es)]
+findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
@@ -444,7 +474,7 @@ linearTree :: History act -> [Tree (Operation act)]
 linearTree [] = []
 linearTree es =
   [ Node (Operation act str (dynResp resp) pid) (linearTree es')
-  | InvocationEvent (Untyped act) str pid <- takeInvocations es
+  | InvocationEvent (Untyped act) str _ pid <- takeInvocations es
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
@@ -456,7 +486,7 @@ linearTree es =
                      | otherwise = xs
 
   -- Hmm, is this enough?
-  matchInv pid (InvocationEvent _ _ pid') = pid == pid'
+  matchInv pid (InvocationEvent _ _ _ pid') = pid == pid'
   matchInv _   _                          = False
 
 linearise
@@ -480,6 +510,24 @@ linearise next post init es = anyP (step init) . linearTree $ es
 
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)
+
+toBoxDrawings :: Set Var -> History act -> Doc
+toBoxDrawings knownVars h = exec evT (fmap (fmap out) $ INTERNAL.Fork l p r)
+  where
+    (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
+    (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
+
+    out :: HistoryEvent act -> String
+    out (InvocationEvent _ str var pid) | var `Set.member` knownVars = show var ++ " ← " ++ str
+                                        | otherwise = str
+    out (ResponseEvent _ str pid) = str
+
+    toEventType :: History cmd -> [(EventType, INTERNAL.Pid)]
+    toEventType = map $ \e -> case e of
+      InvocationEvent _ _ _ (Pid pid) -> (Open, INTERNAL.Pid pid)
+      ResponseEvent _ _ (Pid pid)   -> (Close, INTERNAL.Pid pid)
+    evT :: [(EventType, INTERNAL.Pid)]
+    evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
 
 ------------------------------------------------------------------------
 
@@ -532,7 +580,7 @@ liftShrinkFork oldShrink pre trans model (Fork l p r) =
 
 liftSemFork
   :: HTraversable act
-  => Show (Internal act)
+  => ShowAction act
   => (forall resp. act Concrete resp -> IO resp)
   -> Fork [Internal act]
   -> IO (History act)
@@ -558,36 +606,40 @@ liftSemFork sem (Fork left prefix right) = do
 
 runMany
   :: HTraversable act
-  => Show (Internal act)
+  => ShowAction act
   => (forall resp. act Concrete resp -> IO resp)
   -> TChan (HistoryEvent (Untyped' act Concrete))
   -> Pid
   -> [Internal act]
   -> StateT Environment IO ()
-runMany sem hchan pid = flip foldM () $ \_ act@(Internal act' sym) -> do
+runMany sem hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
   env <- get
-  let cact = case reify env act' of
+  let showAct = showAction $ hfmap (\(Symbolic v) -> ShowSymbolic v) act
+  let invStr = theAction showAct
+  let cact = case reify env act of
         Left  err  -> error (show err)
         Right cact -> cact
-  lift $ atomically $ writeTChan hchan $ InvocationEvent (Untyped cact) (show act) pid
+  lift $ atomically $ writeTChan hchan $ InvocationEvent (Untyped cact) invStr var pid
   resp <- lift (sem cact)
   modify (insertConcrete sym (Concrete resp))
   lift $ do
     threadDelay =<< randomRIO (0, 20)
-    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) pid
+    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (showResp showAct resp) pid
 
 checkParallelInvariant
-  :: Precondition  model act
+  :: HFoldable act
+  => Precondition  model act
   -> Transition    model act
   -> Postcondition model act
   -> (forall v. model v)
+  -> Fork [Internal act]
   -> History act
   -> PropertyM IO ()
-checkParallelInvariant pre next post initial hist
+checkParallelInvariant pre next post initial prog hist
   = liftProperty
-  . counterexample ("Couldn't linearise:\n\n" ++ show hist)  -- XXX: box drawing.
+  . counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars hist))
   $ linearise next post initial hist
-
-instance Show (HistoryEvent (Untyped' act Concrete)) where
-  show (InvocationEvent _ str _) = str
-  show (ResponseEvent d _)       = show d
+  where
+    vars xs = [ getUsedVars x | Internal x _ <- xs]
+    Fork l p r = fmap (Set.unions . vars) prog
+    allVars = Set.unions [l,p,r]
