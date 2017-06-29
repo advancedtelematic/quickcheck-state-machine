@@ -25,10 +25,14 @@ import           Control.Monad.State
 import           Data.Dynamic
 import           Data.Functor.Classes
                    (Eq1(..), Ord1(..), Show1(..), showsPrec1)
+import           Data.Functor.Const (Const(..))
 import           Data.IORef
 import           Data.Map
                    (Map)
 import qualified Data.Map                            as M
+import           Data.Set
+                   (Set)
+import qualified Data.Set                            as Set
 import           Data.Tree
 import           System.Random
                    (randomRIO)
@@ -84,7 +88,13 @@ instance Eq1 Concrete where
 instance Ord1 Concrete where
   liftCompare comp (Concrete x) (Concrete y) = comp x y
 
-class HFunctor t => HTraversable (t :: (* -> *) -> * -> *) where
+class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
+  hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
+
+  default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
+  hfoldMap f = getConst . htraverse (Const . f)
+
+class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
   htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
 
 newtype Environment =
@@ -194,6 +204,7 @@ instance Show (Internal Action) where
   show (Internal (Inc   ref)   _) = "Inc ("   ++ show ref ++ ")"
 
 instance HFunctor Action
+instance HFoldable Action
 
 instance HTraversable Action where
   htraverse _ New                 = pure New
@@ -279,8 +290,41 @@ liftGen' gen pre next model0 n = sized $ \size -> go size n model0
     (acts, model', j) <- go (sz - 1) (i + 1) (next model act sym)
     return (Internal act sym : acts, model', j + 1)
 
-liftShrink :: (act v resp -> [act v resp]) -> [Internal act] -> [[Internal act]]
-liftShrink _ _ = []
+liftShrinkInternal
+  :: (forall v resp. act v resp -> [act v resp])
+  -> Internal act -> [Internal act]
+liftShrinkInternal shrinker (Internal act sym) =
+  [ Internal act' sym | act' <- shrinker act ]
+
+liftShrink
+  :: HFoldable act
+  => (forall v resp. act v resp -> [act v resp])
+  -> Precondition model act
+  -> Transition model act
+  -> model Symbolic
+  -> [Internal act]
+  -> [[Internal act]]
+liftShrink oldShrink pre trans model = map (snd . filterInvalid pre trans model Set.empty) . shrinkList (liftShrinkInternal oldShrink)
+
+getUsedVars
+  :: HFoldable act
+  => act Symbolic a -> Set Var
+getUsedVars = hfoldMap (\(Symbolic v) -> Set.singleton v)
+
+filterInvalid
+  :: HFoldable act
+  => Precondition model act
+  -> Transition model act
+  -> model Symbolic
+  -> Set Var
+  -> [Internal act] -> ((model Symbolic, Set Var), [Internal act])
+filterInvalid pre trans = go
+ where
+   go m known [] = ((m, known), [])
+   go m known (x@(Internal act sym@(Symbolic var)) : xs)
+     | getUsedVars act `Set.isSubsetOf` known && pre m act =
+         fmap (x :) $ go (trans m act sym) (Set.insert var known) xs
+     | otherwise = go m known xs
 
 liftModel
   :: Monad m
@@ -317,6 +361,7 @@ sequentialProperty
   :: Monad m
   => Show (Internal act)
   => HFunctor act
+  => HFoldable act
   => Generator model act
   -> (forall resp v. act v resp -> [act v resp])   -- ^ Shrinker
   -> Precondition model act
@@ -329,7 +374,7 @@ sequentialProperty
 sequentialProperty gen shrinker precond trans postcond m sem runner =
   forAllShrink
   (liftGen gen m precond trans)
-  (liftShrink shrinker)
+  (liftShrink shrinker precond trans m)
   $ \acts -> do
     monadic (runner . flip evalStateT emptyEnvironment)
       (liftModel m m acts precond sem trans postcond)
@@ -354,7 +399,7 @@ parallelProperty
 parallelProperty gen shrinker precond trans postcond initial sem =
   forAllShrink
     (liftGenFork gen precond trans initial)
-    (liftShrinkFork shrinker) $ \fork -> monadicIO $ do
+    (liftShrinkFork shrinker precond trans initial) $ \fork -> monadicIO $ do
       replicateM_ 10 $ do
         hist <- run $ liftSemFork sem fork
         checkParallelInvariant precond trans postcond initial hist
@@ -450,10 +495,40 @@ liftGenFork gen pre next model = do
   (right,  _,      _) <- liftGen' gen pre next model' n
   return (Fork left prefix right)
 
+forkFilterInvalid
+  :: HFoldable act
+  => Precondition model act
+  -> Transition model act
+  -> model Symbolic
+  -> Fork [Internal act]
+  -> Fork [Internal act]
+forkFilterInvalid pre trans m (Fork l p r) =
+  Fork (snd $ filterInvalid pre trans m' vars l)
+       p'
+       (snd $ filterInvalid pre trans m' vars r)
+  where
+    ((m', vars), p') = filterInvalid pre trans m Set.empty p
+
+shrinkPair
+  :: (a -> [a])
+  -> (b -> [b])
+  -> ((a, b) -> [(a, b)])
+shrinkPair shrinkA shrinkB (a, b) =
+     [ (a', b) | a' <- shrinkA a ]
+  ++ [ (a, b') | b' <- shrinkB b ]
+
 liftShrinkFork
-  :: (act v resp -> [act v resp])
+  :: HFoldable act
+  => (forall v resp. act v resp -> [act v resp])
+  -> Precondition model act
+  -> Transition model act
+  -> model Symbolic
   -> (Fork [Internal act] -> [Fork [Internal act]])
-liftShrinkFork _ _ = []
+liftShrinkFork oldShrink pre trans model (Fork l p r) =
+  map (forkFilterInvalid pre trans model)
+  [ Fork l' p' r' | (p', (l', r')) <- shrinkPair shrinkSub (shrinkPair shrinkSub shrinkSub) (p, (l, r))]
+  where
+    shrinkSub = shrinkList (liftShrinkInternal oldShrink)
 
 liftSemFork
   :: HTraversable act
