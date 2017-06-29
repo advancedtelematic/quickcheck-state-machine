@@ -79,6 +79,11 @@ instance Eq1 Symbolic where
 instance Ord1 Symbolic where
   liftCompare _ (Symbolic x) (Symbolic y) = compare x y
 
+newtype ShowSymbolic a = ShowSymbolic Var
+
+instance Show1 ShowSymbolic where
+  liftShowsPrec _ _ p (ShowSymbolic (Var i)) _ = "$" ++ show i
+
 newtype Concrete a where
   Concrete :: a -> Concrete a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
@@ -103,6 +108,15 @@ class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
 
 class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
   htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
+
+data ShowResponse resp = ShowResponse
+  { theAction :: String
+  , showVar   :: Bool
+  , showResp  :: resp -> String
+  }
+
+class ShowAction (act :: (* -> *) -> * -> *) where
+  showAction :: Show1 v => act v resp -> ShowResponse resp
 
 newtype Environment =
   Environment {
@@ -209,6 +223,12 @@ instance Show (Internal Action) where
   show (Internal (Read  ref)   _) = "Read ("  ++ show ref ++ ")"
   show (Internal (Write ref i) _) = "Write (" ++ show ref ++ ") " ++ show i
   show (Internal (Inc   ref)   _) = "Inc ("   ++ show ref ++ ")"
+
+instance ShowAction Action where
+  showAction New           = ShowResponse "New"                                   True  show
+  showAction (Read ref)    = ShowResponse ("Read " ++ show ref)                   False show
+  showAction (Write ref i) = ShowResponse ("Write " ++ show ref ++ " " ++ show i) False show
+  showAction (Inc ref)     = ShowResponse ("Inc " ++ show ref)                    False show
 
 instance HFunctor Action
 instance HFoldable Action
@@ -393,7 +413,8 @@ prop_references = sequentialProperty generator shrink1 precondition
 ------------------------------------------------------------------------
 
 parallelProperty
-  :: Show (Internal act)
+  :: ShowAction act
+  => Show (Internal act) -- used by the forAllShrink
   => HTraversable act
   => Generator model act
   -> (forall resp v. act v resp -> [act v resp])          -- ^ Shrinker
@@ -556,7 +577,7 @@ liftShrinkFork oldShrink pre trans model (Fork l p r) =
 
 liftSemFork
   :: HTraversable act
-  => Show (Internal act)
+  => ShowAction act
   => (forall resp. act Concrete resp -> IO resp)
   -> Fork [Internal act]
   -> IO (History act)
@@ -582,23 +603,26 @@ liftSemFork sem (Fork left prefix right) = do
 
 runMany
   :: HTraversable act
-  => Show (Internal act)
+  => ShowAction act
   => (forall resp. act Concrete resp -> IO resp)
   -> TChan (HistoryEvent (Untyped' act Concrete))
   -> Pid
   -> [Internal act]
   -> StateT Environment IO ()
-runMany sem hchan pid = flip foldM () $ \_ act@(Internal act' sym) -> do
+runMany sem hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic (Var var))) -> do
   env <- get
-  let cact = case reify env act' of
+  let showAct = showAction $ hfmap (\(Symbolic v) -> ShowSymbolic v) act
+  let invStr | showVar showAct = "$" ++ show var ++ " ← " ++ theAction showAct
+             | otherwise       = theAction showAct
+  let cact = case reify env act of
         Left  err  -> error (show err)
         Right cact -> cact
-  lift $ atomically $ writeTChan hchan $ InvocationEvent (Untyped cact) (show act) pid
+  lift $ atomically $ writeTChan hchan $ InvocationEvent (Untyped cact) invStr pid
   resp <- lift (sem cact)
   modify (insertConcrete sym (Concrete resp))
   lift $ do
     threadDelay =<< randomRIO (0, 20)
-    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
+    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (showResp showAct resp) pid
 
 checkParallelInvariant
   :: Precondition  model act
