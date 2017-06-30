@@ -1,7 +1,6 @@
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TypeInType                 #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE KindSignatures    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -18,18 +17,14 @@
 -----------------------------------------------------------------------------
 
 module TicketDispenser
-  ( prop_sequential
-  , prop_parallel
-  , prop_parallelOK
-  , prop_parallelBad
+  ( prop_ticketDispenser
+  , prop_ticketDispenserParallel
+  , prop_ticketDispenserParallelOK
+  , prop_ticketDispenserParallelBad
   ) where
 
 import           Data.Char
                    (isSpace)
-import           Data.Singletons.Prelude
-                   (ConstSym1)
-import           Data.Void
-                   (Void)
 import           Prelude                          hiding
                    (readFile)
 import           System.Directory
@@ -41,78 +36,65 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (frequency, ioProperty, property, (===))
+                   (Property, frequency, ioProperty, property, (===))
 
-import           Test.StateMachine
 import           Test.StateMachine.Internal.Utils
                    (shrinkPropertyHelper)
+import           Test.StateMachine.Prototype
 
 ------------------------------------------------------------------------
 
 -- The actions of the ticket dispenser are:
 
-data Action :: Signature Void where
-  TakeTicket :: Action refs ('Response Int)
-  Reset      :: Action refs ('Response ())
+data Action (v :: * -> *) :: * -> * where
+  TakeTicket :: Action v Int
+  Reset      :: Action v ()
 
 -- Which correspond to taking a ticket and getting the next number, and
 -- resetting the number counter of the dispenser.
+
+instance ShowAction Action where
+  showAction TakeTicket = ShowResponse "TakeTicket" show
+  showAction Reset      = ShowResponse "Reset"      show
 
 ------------------------------------------------------------------------
 
 -- The dispenser has to be reset before use, hence the maybe integer.
 
-newtype Model refs = Model (Maybe Int)
+newtype Model (v :: * -> *) = Model (Maybe Int)
   deriving (Eq, Show)
 
-initModel :: Model refs
+initModel :: Model v
 initModel = Model Nothing
 
-preconditions :: Model refs -> Action refs resp -> Bool
+preconditions :: Precondition Model Action
 preconditions (Model Nothing)  TakeTicket = False
 preconditions (Model (Just _)) TakeTicket = True
 preconditions _                Reset      = True
 
-transitions
-  :: Model refs -> Action refs resp -> Response_ refs resp -> Model refs
+transitions :: Transition Model Action
 transitions (Model m) cmd _ = case cmd of
   TakeTicket -> Model (succ <$> m)
   Reset      -> Model (Just 0)
 
-postconditions
-  :: Model refs -> Action refs resp -> Response_ refs resp -> Property
+postconditions :: Postcondition Model Action
 postconditions (Model m) cmd resp = case cmd of
   TakeTicket -> Just resp === (succ <$> m)
   Reset      -> property True
-
-smm :: StateMachineModel Model Action
-smm = StateMachineModel preconditions postconditions transitions initModel
 
 ------------------------------------------------------------------------
 
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-gen :: Generator Void Action Bool
-gen = Generator
-  { generator     = const $ frequency
-     [ (1, pure (Untyped Reset))
-     , (8, pure (Untyped TakeTicket))
-     ]
-  , gprecondition = gprecondition'
-  , gtransition   = gtransition'
-  , initGenState  = False
-  }
-  where
-  gprecondition' :: Bool -> Action refs resp -> Bool
-  gprecondition' _ Reset      = True
-  gprecondition' b TakeTicket = b
+gen :: Generator Model Action
+gen (Model Nothing)  = pure (Untyped Reset)
+gen (Model (Just _)) = frequency
+  [ (1, pure (Untyped Reset))
+  , (8, pure (Untyped TakeTicket))
+  ]
 
-  gtransition' :: Bool -> Action refs resp -> Bool
-  gtransition' _ Reset      = True
-  gtransition' b TakeTicket = b
-
-shrink1 :: Action refs resp -> [Action refs resp]
+shrink1 :: Action v resp -> [Action v resp]
 shrink1 _ = []
 
 ------------------------------------------------------------------------
@@ -134,11 +116,9 @@ semantics
                                            -- file lock used for
                                            -- synchronisation.
 
-  -> Action (ConstSym1 Void) resp          -- ^ This example doesn't use
-                                           -- any references, hence
-                                           -- @ConstSym1 Void@ is used.
+  -> Action Concrete resp
 
-  -> IO (Response_ (ConstSym1 Void) resp)
+  -> IO resp
 
 semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
@@ -154,51 +134,46 @@ semantics se (tdb, tlock) cmd = case cmd of
 
 ------------------------------------------------------------------------
 
-instance HasResponse Action where
-  response TakeTicket = SResponse
-  response Reset      = SResponse
+instance Show (Internal Action) where
+  show (Internal TakeTicket _) = "TakeTicket"
+  show (Internal Reset      _) = "Reset"
 
-instance ShowCmd Action where
-  showCmd TakeTicket = "TakeTicket"
-  showCmd Reset      = "Reset"
+instance HTraversable Action where
+  htraverse _ TakeTicket = pure TakeTicket
+  htraverse _ Reset      = pure Reset
 
-instance IxFunctor Action where
-  ifmap _ TakeTicket = TakeTicket
-  ifmap _ Reset      = Reset
-
-instance IxFoldable Action where
-  ifoldMap _ TakeTicket = mempty
-  ifoldMap _ Reset      = mempty
-
-instance IxTraversable Action where
-  ifor _ TakeTicket _ = pure TakeTicket
-  ifor _ Reset      _ = pure Reset
+instance HFunctor  Action
+instance HFoldable Action
 
 ------------------------------------------------------------------------
 
 -- Sequentially the model is consistant (even though the lock is
 -- shared).
 
-prop_sequential :: Property
-prop_sequential = sequentialProperty'
-  smm
+prop_ticketDispenser :: Property
+prop_ticketDispenser = sequentialProperty
   gen
   shrink1
-  (const (const (semantics Shared (ticketDb, ticketLock))))
-  (return ())
-  (const ioProperty)
-  (const (return ()))
+  preconditions
+  transitions
+  postconditions
+  initModel
+  (semantics Shared (ticketDb, ticketLock))
+  ioProperty
   where
   -- Predefined files are used for the database and the file lock.
   ticketDb, ticketLock :: FilePath
   ticketDb   = "/tmp/ticket-dispenser.db"
   ticketLock = "/tmp/ticket-dispenser.lock"
 
-prop_parallel :: SharedExclusive -> Property
-prop_parallel se = parallelProperty'
-  smm
+prop_ticketDispenserParallel :: SharedExclusive -> Property
+prop_ticketDispenserParallel se = parallelProperty'
   gen
   shrink1
+  preconditions
+  transitions
+  postconditions
+  initModel
   setup
   (semantics se)
   cleanup
@@ -220,18 +195,19 @@ prop_parallel se = parallelProperty'
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.
-prop_parallelOK :: Property
-prop_parallelOK = prop_parallel Exclusive
+prop_ticketDispenserParallelOK :: Property
+prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 
 -- If we allow file locks to be shared, then we get race conditions as
 -- expected. The following property asserts that one of the smallest
 -- counterexamples are found.
-prop_parallelBad :: Property
-prop_parallelBad = shrinkPropertyHelper (prop_parallel Shared) $ \output ->
-  let counterExample = dropWhile isSpace (lines output !! 1) in
-  counterExample `elem`
-    [ "Fork [Reset ()] [] [Reset ()]"
-    , "Fork [TakeTicket ()] [Reset ()] [TakeTicket ()]"
-    , "Fork [TakeTicket ()] [Reset ()] [Reset ()]"
-    , "Fork [Reset ()] [Reset ()] [TakeTicket ()]"
-    ]
+prop_ticketDispenserParallelBad :: Property
+prop_ticketDispenserParallelBad =
+  shrinkPropertyHelper (prop_ticketDispenserParallel Shared) $ \output ->
+    let counterExample = dropWhile isSpace (lines output !! 1) in
+    counterExample `elem`
+      [ "Fork [Reset ()] [] [Reset ()]"
+      , "Fork [TakeTicket ()] [Reset ()] [TakeTicket ()]"
+      , "Fork [TakeTicket ()] [Reset ()] [Reset ()]"
+      , "Fork [Reset ()] [Reset ()] [TakeTicket ()]"
+      ]

@@ -28,7 +28,7 @@ module MutableReference
   , generator
   , shrink1
   , prop_references
-  , prop_parallelReferences
+  , prop_referencesParallel
   ) where
 
 import           Control.Concurrent
@@ -181,6 +181,6 @@ prop_references = sequentialProperty generator shrink1 precondition
   transition postcondition initModel (semantics None) ioProperty
 
 
-prop_parallelReferences :: Property
-prop_parallelReferences = parallelProperty generator shrink1 precondition
+prop_referencesParallel :: Property
+prop_referencesParallel = parallelProperty generator shrink1 precondition
   transition postcondition initModel (semantics RaceCondition)

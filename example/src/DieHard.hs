@@ -28,7 +28,7 @@ module DieHard
 import           Control.Monad.Identity
                    (Identity, runIdentity)
 import           Test.QuickCheck
-                   (Gen, Property, elements, property)
+                   (Property, elements, property)
 
 import           Test.StateMachine.Prototype
 
@@ -102,7 +102,7 @@ postconditions s c r = property (bigJug (transitions s c (Concrete r)) /= 4)
 -- The generator of actions is simple, with equal distribution pick an
 -- action.
 
-gen :: Model v -> Gen (Untyped Action)
+gen :: Generator Model Action
 gen _ = elements
   [ Untyped FillBig
   , Untyped FillSmall

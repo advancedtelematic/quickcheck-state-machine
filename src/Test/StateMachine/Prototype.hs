@@ -26,7 +26,6 @@ import           Data.Dynamic
 import           Data.Functor.Classes
                    (Eq1(..), Ord1(..), Show1(..), showsPrec1)
 import           Data.Functor.Const (Const(..))
-import           Data.IORef
 import           Data.List
                    (partition)
 import           Data.Map
@@ -246,7 +245,9 @@ liftShrink
   -> model Symbolic
   -> [Internal act]
   -> [[Internal act]]
-liftShrink oldShrink pre trans model = map (snd . filterInvalid pre trans model Set.empty) . shrinkList (liftShrinkInternal oldShrink)
+liftShrink oldShrink pre trans model
+  = map (snd . filterInvalid pre trans model Set.empty)
+  . shrinkList (liftShrinkInternal oldShrink)
 
 getUsedVars
   :: HFoldable act
@@ -287,6 +288,9 @@ liftModel m m' (Internal act sym : acts) precond sem trans postcond = do
   resp <- run (lift (sem act'))
   liftProperty (postcond m' act' resp)
   run (modify (insertConcrete sym (Concrete resp)))
+
+  -- XXX: Use counterexample here!
+
   liftModel
     (trans m  act sym)
     (trans m' act' (Concrete resp))
@@ -314,12 +318,38 @@ sequentialProperty
   -> (m Property -> Property)                      -- ^ Runner
   -> Property
 sequentialProperty gen shrinker precond trans postcond m sem runner =
+  sequentialProperty' gen shrinker precond trans postcond m
+    sem (return ()) (const runner) (const (return ()))
+
+sequentialProperty'
+  :: Monad m
+  => Show (Internal act)
+  => HFunctor act
+  => HFoldable act
+  => Generator model act
+  -> (forall resp v. act v resp -> [act v resp])   -- ^ Shrinker
+  -> Precondition model act
+  -> Transition    model act
+  -> Postcondition model act
+  -> (forall v. model v)                           -- ^ Initial model
+  -> (forall resp. act Concrete resp -> m resp)    -- ^ Semantics
+  -> IO setup                                      -- ^ Setup some resource
+  -> (setup -> m Property -> Property)             -- ^ Runner
+  -> (setup -> IO ())                              -- ^ Cleanup the resource
+  -> Property
+sequentialProperty' gen shrinker precond trans postcond m sem setup runner cleanup =
   forAllShrink
   (liftGen gen m precond trans)
   (liftShrink shrinker precond trans m)
   $ \acts -> do
-    monadic (runner . flip evalStateT emptyEnvironment)
+    monadic (ioProperty . runnerWithSetup)
       (liftModel m m acts precond sem trans postcond)
+  where
+  runnerWithSetup mp = do
+    s <- setup
+    let prop = runner s (evalStateT mp emptyEnvironment)
+    cleanup s
+    return prop
 
 ------------------------------------------------------------------------
 
@@ -336,11 +366,31 @@ parallelProperty
   -> (forall resp. act Concrete resp -> IO resp)          -- ^ Semantics
   -> Property
 parallelProperty gen shrinker precond trans postcond initial sem =
+  parallelProperty' gen shrinker precond trans postcond
+    initial (return ()) (const sem) (const (return ()))
+
+parallelProperty'
+  :: ShowAction act
+  => Show (Internal act) -- used by the forAllShrink
+  => HTraversable act
+  => Generator model act
+  -> (forall resp v. act v resp -> [act v resp])          -- ^ Shrinker
+  -> Precondition  model act
+  -> Transition    model act
+  -> Postcondition model act
+  -> (forall v. model v)                                  -- ^ Initial model
+  -> IO setup                                             -- ^ Setup
+  -> (forall resp. setup -> act Concrete resp -> IO resp) -- ^ Semantics
+  -> (setup -> IO ())                                     -- ^ Cleanup
+  -> Property
+parallelProperty' gen shrinker precond trans postcond initial setup sem clean =
   forAllShrink
     (liftGenFork gen precond trans initial)
     (liftShrinkFork shrinker precond trans initial) $ \fork -> monadicIO $ do
+      res <- run setup
       replicateM_ 10 $ do
-        hist <- run $ liftSemFork sem fork
+        hist <- run $ liftSemFork (sem res) fork
+        run (clean res)
         checkParallelInvariant precond trans postcond initial fork hist
 
 ------------------------------------------------------------------------
