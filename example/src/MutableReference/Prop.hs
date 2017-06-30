@@ -18,6 +18,7 @@
 
 module MutableReference.Prop where
 
+{-
 import           Control.Arrow
                    ((&&&))
 import           Control.Monad
@@ -31,13 +32,14 @@ import           Data.List
 import qualified Data.Map                                 as M
 import           Data.Tree
                    (Tree(Node), unfoldTree)
-import           Test.QuickCheck
-                   (Property, forAll)
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
                    (choice, lift, parens, readListPrec,
                    readListPrecDefault, readPrec)
+-}
+import           Test.QuickCheck
+                   (Property, forAll)
 
 import           Test.StateMachine.Prototype
 import           Test.StateMachine.Internal.ScopeCheck
