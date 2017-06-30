@@ -1,15 +1,11 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE ExplicitNamespaces    #-}
-{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeInType            #-}
-{-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
 -----------------------------------------------------------------------------
@@ -31,17 +27,15 @@ module UnionFind where
 
 import           Control.Monad.State
                    (StateT, evalStateT, get, liftIO, modify)
+import           Data.Functor.Classes
+                   (Eq1(..), Show1(..), showsPrec1)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
-import           Data.Singletons.Prelude
-                   (ConstSym1)
-import           Data.Void
-                   (Void)
 import           Test.QuickCheck
-                   (Property, arbitrary, choose, frequency, ioProperty,
-                   property, shrink)
+                   (Arbitrary, Property, arbitrary, choose, frequency,
+                   ioProperty, property, shrink)
 
-import           Test.StateMachine
+import           Test.StateMachine.Prototype
 
 ------------------------------------------------------------------------
 
@@ -79,9 +73,7 @@ findElement (Element x ref) = do
       writeIORef ref (Next last')
       return last'
 
--- Another difference is that the union operation returns the element
--- that became the new root, rather than returning @()@.
-unionElements :: Element a -> Element a -> IO (Element a)
+unionElements :: Element a -> Element a -> IO ()
 unionElements e1 e2 = do
 
   Element x1 ref1 <- findElement e1
@@ -93,11 +85,9 @@ unionElements e1 e2 = do
   then do
     writeIORef ref1 (Next (Element x2 ref2))
     writeIORef ref2 (Weight (w1 + w2))
-    return (Element x2 ref2)
   else do
     writeIORef ref2 (Next (Element x1 ref1))
     writeIORef ref1 (Weight (w1 + w2))
-    return (Element x1 ref1)
 
 instance Eq (Element a) where
   Element _ ref1 == Element _ ref2 = ref1 == ref2
@@ -110,38 +100,48 @@ instance Show a => Show (Element a) where
 -- We represent actions in the same way as they do in section 11 of the
 -- paper.
 
-type Var = Int
+data Action a (v :: * -> *) :: * -> * where
+  New   :: a                  -> Action a v (Opaque (Ref a v))
+  Find  :: Ref a v            -> Action a v (Opaque (Ref a v))
+  Union :: Ref a v -> Ref a v -> Action a v ()
 
-data Action :: Signature Void where
-  New   :: Int        -> Action refs ('Response (Element Int))
-  Find  :: Var        -> Action refs ('Response (Element Int))
-  Union :: Var -> Var -> Action refs ('Response (Element Int))
+data Ref a v = Ref (v (Opaque (Element a)))
+
+unRef :: Ref a Concrete -> Element a
+unRef (Ref (Concrete (Opaque ref))) = ref
+
+instance (Eq a, Eq1 v) => Eq (Ref a v) where
+  Ref v1 == Ref v2 = liftEq (==) v1 v2
+
+instance Show1 v => Show (Ref a v) where
+  show (Ref v) = showsPrec1 10 v ""
+
+instance Show a => Show (Internal (Action a)) where
+  show (Internal (New x)           _) = "New " ++ show x
+  show (Internal (Find ref)        _) = "Find ("  ++ show ref ++ ")"
+  show (Internal (Union ref1 ref2) _) = "Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")"
 
 ------------------------------------------------------------------------
 
 -- The model corresponds closely to the *relational specification* given
 -- in section 12 of the paper.
 
-newtype Model refs = Model [Element Int]
+newtype Model a (v :: * -> *) = Model [(Ref a v, Element a)]
   deriving Show
 
-initModel :: Model refs
+initModel :: Model a v
 initModel = Model []
 
 ------------------------------------------------------------------------
 
-preconditions
-  :: forall refs resp. IxForallF Ord refs
-  => Model refs -> Action refs resp -> Bool
+preconditions :: Precondition (Model a) (Action a)
 preconditions (Model m) cmd = case cmd of
   New   _         -> True
-  Find  ref       -> ref  < length m
-  Union ref1 ref2 -> ref1 < length m && ref2 < length m
+  Find  ref       -> undefined -- ref  < length m
+  Union ref1 ref2 -> undefined -- ref1 < length m && ref2 < length m
 
-transitions
-  :: forall refs resp. IxForallF Ord refs
-  => Model refs -> Action refs resp -> Response_ refs resp -> Model refs
-transitions (Model m) cmd resp = case cmd of
+transitions :: Transition (Model a) (Action a)
+transitions (Model m) cmd resp = undefined {- case cmd of
   New   _         -> Model (m ++ [resp])
   Find  _         -> Model m
   Union ref1 ref2 ->
@@ -154,29 +154,27 @@ transitions (Model m) cmd resp = case cmd of
              | z' <- m
              ]
     in Model m'
+-}
 
-postconditions
-  :: forall refs resp. IxForallF Ord refs
-  => Model refs -> Action refs resp -> Response_ refs resp -> Property
-postconditions (Model m) cmd resp = case cmd of
+postconditions :: Postcondition (Model a) (Action a)
+postconditions (Model m) cmd resp = undefined {- case cmd of
   New   _         -> property True
   Find  ref       -> property (resp == m !! ref)
   Union ref1 ref2 ->
     let z = m' !! ref1
     in property $ (z == m !! ref1 || z == m !! ref2) && z == m' !! ref2
   where
-  Model m' = transitions (Model m) cmd resp
-
-smm :: StateMachineModel Model Action
-smm = StateMachineModel preconditions postconditions transitions initModel
+  Model m' = transitions (Model m) cmd (Concrete resp)
+-}
 
 ------------------------------------------------------------------------
 
 -- The generation of actions is parametrised by the number of @New@'s
 -- that have been generated.
 
-gen :: Generator Void Action Int
-gen = Generator
+gen :: Generator (Model a) (Action a)
+gen = undefined
+  {-
   { generator     = \n -> frequency
      [ (1, Untyped .    New   <$> arbitrary)
      , (5, Untyped .    Find  <$> choose (0, n - 1))
@@ -197,62 +195,50 @@ gen = Generator
   gtransition' :: Int -> Action refs resp -> Int
   gtransition' n (New _) = n + 1
   gtransition' n _       = n
+-}
 
-shrink1 :: Action refs resp -> [Action refs resp]
+shrink1 :: Arbitrary a => Action a v resp -> [Action a v resp]
 shrink1 (New x) = [ New x' | x' <- shrink x ]
 shrink1 _       = []
 
 ------------------------------------------------------------------------
 
-semantics
-  :: Action (ConstSym1 (Element Int)) resp
-  -> StateT [Element Int] IO (Response_ (ConstSym1 (Element Int)) resp)
-semantics (New   x)     = do
-  e <- liftIO (newElement x)
-  modify (++ [e])
-  return e
-semantics (Find  r)     = do
-  env <- get
-  liftIO (findElement (env !! r))
-semantics (Union r1 r2) = do
-  env <- get
-  liftIO (unionElements (env !! r1) (env !! r2))
+semantics :: Action a Concrete resp -> StateT (Model a Concrete) IO resp
+semantics (New   x)         = do
+  el <- liftIO (newElement x)
+  modify undefined
+  return undefined
+
+semantics (Find  ref)       = undefined -- findElement ref
+semantics (Union ref1 ref2) = undefined -- unionElements ref1 ref2
 
 ------------------------------------------------------------------------
 
-instance HasResponse Action where
-  response New   {} = SResponse
-  response Find  {} = SResponse
-  response Union {} = SResponse
+instance HTraversable (Action a) where
+  htraverse _ (New   x)                     = undefined -- pure (New x)
+  htraverse f (Find  (Ref ref))             = undefined -- Find . Ref <$> f ref
+  htraverse f (Union (Ref ref1) (Ref ref2)) = undefined
 
-instance IxFunctor Action where
-  ifmap _ (New   x)         = New   x
-  ifmap _ (Find  ref)       = Find  ref
-  ifmap _ (Union ref1 ref2) = Union ref1 ref2
+instance HFunctor  (Action a)
+instance HFoldable (Action a)
 
-instance IxFoldable Action where
-  ifoldMap _ (New   _)   = mempty
-  ifoldMap _ (Find  _)   = mempty
-  ifoldMap _ (Union _ _) = mempty
-
-instance IxTraversable Action where
-  ifor _ (New   x)         _ = pure (New x)
-  ifor _ (Find  ref)       _ = pure (Find  ref)
-  ifor _ (Union ref1 ref2) _ = pure (Union ref1 ref2)
-
-instance ShowCmd Action where
-  showCmd (New   x)         = "New "    ++ show x
-  showCmd (Find  ref)       = "Find ("  ++ show ref ++ ")"
-  showCmd (Union ref1 ref2) = "Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")"
+instance Show a => ShowAction (Action a) where
+  showAction (New   x)         =
+    ShowResponse ("New "    ++ show x)                                 show
+  showAction (Find  ref)       =
+    ShowResponse ("Find ("  ++ show ref ++ ")")                        show
+  showAction (Union ref1 ref2) =
+    ShowResponse ("Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")") show
 
 ------------------------------------------------------------------------
 
-prop_sequential :: Property
-prop_sequential = sequentialProperty'
-  smm
+prop_unionFind :: Property
+prop_unionFind = sequentialProperty
   gen
   shrink1
-  (const (const semantics))
-  (return ())
-  (const (ioProperty . flip evalStateT []))
-  (const (return ()))
+  preconditions
+  transitions
+  postconditions
+  (initModel :: Model Int v)
+  semantics
+  (ioProperty . flip evalStateT initModel)
