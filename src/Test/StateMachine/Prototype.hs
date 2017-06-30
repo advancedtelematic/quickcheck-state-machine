@@ -79,14 +79,6 @@ instance Eq1 Symbolic where
 instance Ord1 Symbolic where
   liftCompare _ (Symbolic x) (Symbolic y) = compare x y
 
-newtype ShowSymbolic a = ShowSymbolic Var
-
-showVar :: Var -> String
-showVar (Var i) = "$" ++ show i
-
-instance Show1 ShowSymbolic where
-  liftShowsPrec _ _ p (ShowSymbolic var) _ = showVar var
-
 newtype Concrete a where
   Concrete :: a -> Concrete a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
@@ -111,14 +103,6 @@ class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
 
 class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
   htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
-
-data ShowResponse resp = ShowResponse
-  { theAction :: String
-  , showResp  :: resp -> String
-  }
-
-class ShowAction (act :: (* -> *) -> * -> *) where
-  showAction :: Show1 v => act v resp -> ShowResponse resp
 
 newtype Environment =
   Environment {
@@ -188,6 +172,22 @@ class HFunctor (f :: (* -> *) -> * -> *) where
   default hfmap :: HTraversable f => (forall a. g a -> h a) -> f g b -> f h b
   hfmap f = runIdentity . htraverse (Identity . f)
 
+data ShowResponse resp = ShowResponse
+  { theAction :: String
+  , showResp  :: resp -> String
+  }
+
+class ShowAction (act :: (* -> *) -> * -> *) where
+  showAction :: Show1 v => act v resp -> ShowResponse resp
+
+newtype ShowSymbolic a = ShowSymbolic Var
+
+showVar :: Var -> String
+showVar (Var i) = "$" ++ show i
+
+instance Show1 ShowSymbolic where
+  liftShowsPrec _ _ p (ShowSymbolic var) _ = showVar var
+
 ------------------------------------------------------------------------
 
 type Generator model act = model Symbolic -> Gen (Untyped act)
@@ -200,93 +200,6 @@ type Transition model act = forall resp v. Ord1 v =>
 
 type Postcondition model act = forall resp.
   model Concrete -> act Concrete resp -> resp -> Property
-
-------------------------------------------------------------------------
-
-data Ref v = Ref (v (Opaque (IORef Int)))
-
-unRef :: Ref Concrete -> IORef Int
-unRef (Ref (Concrete (Opaque ref))) = ref
-
-instance Eq1 v => Eq (Ref v) where
-  Ref v1 == Ref v2 = liftEq (==) v1 v2
-
-instance Show1 v => Show (Ref v) where
-  show (Ref v) = showsPrec1 10 v ""
-
-data Action (v :: * -> *) :: * -> * where
-  New   ::          Action v (Opaque (IORef Int))
-  Read  :: Ref v -> Action v Int
-  Write :: Ref v -> Int -> Action v ()
-  Inc   :: Ref v -> Action v ()
-
-instance Show (Internal Action) where
-  show (Internal New           r) = show r ++ " <- New"
-  show (Internal (Read  ref)   _) = "Read ("  ++ show ref ++ ")"
-  show (Internal (Write ref i) _) = "Write (" ++ show ref ++ ") " ++ show i
-  show (Internal (Inc   ref)   _) = "Inc ("   ++ show ref ++ ")"
-
-instance ShowAction Action where
-  showAction New           = ShowResponse "New"                                   show
-  showAction (Read ref)    = ShowResponse ("Read " ++ show ref)                   show
-  showAction (Write ref i) = ShowResponse ("Write " ++ show ref ++ " " ++ show i) show
-  showAction (Inc ref)     = ShowResponse ("Inc " ++ show ref)                    show
-
-instance HFunctor Action
-instance HFoldable Action
-
-instance HTraversable Action where
-  htraverse _ New                 = pure New
-  htraverse f (Read  (Ref ref))   = Read  . Ref <$> f ref
-  htraverse f (Write (Ref ref) i) = Write . Ref <$> f ref <*> pure i
-  htraverse f (Inc   (Ref ref))   = Inc   . Ref <$> f ref
-
-newtype Model v = Model [(Ref v, Int)]
-
-initModel :: Model v
-initModel = Model []
-
-generator :: Generator Model Action
-generator (Model m)
-  | null m    = pure (Untyped New)
-  | otherwise = frequency
-      [ (1, pure (Untyped New))
-      , (8, Untyped .    Read  <$> elements (map fst m))
-      , (8, Untyped <$> (Write <$> elements (map fst m) <*> arbitrary))
-      , (8, Untyped .    Inc   <$> elements (map fst m))
-      ]
-
-shrink1 :: Action v resp -> [Action v resp]
-shrink1 _ = []
-
-semantics :: Action Concrete resp -> IO resp
-semantics New           = Opaque <$> newIORef 0
-semantics (Read  ref)   = readIORef  (unRef ref)
-semantics (Write ref i) = writeIORef (unRef ref) i
-semantics (Inc   ref)   = do
-  v <- readIORef (unRef ref)
-  threadDelay 100
-  writeIORef (unRef ref) (v + 1)
-
-precondition :: Precondition Model Action
-precondition _         New           = True
-precondition (Model m) (Read  ref)   = ref `elem` map fst m
-precondition (Model m) (Write ref _) = ref `elem` map fst m
-precondition (Model m) (Inc   ref)   = ref `elem` map fst m
-
-transition :: Transition Model Action
-transition (Model m) New           ref = Model (m ++ [(Ref ref, 0)])
-transition m         (Read  _)     _   = m
-transition (Model m) (Write ref i) _   = Model ((ref, i) : filter ((/= ref) . fst) m)
-transition (Model m) (Inc   ref)   _   = Model ((ref, old + 1) : filter ((/= ref) . fst) m)
-  where
-  Just old = lookup ref m
-
-postcondition :: Postcondition Model Action
-postcondition _         New         _    = property True
-postcondition (Model m) (Read ref)  resp = lookup ref m === Just resp
-postcondition _         (Write _ _) _    = property True
-postcondition _         (Inc _)     _    = property True
 
 ------------------------------------------------------------------------
 
@@ -408,10 +321,6 @@ sequentialProperty gen shrinker precond trans postcond m sem runner =
     monadic (runner . flip evalStateT emptyEnvironment)
       (liftModel m m acts precond sem trans postcond)
 
-prop_references :: Property
-prop_references = sequentialProperty generator shrink1 precondition
-  transition postcondition initModel semantics ioProperty
-
 ------------------------------------------------------------------------
 
 parallelProperty
@@ -433,10 +342,6 @@ parallelProperty gen shrinker precond trans postcond initial sem =
       replicateM_ 10 $ do
         hist <- run $ liftSemFork sem fork
         checkParallelInvariant precond trans postcond initial fork hist
-
-prop_parallelReferences :: Property
-prop_parallelReferences = parallelProperty generator shrink1 precondition
-  transition postcondition initModel semantics
 
 ------------------------------------------------------------------------
 

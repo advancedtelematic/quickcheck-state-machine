@@ -25,32 +25,25 @@ module Test.StateMachine.Internal.ScopeCheck
   , scopeCheckFork
   ) where
 
-import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Types
+import           Data.Set
+                   (Set)
+import qualified Data.Set                    as S
+
+import           Test.StateMachine.Prototype
 
 ------------------------------------------------------------------------
 
--- | Scope-check a list of untyped internal commands, i.e. make sure
---   that no command uses a reference that doesn't exist.
-scopeCheck
-  :: forall cmd. (IxFoldable cmd, HasResponse cmd)
-  => [IntRefed cmd] -> Bool
-scopeCheck = go []
+-- | Scope-check a list of internal actions, i.e. make sure that no
+--   action uses a reference that doesn't exist.
+scopeCheck :: forall act. HFoldable act => [Internal act] -> Bool
+scopeCheck = go S.empty
   where
-  go :: [IntRef] -> [IntRefed cmd] -> Bool
-  go _    []                      = True
-  go refs (IntRefed c miref : cs) = case response c of
-    SReference _  ->
-      all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
-      go (miref : refs) cs
-    SResponse     ->
-      all (\(Ex _ ref) -> ref `elem` refs) (itoList c) &&
-      go refs cs
+  go :: Set Var -> [Internal act] -> Bool
+  go _     []                                        = True
+  go known (Internal act sym@(Symbolic var) : iacts) =
+    getUsedVars act `S.isSubsetOf` known && go (S.insert var known) iacts
 
 -- | Same as above, but for forks rather than lists.
-scopeCheckFork
-  :: (IxFoldable cmd, HasResponse cmd)
-  => Fork [IntRefed cmd] -> Bool
+scopeCheckFork :: HFoldable act => Fork [Internal act] -> Bool
 scopeCheckFork (Fork l p r) =
-  scopeCheck (p ++ l) &&
-  scopeCheck (p ++ r)
+  scopeCheck (p ++ l) && scopeCheck (p ++ r)

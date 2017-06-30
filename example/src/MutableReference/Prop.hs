@@ -39,13 +39,8 @@ import           Text.Read
                    (choice, lift, parens, readListPrec,
                    readListPrecDefault, readPrec)
 
-import           Test.StateMachine.Types
-import           Test.StateMachine.Internal.AlphaEquality
-import           Test.StateMachine.Internal.Parallel
+import           Test.StateMachine.Prototype
 import           Test.StateMachine.Internal.ScopeCheck
-import           Test.StateMachine.Internal.Sequential
-import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Utils
 
 import           MutableReference
 
@@ -53,28 +48,29 @@ import           MutableReference
 
 prop_genScope :: Property
 prop_genScope = forAll
-  (fst <$> liftGen (liftGenerator gen) (Pid 0) M.empty)
+  (liftGen generator initModel precondition transition)
   scopeCheck
 
 prop_genForkScope :: Property
 prop_genForkScope = forAll
-  (liftGenFork (liftGenerator gen))
+  (liftGenFork generator precondition transition initModel)
   scopeCheckFork
 
+  {-
 prop_sequentialShrink :: Property
-prop_sequentialShrink = shrinkPropertyHelper (prop_sequential Bug) $ alphaEq
-  [ IntRefed New                                (IntRef 0 0)
-  , IntRefed (Write (IntRef (Ref 0) (Pid 0)) 5) ()
-  , IntRefed (Read  (IntRef (Ref 0) (Pid 0)))   ()
+prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
+  [ Internal New                                (IntRef 0 0)
+  , Internal (Write (IntRef (Ref 0) (Pid 0)) 5) ()
+  , Internal (Read  (IntRef (Ref 0) (Pid 0)))   ()
   ]
   . read . (!! 1) . lines
 
-deriving instance Eq (MemStep ConstIntRef resp)
+deriving instance Eq (Action ConstIntRef resp)
 
-instance Eq (IntRefed MemStep) where
+instance Eq (IntRefed Action) where
   IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
 
-cheat :: Fork [IntRefed MemStep] -> Fork [IntRefed MemStep]
+cheat :: Fork [IntRefed Action] -> Fork [IntRefed Action]
 cheat = fmap (map (\ms -> case ms of
   IntRefed (Write ref _) () -> IntRefed (Write ref 0) ()
   _                         -> ms))
@@ -100,7 +96,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
   let f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f || isMinimal f
   where
-  hasMinimalShrink :: Fork [IntRefed MemStep] -> Bool
+  hasMinimalShrink :: Fork [IntRefed Action] -> Bool
   hasMinimalShrink
     = anyTree isMinimal
     . unfoldTree (id &&& liftShrinkFork (liftGenerator gen) shrink1)
@@ -113,10 +109,10 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       foldTree f = go where
         go (Node x ts) = f x (map go ts)
 
-  isMinimal :: Fork [IntRefed MemStep] -> Bool
+  isMinimal :: Fork [IntRefed Action] -> Bool
   isMinimal xs = any (alphaEqFork xs) minimal
 
-  minimal :: [Fork [IntRefed MemStep]]
+  minimal :: [Fork [IntRefed Action]]
   minimal  = minimal' ++ map mirrored minimal'
     where
     minimal' = [ Fork [w0, IntRefed (Read var) ()]
@@ -132,7 +128,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
     var    = IntRef 0 0
     writes = [IntRefed (Write var 0) (), IntRefed (Inc var) ()]
 
-instance Read (IntRefed MemStep) where
+instance Read (IntRefed Action) where
   readPrec = parens $ choice
     [ IntRefed <$> parens (New <$ key "New") <*> readPrec
     , IntRefed <$>
@@ -146,3 +142,5 @@ instance Read (IntRefed MemStep) where
     key s = lift (string s)
 
   readListPrec = readListPrecDefault
+
+-}
