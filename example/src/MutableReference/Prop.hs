@@ -18,18 +18,11 @@
 
 module MutableReference.Prop where
 
-{-
-import           Control.Arrow
-                   ((&&&))
 import           Control.Monad
                    (void)
-import           Data.Char
-                   (isSpace)
-import           Data.Dynamic
-                   (cast)
 import           Data.List
                    (isSubsequenceOf)
-import qualified Data.Map                                 as M
+  {-
 import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Text.ParserCombinators.ReadP
@@ -71,26 +64,28 @@ deriving instance Eq (Action ConstIntRef resp)
 
 instance Eq (IntRefed Action) where
   IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
+-}
 
-cheat :: Fork [IntRefed Action] -> Fork [IntRefed Action]
-cheat = fmap (map (\ms -> case ms of
-  IntRefed (Write ref _) () -> IntRefed (Write ref 0) ()
-  _                         -> ms))
+cheat :: Fork [Internal Action] -> Fork [Internal Action]
+cheat = fmap (map (\iact -> case iact of
+  Internal (Write ref _) sym -> Internal (Write ref 0) sym
+  _                          -> iact))
 
 prop_shrinkForkSubseq :: Property
 prop_shrinkForkSubseq = forAll
-  (liftGenFork (liftGenerator gen))
+  (liftGenFork generator precondition transition initModel)
   $ \f@(Fork l p r) ->
     all (\(Fork l' p' r') -> void l' `isSubsequenceOf` void l &&
                              void p' `isSubsequenceOf` void p &&
                              void r' `isSubsequenceOf` void r)
-        (liftShrinkFork (liftGenerator gen) shrink1 (cheat f))
+        (liftShrinkFork shrink1 precondition transition initModel (cheat f))
 
 prop_shrinkForkScope :: Property
 prop_shrinkForkScope = forAll
-  (liftGenFork (liftGenerator gen))
-  $ \f -> all scopeCheckFork (liftShrinkFork (liftGenerator gen) shrink1 f)
+  (liftGenFork generator precondition transition initModel) $ \f ->
+    all scopeCheckFork (liftShrinkFork shrink1 precondition transition initModel f)
 
+  {-
 ------------------------------------------------------------------------
 
 prop_shrinkForkMinimal :: Property

@@ -34,11 +34,11 @@ spec = do
 
     modifyMaxSuccess (const 20) $ do
 
-      xit "`prop_shrinkForkSubseq`: shrinking parallel programs preserves subsequences"
-        (property False) -- prop_shrinkForkSubseq
+      it "`prop_shrinkForkSubseq`: shrinking parallel programs preserves subsequences"
+        prop_shrinkForkSubseq
 
-      xit "`prop_shrinkForkScope`: shrinking parallel programs preserves scope"
-        (property False) -- prop_shrinkForkScope
+      it "`prop_shrinkForkScope`: shrinking parallel programs preserves scope"
+        prop_shrinkForkScope
 
   describe "Parallel property" $
 
