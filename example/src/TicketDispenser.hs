@@ -206,8 +206,8 @@ prop_ticketDispenserParallelBad =
   shrinkPropertyHelper (prop_ticketDispenserParallel Shared) $ \output ->
     let counterExample = dropWhile isSpace (lines output !! 1) in
     counterExample `elem`
-      [ "Fork [Reset ()] [] [Reset ()]"
-      , "Fork [TakeTicket ()] [Reset ()] [TakeTicket ()]"
-      , "Fork [TakeTicket ()] [Reset ()] [Reset ()]"
-      , "Fork [Reset ()] [Reset ()] [TakeTicket ()]"
+      [ "Fork [Reset] [] [Reset]"
+      , "Fork [TakeTicket] [Reset] [TakeTicket]"
+      , "Fork [TakeTicket] [Reset] [Reset]"
+      , "Fork [Reset] [Reset] [TakeTicket]"
       ]

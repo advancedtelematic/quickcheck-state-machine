@@ -1,7 +1,7 @@
 module UnionFindSpec (spec) where
 
 import           Test.Hspec
-                   (Spec, describe, it)
+                   (Spec, describe, xit)
 
 import           UnionFind
 
@@ -10,5 +10,5 @@ import           UnionFind
 spec :: Spec
 spec =
   describe "Sequential property" $ do
-    it "`prop_sequential`: invariants hold" $
-      prop_sequential
+    xit "`prop_unionFind`: invariants hold" $
+      prop_unionFind

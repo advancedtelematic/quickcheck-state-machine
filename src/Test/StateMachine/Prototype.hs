@@ -94,12 +94,6 @@ instance Eq1 Concrete where
 instance Ord1 Concrete where
   liftCompare comp (Concrete x) (Concrete y) = comp x y
 
-class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
-  hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
-
-  default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
-  hfoldMap f = getConst . htraverse (Const . f)
-
 class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
   htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
 
@@ -170,6 +164,12 @@ class HFunctor (f :: (* -> *) -> * -> *) where
 
   default hfmap :: HTraversable f => (forall a. g a -> h a) -> f g b -> f h b
   hfmap f = runIdentity . htraverse (Identity . f)
+
+class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
+  hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
+
+  default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
+  hfoldMap f = getConst . htraverse (Const . f)
 
 data ShowResponse resp = ShowResponse
   { theAction :: String

@@ -176,11 +176,11 @@ semantics prb (Inc   ref)   = do
 -- the race condition, but @quickCheck (prop_parallelReferences
 -- RaceCondition)@ will!
 
-prop_references :: Property
-prop_references = sequentialProperty generator shrink1 precondition
-  transition postcondition initModel (semantics None) ioProperty
+prop_references :: Problem -> Property
+prop_references prb = sequentialProperty generator shrink1 precondition
+  transition postcondition initModel (semantics prb) ioProperty
 
 
-prop_referencesParallel :: Property
-prop_referencesParallel = parallelProperty generator shrink1 precondition
-  transition postcondition initModel (semantics RaceCondition)
+prop_referencesParallel :: Problem -> Property
+prop_referencesParallel prb = parallelProperty generator shrink1 precondition
+  transition postcondition initModel (semantics prb)
