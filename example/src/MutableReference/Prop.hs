@@ -18,16 +18,18 @@
 
 module MutableReference.Prop where
 
+import           Control.Arrow
+                   ((&&&))
 import           Control.Monad
                    (void)
-import           Data.List
-                   (isSubsequenceOf)
-  {-
-import           Data.Tree
-                   (Tree(Node), unfoldTree)
--}
+import           Data.Char
+                   (isSpace)
 import           Data.Dynamic
                    (cast)
+import           Data.List
+                   (isSubsequenceOf)
+import           Data.Tree
+                   (Tree(Node), unfoldTree)
 import           Test.QuickCheck
                    (Property, forAll)
 import           Text.ParserCombinators.ReadP
@@ -57,13 +59,13 @@ prop_genForkScope = forAll
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
-  [ Internal New                   var0
-  , Internal (Write (Ref var0)  5) (Symbolic (Var 1))
-  , Internal (Read  (Ref var0))    (Symbolic (Var 2))
+  [ Internal New                   sym0
+  , Internal (Write (Ref sym0)  5) (Symbolic (Var 1))
+  , Internal (Read  (Ref sym0))    (Symbolic (Var 2))
   ]
   . read . (!! 1) . lines
   where
-  var0 = Symbolic (Var 0)
+  sym0 = Symbolic (Var 0)
 
 cheat :: Fork [Internal Action] -> Fork [Internal Action]
 cheat = fmap (map (\iact -> case iact of
@@ -84,18 +86,17 @@ prop_shrinkForkScope = forAll
   (liftGenFork generator precondition transition initModel) $ \f ->
     all scopeCheckFork (liftShrinkFork shrink1 precondition transition initModel f)
 
-  {-
 ------------------------------------------------------------------------
 
 prop_shrinkForkMinimal :: Property
-prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \out ->
+prop_shrinkForkMinimal = shrinkPropertyHelper (prop_referencesParallel RaceCondition) $ \out ->
   let f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f || isMinimal f
   where
-  hasMinimalShrink :: Fork [IntRefed Action] -> Bool
+  hasMinimalShrink :: Fork [Internal Action] -> Bool
   hasMinimalShrink
     = anyTree isMinimal
-    . unfoldTree (id &&& liftShrinkFork (liftGenerator gen) shrink1)
+    . unfoldTree (id &&& liftShrinkFork shrink1 precondition transition initModel)
     where
     anyTree :: (a -> Bool) -> Tree a -> Bool
     anyTree p = foldTree (\x ih -> p x || or ih)
@@ -105,14 +106,14 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       foldTree f = go where
         go (Node x ts) = f x (map go ts)
 
-  isMinimal :: Fork [IntRefed Action] -> Bool
+  isMinimal :: Fork [Internal Action] -> Bool
   isMinimal xs = any (alphaEqFork xs) minimal
 
-  minimal :: [Fork [IntRefed Action]]
+  minimal :: [Fork [Internal Action]]
   minimal  = minimal' ++ map mirrored minimal'
     where
-    minimal' = [ Fork [w0, IntRefed (Read var) ()]
-                      [IntRefed New var]
+    minimal' = [ Fork [w0, Internal (Read ref0) (Symbolic var1)]
+                      [Internal New (Symbolic var0)]
                       [w1]
                | w0 <- writes
                , w1 <- writes
@@ -121,9 +122,14 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
     mirrored :: Fork a -> Fork a
     mirrored (Fork l p r) = Fork r p l
 
-    var    = IntRef 0 0
-    writes = [IntRefed (Write var 0) (), IntRefed (Inc var) ()]
--}
+    var0   = Var 0
+    var1   = Var 1
+    ref0   = Ref (Symbolic var0)
+
+    writes =
+      [ Internal (Write ref0 0) (Symbolic var1)
+      , Internal (Inc   ref0)   (Symbolic var1)
+      ]
 
 instance Read (Ref Symbolic) where
   readPrec     = Ref . Symbolic <$> readPrec
@@ -141,4 +147,5 @@ instance Read (Internal Action) where
   readListPrec = readListPrecDefault
 
 instance Eq (Internal Action) where
-  Internal act1 sym1 == Internal act2 sym2 = cast act1 == Just act2
+  Internal act1 sym1 == Internal act2 sym2 =
+    cast act1 == Just act2 && cast sym1 == Just sym2

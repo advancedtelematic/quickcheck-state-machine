@@ -402,7 +402,7 @@ parallelProperty' gen shrinker precond trans postcond initial setup sem clean =
 ------------------------------------------------------------------------
 
 data Fork a = Fork a a a
-  deriving (Eq, Show)
+  deriving (Eq, Show, Read)
 
 instance Functor Fork where
   fmap f (Fork l p r) = Fork (f l) (f p) (f r)

@@ -47,5 +47,5 @@ spec = do
       it "`prop_referencesParallel None`: linearisation is possible when there are no race conditions" $
         prop_referencesParallel None
 
-      xit "`prop_shrinkForkMinimal`: the minimal counterexample is found when there's a race condition"
-        (property False) -- prop_shrinkForkMinimal
+      it "`prop_shrinkForkMinimal`: the minimal counterexample is found when there's a race condition"
+        prop_shrinkForkMinimal
