@@ -27,8 +27,8 @@ spec = do
     it "`prop_references None`: pre- and post-conditions hold when there are no bugs" $
       prop_references None
 
-    xit "`prop_sequentialShrink`: the minimal counterexample is found when there's a bug"
-      (property False) -- prop_sequentialShrink
+    it "`prop_sequentialShrink`: the minimal counterexample is found when there's a bug"
+      prop_sequentialShrink
 
   describe "Shrinking" $
 

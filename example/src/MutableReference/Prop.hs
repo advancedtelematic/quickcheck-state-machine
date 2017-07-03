@@ -25,14 +25,16 @@ import           Data.List
   {-
 import           Data.Tree
                    (Tree(Node), unfoldTree)
+-}
+import           Data.Dynamic
+                   (cast)
+import           Test.QuickCheck
+                   (Property, forAll)
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
                    (choice, lift, parens, readListPrec,
                    readListPrecDefault, readPrec)
--}
-import           Test.QuickCheck
-                   (Property, forAll)
 
 import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.ScopeCheck
@@ -53,15 +55,15 @@ prop_genForkScope = forAll
   (liftGenFork generator precondition transition initModel)
   scopeCheckFork
 
-  {-
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
-  [ Internal New                                (Symbolic (Var 0))
-  , Internal (Write _ 5) (Symbolic (Var 1))
-  , Internal (Read  undefined)   (Symbolic (Var 2))
+  [ Internal New                   var0
+  , Internal (Write (Ref var0)  5) (Symbolic (Var 1))
+  , Internal (Read  (Ref var0))    (Symbolic (Var 2))
   ]
   . read . (!! 1) . lines
--}
+  where
+  var0 = Symbolic (Var 0)
 
 cheat :: Fork [Internal Action] -> Fork [Internal Action]
 cheat = fmap (map (\iact -> case iact of
@@ -123,20 +125,20 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
     writes = [IntRefed (Write var 0) (), IntRefed (Inc var) ()]
 -}
 
-  {-
-instance Read (Untyped Action) where
-  readPrec = parens $ choice
-    [ IntRefed <$> parens (New <$ key "New") <*> readPrec
-    , IntRefed <$>
-        parens (Read <$ key "Read" <*> readPrec) <*> readPrec
-    , IntRefed <$>
-        parens (Write <$ key "Write" <*> readPrec <*> readPrec) <*> readPrec
-    , IntRefed <$>
-        parens (Inc <$ key "Inc" <*> readPrec) <*> readPrec
+instance Read (Ref Symbolic) where
+  readPrec     = Ref . Symbolic <$> readPrec
+  readListPrec = readListPrecDefault
+
+instance Read (Internal Action) where
+
+  readPrec = choice
+    [ Internal <$> (New   <$ lift (string "New"))  <*> readPrec
+    , Internal <$> (Read  <$ lift (string "Read")  <*> readPrec) <*> readPrec
+    , Internal <$> (Write <$ lift (string "Write") <*> readPrec <*> readPrec) <*> readPrec
+    , Internal <$> (Inc   <$ lift (string "Inc")   <*> readPrec) <*> readPrec
     ]
-    where
-    key s = lift (string s)
 
   readListPrec = readListPrecDefault
 
--}
+instance Eq (Internal Action) where
+  Internal act1 sym1 == Internal act2 sym2 = cast act1 == Just act2

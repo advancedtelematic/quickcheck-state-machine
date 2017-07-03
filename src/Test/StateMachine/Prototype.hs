@@ -25,25 +25,28 @@ import           Control.Monad.State
 import           Data.Dynamic
 import           Data.Functor.Classes
                    (Eq1(..), Ord1(..), Show1(..), showsPrec1)
-import           Data.Functor.Const (Const(..))
+import           Data.Functor.Const
+                   (Const(..))
 import           Data.List
                    (partition)
 import           Data.Map
                    (Map)
-import qualified Data.Map                            as M
+import qualified Data.Map                                   as M
 import           Data.Set
                    (Set)
-import qualified Data.Set                            as Set
+import qualified Data.Set                                   as Set
 import           Data.Tree
 import           System.Random
                    (randomRIO)
-import           Text.PrettyPrint.ANSI.Leijen
-                   (Doc)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
+import           Text.PrettyPrint.ANSI.Leijen
+                   (Doc)
+import           Text.Read
+                   (readListPrec, readListPrecDefault, readPrec)
 
+import qualified Test.StateMachine.Internal.Types           as INTERNAL
 import           Test.StateMachine.Internal.Utils.BoxDrawer
-import qualified Test.StateMachine.Internal.Types as INTERNAL
 
 ------------------------------------------------------------------------
 
@@ -58,7 +61,7 @@ instance Show (Opaque a) where
 
 newtype Var =
   Var Int
-  deriving (Eq, Ord, Show, Num)
+  deriving (Eq, Ord, Show, Num, Read)
 
 data Symbolic a where
   Symbolic :: Typeable a => Var -> Symbolic a
@@ -71,6 +74,9 @@ instance Show (Symbolic a) where
 
 instance Show1 Symbolic where
   liftShowsPrec _ _ p (Symbolic x) = showsPrec p x
+
+instance Typeable a => Read (Symbolic a) where
+  readPrec = Symbolic <$> readPrec
 
 instance Eq1 Symbolic where
   liftEq _ (Symbolic x) (Symbolic y) = x == y
@@ -412,7 +418,7 @@ data HistoryEvent act
 
 getProcessIdEvent :: HistoryEvent act -> Pid
 getProcessIdEvent (InvocationEvent _ _ _ pid) = pid
-getProcessIdEvent (ResponseEvent   _ _ pid) = pid
+getProcessIdEvent (ResponseEvent   _ _ pid)   = pid
 
 data Operation act = forall resp. Typeable resp =>
   Operation (act Concrete resp) String (Concrete resp) Pid
@@ -445,7 +451,7 @@ linearTree es =
 
   -- Hmm, is this enough?
   matchInv pid (InvocationEvent _ _ _ pid') = pid == pid'
-  matchInv _   _                          = False
+  matchInv _   _                            = False
 
 linearise
   :: forall model act
@@ -483,7 +489,7 @@ toBoxDrawings knownVars h = exec evT (fmap (fmap out) $ INTERNAL.Fork l p r)
     toEventType :: History cmd -> [(EventType, INTERNAL.Pid)]
     toEventType = map $ \e -> case e of
       InvocationEvent _ _ _ (Pid pid) -> (Open, INTERNAL.Pid pid)
-      ResponseEvent _ _ (Pid pid)   -> (Close, INTERNAL.Pid pid)
+      ResponseEvent _ _ (Pid pid)     -> (Close, INTERNAL.Pid pid)
     evT :: [(EventType, INTERNAL.Pid)]
     evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
 

@@ -4,6 +4,7 @@
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -22,6 +23,7 @@
 module MutableReference
   ( Action(..)
   , Problem(..)
+  , Ref(..)
   , precondition
   , transition
   , initModel
@@ -57,6 +59,8 @@ data Action (v :: * -> *) :: * -> * where
   Write :: Ref v -> Int -> Action v ()
   Inc   :: Ref v -> Action v ()
 
+deriving instance Eq1 v => Eq (Action v resp)
+
 data Ref v = Ref (v (Opaque (IORef Int)))
 
 unRef :: Ref Concrete -> IORef Int
@@ -69,10 +73,13 @@ instance Show1 v => Show (Ref v) where
   show (Ref v) = showsPrec1 10 v ""
 
 instance Show (Internal Action) where
-  show (Internal New           r) = show r ++ " <- New"
-  show (Internal (Read  ref)   _) = "Read ("  ++ show ref ++ ")"
-  show (Internal (Write ref i) _) = "Write (" ++ show ref ++ ") " ++ show i
-  show (Internal (Inc   ref)   _) = "Inc ("   ++ show ref ++ ")"
+  show (Internal New           sym) = "New (" ++ show sym ++ ")"
+  show (Internal (Read  ref)   sym) =
+    "Read ("  ++ show ref ++ ") (" ++ show sym ++ ")"
+  show (Internal (Write ref i) sym) =
+    "Write (" ++ show ref ++ ") (" ++ show i ++ ") (" ++ show sym ++ ")"
+  show (Internal (Inc   ref)   sym) =
+    "Inc ("   ++ show ref ++ ") (" ++ show sym ++ ")"
 
 instance ShowAction Action where
   showAction New           = ShowResponse "New"                                   show
