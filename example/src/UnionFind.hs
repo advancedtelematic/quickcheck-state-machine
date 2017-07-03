@@ -36,7 +36,7 @@ import           Test.QuickCheck
                    frequency, ioProperty, property, shrink, (.&&.),
                    (.||.), (===))
 
-import           Test.StateMachine.Prototype
+import           Test.StateMachine
 
 ------------------------------------------------------------------------
 
@@ -142,7 +142,7 @@ Model m ! ref = case lookup ref m of
   Nothing                 -> error "(!): couldn't find key"
 
 extend :: (Eq a, Eq1 v) => Model a v -> (Ref a v, Ref a v) -> Model a v
-extend (Model m) p@(ref1, ref2) = Model (p : filter ((==) ref1 . fst) m)
+extend (Model m) p@(ref1, _) = Model (p : filter ((==) ref1 . fst) m)
 
 ------------------------------------------------------------------------
 

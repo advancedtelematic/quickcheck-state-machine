@@ -1,22 +1,12 @@
-{-# OPTIONS_GHC -fno-warn-orphans      #-}
-
-{-# LANGUAGE ConstraintKinds           #-}
-{-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ExplicitNamespaces        #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE FlexibleInstances         #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE IncoherentInstances       #-}
-{-# LANGUAGE MultiParamTypeClasses     #-}
-{-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE TypeFamilies              #-}
-{-# LANGUAGE TypeInType                #-}
-{-# LANGUAGE TypeOperators             #-}
-{-# LANGUAGE UndecidableInstances      #-}
-{-# LANGUAGE UndecidableSuperClasses   #-}
+{-# LANGUAGE DefaultSignatures          #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -34,260 +24,124 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Types
-  ( StateMachineModel(..)
-  , Generator(..)
-  , liftGenerator
-  , ShowCmd
-  , showCmd
-  , Signature
-  , Response(..)
-  , SResponse(..)
-  , Response_
-  , GetResponse_
-  , HasResponse
-  , response
-  , CommandConstraint
-  , Untyped(..)
-  , RefPlaceholder
-  -- * Indexed variant of 'Functor', 'Foldable' and 'Traversable'.
-  , Ex(..)
-  , IxFunctor
-  , ifmap
-  , IxFoldable
-  , ifoldMap
-  , itoList
-  , iany
-  , IxTraversable
-  , itraverse
-  , ifor
-  -- * Indexed variants of some 'constraints' package combinators.
-  , IxForallF
-  , Ords
-  , Ords'
-  , iinstF
-  -- * Re-export
-  , (\\)
-  , type (@@)
-  , Property
-  , property
-  , Proxy(..)
-  ) where
+module Test.StateMachine.Types where
 
-import           Data.Constraint
-                   ((:-)(Sub), Constraint, Dict(Dict), (\\))
-import           Data.Constraint.Forall
-                   (Forall, inst)
-import           Data.Kind
-                   (Type)
-import           Data.Proxy
-                   (Proxy(..))
-import           Data.Singletons.Prelude
-                   (type (@@), Apply, ConstSym1, Sing, TyFun)
-import           Data.Singletons.TH
-                   (DemoteRep, SDecide, SingKind, fromSing, toSing,
-                   (%~))
+import           Control.Monad.Identity
+                   (Identity(..), runIdentity)
+import           Data.Functor.Classes
+                   (Eq1(..), Ord1(..), Show1(..), showsPrec1)
+import           Data.Functor.Const
+                   (Const(..))
 import           Data.Typeable
                    (Typeable)
-import           Data.Void
-                   (Void, absurd)
 import           Test.QuickCheck
-                   (Property, property, Gen)
+                   (Gen, Property)
+import           Text.Read
+                   (readPrec)
 
-import           Test.StateMachine.Internal.Types.IntRef
 
 ------------------------------------------------------------------------
 
--- | A state machine based model.
-data StateMachineModel model cmd = StateMachineModel
-  { precondition :: forall refs resp. IxForallF Ord refs =>
-      model refs -> cmd refs resp -> Bool
-  , postcondition :: forall refs resp. IxForallF Ord refs =>
-      model refs -> cmd refs resp -> Response_ refs resp -> Property
-  , transition    :: forall refs resp. IxForallF Ord refs =>
-      model refs -> cmd refs resp -> Response_ refs resp -> model refs
-  , initialModel  :: forall refs. model refs
+-- Stuff taken from Hedgehog.
+
+newtype Opaque a = Opaque
+  { unOpaque :: a
+  } deriving (Eq, Ord)
+
+instance Show (Opaque a) where
+  showsPrec _ (Opaque _) = showString "Opaque"
+
+newtype Var =
+  Var Int
+  deriving (Eq, Ord, Show, Num, Read)
+
+data Symbolic a where
+  Symbolic :: Typeable a => Var -> Symbolic a
+
+deriving instance Eq  (Symbolic a)
+deriving instance Ord (Symbolic a)
+
+instance Show (Symbolic a) where
+  showsPrec p (Symbolic x) = showsPrec p x
+
+instance Show1 Symbolic where
+  liftShowsPrec _ _ p (Symbolic x) = showsPrec p x
+
+instance Typeable a => Read (Symbolic a) where
+  readPrec = Symbolic <$> readPrec
+
+instance Eq1 Symbolic where
+  liftEq _ (Symbolic x) (Symbolic y) = x == y
+
+instance Ord1 Symbolic where
+  liftCompare _ (Symbolic x) (Symbolic y) = compare x y
+
+newtype Concrete a where
+  Concrete :: a -> Concrete a
+  deriving (Eq, Ord, Functor, Foldable, Traversable)
+
+instance Show a => Show (Concrete a) where
+  showsPrec = showsPrec1
+
+instance Show1 Concrete where
+  liftShowsPrec sp _ p (Concrete x) = sp p x
+
+instance Eq1 Concrete where
+  liftEq eq (Concrete x) (Concrete y) = eq x y
+
+instance Ord1 Concrete where
+  liftCompare comp (Concrete x) (Concrete y) = comp x y
+
+------------------------------------------------------------------------
+
+type Untyped act = Untyped' act Symbolic
+
+data Untyped' (act :: (* -> *) -> * -> *) (v :: * -> *) where
+  Untyped :: (Typeable resp, Show resp) => act v resp -> Untyped' act v
+
+data Internal (act :: (* -> *) -> * -> *) where
+  Internal :: (Typeable resp, Show resp) => act Symbolic resp -> Symbolic resp -> Internal act
+
+class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
+  htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
+
+class HFunctor (f :: (* -> *) -> * -> *) where
+  hfmap :: (forall a. g a -> h a) -> f g b -> f h b
+
+  default hfmap :: HTraversable f => (forall a. g a -> h a) -> f g b -> f h b
+  hfmap f = runIdentity . htraverse (Identity . f)
+
+class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
+  hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
+
+  default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
+  hfoldMap f = getConst . htraverse (Const . f)
+
+data ShowResponse resp = ShowResponse
+  { theAction :: String
+  , showResp  :: resp -> String
   }
 
--- | A stateful generator.
-data Generator (ix :: Type) (cmd :: Signature ix) (gstate :: Type) = Generator
-  { generator     :: gstate -> Gen (Untyped cmd (RefPlaceholder ix))
-  , gprecondition :: forall refs resp. gstate -> cmd refs resp -> Bool
-  , gtransition   :: forall refs resp. gstate -> cmd refs resp -> gstate
-  , initGenState  :: gstate
-  }
+class ShowAction (act :: (* -> *) -> * -> *) where
+  showAction :: Show1 v => act v resp -> ShowResponse resp
 
--- | A simple generator for untyped commands can be lifted to a stateful
---   generator.
-liftGenerator :: Gen (Untyped cmd (RefPlaceholder ix)) -> Generator ix cmd ()
-liftGenerator gen = Generator
-  { generator     = const gen
-  , gprecondition = const (const True)
-  , gtransition   = const (const ())
-  , initGenState  = ()
-  }
+newtype ShowSymbolic a = ShowSymbolic Var
 
--- | Given a command, how can we show it?
-class ShowCmd (cmd :: Signature ix) where
+showVar :: Var -> String
+showVar (Var i) = "$" ++ show i
 
-  -- | How to show a typed command with internal refereces.
-  showCmd :: forall resp. cmd (ConstSym1 String) resp -> String
+instance Show1 ShowSymbolic where
+  liftShowsPrec _ _ _ (ShowSymbolic var) _ = showVar var
 
 ------------------------------------------------------------------------
 
--- | Signatures of commands contain a family of references and a
---   response type.
-type Signature ix = (TyFun ix Type -> Type) -> Response ix -> Type
+type Generator model act = model Symbolic -> Gen (Untyped act)
 
-------------------------------------------------------------------------
+type Precondition model act = forall resp.
+  model Symbolic -> act Symbolic resp -> Bool
 
--- | A response of a command is either of some type or a referece at
---   some index.
-data Response ix
-  = Response Type
-  | Reference ix
+type Transition model act = forall resp v. Ord1 v =>
+  model v -> act v resp -> v resp -> model v
 
--- | The singleton type of responses.
-data SResponse ix :: Response ix -> Type where
-  SResponse  ::                     SResponse ix ('Response  t)
-  SReference :: Sing (i :: ix)   -> SResponse ix ('Reference i)
-
--- | Given a command, what kind of response does it have?
-class HasResponse cmd where
-
-  -- | What type of response a typed command has.
-  response :: cmd refs resp -> SResponse ix resp
-
--- | Type-level function that returns a response type.
-type family Response_ (refs :: TyFun ix Type -> Type)
-                      (resp :: Response ix) :: Type where
-  Response_ refs ('Response  t) = t
-  Response_ refs ('Reference i) = refs @@ i
-
--- | Type-level function that maybe returns a response.
-type family GetResponse_ (resp :: Response ix) :: k where
-  GetResponse_ ('Response  t) = t
-  GetResponse_ ('Reference i) = ()
-
-------------------------------------------------------------------------
-
--- | The constraints on commands (and their indices) that the
---   'Test.StateMachine.sequentialProperty' and
---   'Test.StateMachine.parallelProperty' helpers require.
-type CommandConstraint ix cmd =
-  ( Ord       ix
-  , SDecide   ix
-  , SingKind  ix
-  , DemoteRep ix ~ ix
-  , ShowCmd       cmd
-  , IxTraversable cmd
-  , HasResponse   cmd
-  )
-
-------------------------------------------------------------------------
-
--- | Untyped commands are command where we hide the response type. This
---   is used in generation of commands.
-data Untyped (f :: Signature ix) refs where
-  Untyped :: ( Show     (GetResponse_ resp)
-             , Typeable (Response_ ConstIntRef resp)
-             , Typeable resp
-             ) => f refs resp -> Untyped f refs
-
-------------------------------------------------------------------------
-
--- | When generating commands it is enough to provide a reference
---   placeholder.
-data RefPlaceholder ix :: (TyFun ix k) -> Type
-
-type instance Apply (RefPlaceholder _) i = Sing i
-
-------------------------------------------------------------------------
-
--- | Dependent pairs.
-data Ex (p :: TyFun a Type -> Type) = forall (x :: a). Ex (Sing x) (p @@ x)
-
--- | Predicate transformers.
-class IxFunctor (f :: (TyFun ix Type -> Type) -> jx -> Type) where
-
-  -- | Indexed 'fmap'.
-  ifmap
-    :: forall p q j. (forall i. Sing (i :: ix) -> p @@ i -> q @@ i)
-    -> f p j -> f q j
-
--- | Foldable for predicate transformers.
-class IxFoldable (t :: (TyFun ix Type -> Type) -> jx -> Type) where
-
-  -- | Indexed 'foldMap'.
-  ifoldMap :: Monoid m => (forall i. Sing (i :: ix) -> p @@ i -> m) -> t p j -> m
-
-  -- | Indexed 'toList'.
-  itoList :: t p j -> [Ex p]
-  itoList = ifoldMap (\s px -> [Ex s px])
-
-  -- | Indexed 'foldr'.
-  ifoldr :: (forall i. Sing (i :: ix) -> p @@ i -> b -> b) -> b -> t p j -> b
-  ifoldr f z = foldr (\(Ex i x) -> f i x) z . itoList
-
-  -- | Indexed 'any'.
-  iany :: (forall i. Sing (i :: ix) -> p @@ i -> Bool) -> t p j -> Bool
-  iany p = ifoldr (\i x ih -> p i x || ih) False
-
--- | Tranversable for predicate transformers.
-class (IxFunctor t, IxFoldable t) =>
-  IxTraversable (t :: (TyFun ix Type -> Type) -> jx -> Type) where
-
-  -- | Indexed traverse function.
-  itraverse
-    :: Applicative f
-    => Proxy q
-    -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-    -> t p j
-    -> f (t q j)
-  itraverse pq f tp = ifor pq tp f
-
-  -- | Same as above, with arguments flipped.
-  ifor
-    :: Applicative f
-    => Proxy q
-    -> t p j
-    -> (forall x. Sing x -> p @@ x -> f (q @@ x))
-    -> f (t q j)
-  ifor pq tp f = itraverse pq f tp
-
-  {-# MINIMAL itraverse | ifor #-}
-
-------------------------------------------------------------------------
-
-class p (f @@ a) =>
-  IxComposeC (p :: k2 -> Constraint) (f :: TyFun k1 k2 -> Type) (a :: k1)
-
-instance p (f @@ a) => IxComposeC p f a
-
--- | Indexed variant of 'ForallF'.
-class Forall (IxComposeC p f) =>
-  IxForallF (p :: k2 -> Constraint) (f :: TyFun k1 k2 -> Type)
-
-instance Forall (IxComposeC p f) => IxForallF p f
-
--- | Indexed variant of 'instF'.
-iinstF :: forall a p f. Proxy a -> IxForallF p f :- p (f @@ a)
-iinstF _ = Sub $
-  case inst :: Forall (IxComposeC p f) :- IxComposeC p f a of
-    Sub Dict -> Dict
-
--- | Type alias that is helpful when defining state machine models.
-type Ords refs = IxForallF Ord refs :- Ord (refs @@ '())
-
--- | Same as the above.
-type Ords' refs i = IxForallF Ord refs :- Ord (refs @@ i)
-
-------------------------------------------------------------------------
-
-instance SingKind Void where
-  type DemoteRep Void = Void
-  fromSing x = absurd (fromSing x)
-  toSing   x = absurd x
-
-instance SDecide Void where
-  x %~ _ = absurd (fromSing x)
+type Postcondition model act = forall resp.
+  model Concrete -> act Concrete resp -> resp -> Property

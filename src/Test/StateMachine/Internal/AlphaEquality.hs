@@ -28,7 +28,8 @@ import           Data.Map
                    (Map)
 import qualified Data.Map                    as M
 
-import           Test.StateMachine.Prototype
+import           Test.StateMachine.Types
+import           Test.StateMachine.Internal.Types
 
 ------------------------------------------------------------------------
 
@@ -47,7 +48,7 @@ canonical' :: HFunctor act => [Internal act] -> State (Map Var Var) [Internal ac
 canonical' []                                   = return []
 canonical' (Internal act (Symbolic var) : acts) = do
   env     <- get
-  let act' = hfmap (\(Symbolic var) -> Symbolic (env M.! var)) act
+  let act' = hfmap (\(Symbolic v) -> Symbolic (env M.! v)) act
       var' = Var (M.size env)
       sym' = Symbolic var'
   modify (M.insert var var')

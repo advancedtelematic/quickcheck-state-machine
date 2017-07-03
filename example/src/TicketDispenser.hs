@@ -40,7 +40,7 @@ import           Test.QuickCheck
 
 import           Test.StateMachine.Internal.Utils
                    (shrinkPropertyHelper)
-import           Test.StateMachine.Prototype
+import           Test.StateMachine
 
 ------------------------------------------------------------------------
 

@@ -1,5 +1,3 @@
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -27,9 +25,12 @@ module Test.StateMachine.Internal.ScopeCheck
 
 import           Data.Set
                    (Set)
-import qualified Data.Set                    as S
+import qualified Data.Set                              as S
 
-import           Test.StateMachine.Prototype
+import           Test.StateMachine.Internal.Sequential
+                   (getUsedVars)
+import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
@@ -39,8 +40,8 @@ scopeCheck :: forall act. HFoldable act => [Internal act] -> Bool
 scopeCheck = go S.empty
   where
   go :: Set Var -> [Internal act] -> Bool
-  go _     []                                        = True
-  go known (Internal act sym@(Symbolic var) : iacts) =
+  go _     []                                    = True
+  go known (Internal act (Symbolic var) : iacts) =
     getUsedVars act `S.isSubsetOf` known && go (S.insert var known) iacts
 
 -- | Same as above, but for forks rather than lists.

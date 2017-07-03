@@ -23,7 +23,7 @@ import           Text.Read
 
 import           DieHard
 import           Test.StateMachine.Internal.Utils
-import           Test.StateMachine.Prototype
+import           Test.StateMachine
 
 ------------------------------------------------------------------------
 

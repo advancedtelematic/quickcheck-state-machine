@@ -35,13 +35,17 @@ import           Test.QuickCheck
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
-                   (choice, lift, parens, readListPrec,
-                   readListPrecDefault, readPrec)
+                   (choice, lift, readListPrec, readListPrecDefault,
+                   readPrec)
 
+import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality
+import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.ScopeCheck
+import           Test.StateMachine.Internal.Sequential
+                   (liftGen)
+import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-import           Test.StateMachine.Prototype
 
 import           MutableReference
 

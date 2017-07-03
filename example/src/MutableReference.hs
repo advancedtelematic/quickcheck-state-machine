@@ -46,7 +46,7 @@ import           Test.QuickCheck
                    (Property, arbitrary, elements, frequency,
                    ioProperty, property, shrink, (===))
 
-import           Test.StateMachine.Prototype
+import           Test.StateMachine
 
 ------------------------------------------------------------------------
 

@@ -22,9 +22,7 @@ import           Text.PrettyPrint.ANSI.Leijen
                    (Doc, text, vsep)
 
 import           Test.StateMachine.Internal.Types
-                   (Fork(Fork))
-import           Test.StateMachine.Internal.Types.IntRef
-                   (Pid(..))
+                   (Fork(Fork), Pid(..))
 
 ------------------------------------------------------------------------
 

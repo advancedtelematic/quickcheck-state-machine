@@ -30,7 +30,7 @@ import           Control.Monad.Identity
 import           Test.QuickCheck
                    (Property, elements, property)
 
-import           Test.StateMachine.Prototype
+import           Test.StateMachine
 
 ------------------------------------------------------------------------
 
@@ -171,14 +171,6 @@ prop_dieHard = sequentialProperty
 -- @
 --     *** Failed! Falsifiable (after 32 tests and 16 shrinks):
 --     [FillBig,BigIntoSmall,EmptySmall,BigIntoSmall,FillBig,BigIntoSmall]
---
---     The model when the post-condition for `BigIntoSmall' fails is:
---
---         Model {bigJug = 5, smallJug = 2}
---
---     The model transitions into:
---
---         Model {bigJug = 4, smallJug = 3}
 -- @
 --
 -- Let's check if that's a valid solution by writing out the state after each action:
