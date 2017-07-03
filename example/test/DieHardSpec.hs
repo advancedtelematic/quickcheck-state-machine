@@ -107,16 +107,15 @@ instance Show (Untyped Action) where
   show (Untyped BigIntoSmall) = "BigIntoSmall"
 
 instance Read (Untyped Action) where
-  readPrec = parens $ choice
-    [ Untyped <$> parens (FillBig      <$ key "FillBig")
-    , Untyped <$> parens (FillSmall    <$ key "FillSmall")
-    , Untyped <$> parens (EmptyBig     <$ key "EmptyBig")
-    , Untyped <$> parens (EmptySmall   <$ key "EmptySmall")
-    , Untyped <$> parens (SmallIntoBig <$ key "SmallIntoBig")
-    , Untyped <$> parens (BigIntoSmall <$ key "BigIntoSmall")
+
+  readPrec = choice
+    [ Untyped FillBig      <$ lift (string "FillBig")
+    , Untyped FillSmall    <$ lift (string "FillSmall")
+    , Untyped EmptyBig     <$ lift (string "EmptyBig")
+    , Untyped EmptySmall   <$ lift (string "EmptySmall")
+    , Untyped SmallIntoBig <$ lift (string "SmallIntoBig")
+    , Untyped BigIntoSmall <$ lift (string "BigIntoSmall")
     ]
-    where
-    key s = lift (string s)
 
   readListPrec = readListPrecDefault
 

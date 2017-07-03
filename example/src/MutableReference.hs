@@ -138,8 +138,8 @@ postcondition _         (Inc _)     _    = property True
 
 ------------------------------------------------------------------------
 
--- To make things interesting we parametrised the semantics on a
--- problems.
+-- To make things interesting we parametrise the semantics by a possible
+-- problem.
 
 data Problem = None | Bug | RaceCondition
   deriving Eq

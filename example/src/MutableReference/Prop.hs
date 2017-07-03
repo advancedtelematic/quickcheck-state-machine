@@ -34,8 +34,10 @@ import           Text.Read
 import           Test.QuickCheck
                    (Property, forAll)
 
-import           Test.StateMachine.Prototype
+import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.ScopeCheck
+import           Test.StateMachine.Internal.Utils
+import           Test.StateMachine.Prototype
 
 import           MutableReference
 
@@ -54,16 +56,11 @@ prop_genForkScope = forAll
   {-
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
-  [ Internal New                                (IntRef 0 0)
-  , Internal (Write (IntRef (Ref 0) (Pid 0)) 5) ()
-  , Internal (Read  (IntRef (Ref 0) (Pid 0)))   ()
+  [ Internal New                                (Symbolic (Var 0))
+  , Internal (Write _ 5) (Symbolic (Var 1))
+  , Internal (Read  undefined)   (Symbolic (Var 2))
   ]
   . read . (!! 1) . lines
-
-deriving instance Eq (Action ConstIntRef resp)
-
-instance Eq (IntRefed Action) where
-  IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
 -}
 
 cheat :: Fork [Internal Action] -> Fork [Internal Action]
@@ -124,8 +121,10 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
 
     var    = IntRef 0 0
     writes = [IntRefed (Write var 0) (), IntRefed (Inc var) ()]
+-}
 
-instance Read (IntRefed Action) where
+  {-
+instance Read (Untyped Action) where
   readPrec = parens $ choice
     [ IntRefed <$> parens (New <$ key "New") <*> readPrec
     , IntRefed <$>
