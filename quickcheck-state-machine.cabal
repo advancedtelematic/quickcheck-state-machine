@@ -18,6 +18,7 @@ tested-with:         GHC == 8.0.2
 library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
+                     , Test.StateMachine.Compose
                      , Test.StateMachine.Internal.AlphaEquality
                      , Test.StateMachine.Internal.Parallel
                      , Test.StateMachine.Internal.ScopeCheck
@@ -31,6 +32,7 @@ library
                      , base (>=4.7 && <5)
                      , constraints (>=0.9.1 && <0.10)
                      , containers (>=0.5.7.1 && <0.6)
+                     , lens
                      , mtl (>=2.2.1 && <2.3)
                      , parallel-io (>=0.3.3 && <0.4)
                      , QuickCheck (>=2.9.2 && <2.10)
