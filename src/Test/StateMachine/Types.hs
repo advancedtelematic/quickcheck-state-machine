@@ -43,6 +43,9 @@ import           Text.Read
 
 type Generator model act = model Symbolic -> Gen (Untyped act)
 
+type Shrinker (act :: (* -> *) -> * -> *) = forall v resp.
+  act v resp -> [act v resp]
+
 type Precondition model act = forall resp.
   model Symbolic -> act Symbolic resp -> Bool
 

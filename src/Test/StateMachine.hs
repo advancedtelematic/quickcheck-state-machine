@@ -47,7 +47,7 @@ sequentialProperty
   => HFunctor act
   => HFoldable act
   => Generator model act
-  -> (forall resp v. act v resp -> [act v resp])   -- ^ Shrinker
+  -> Shrinker act
   -> Precondition model act
   -> Transition    model act
   -> Postcondition model act
@@ -66,7 +66,7 @@ sequentialProperty'
   => HFunctor act
   => HFoldable act
   => Generator model act
-  -> (forall resp v. act v resp -> [act v resp])   -- ^ Shrinker
+  -> Shrinker act
   -> Precondition model act
   -> Transition    model act
   -> Postcondition model act
@@ -102,7 +102,7 @@ parallelProperty
   => Show (Internal act) -- used by the forAllShrink
   => HTraversable act
   => Generator model act
-  -> (forall resp v. act v resp -> [act v resp])          -- ^ Shrinker
+  -> Shrinker act
   -> Precondition  model act
   -> Transition    model act
   -> Postcondition model act
@@ -121,7 +121,7 @@ parallelProperty'
   => Show (Internal act) -- used by the forAllShrink
   => HTraversable act
   => Generator model act
-  -> (forall resp v. act v resp -> [act v resp])          -- ^ Shrinker
+  -> Shrinker act
   -> Precondition  model act
   -> Transition    model act
   -> Postcondition model act

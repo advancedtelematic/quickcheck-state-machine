@@ -14,38 +14,22 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Utils
-  ( Shrinker
-  , genFromMaybe
-  , anyP
+  ( anyP
   , liftProperty
   , shrinkPropertyHelper
   , shrinkPropertyHelper'
   , shrinkPair
   ) where
 
-import           Control.Monad.State
-                   (StateT)
 import           Test.QuickCheck
-                   (Gen, Property, Result(Failure), chatty,
-                   counterexample, output, property,
-                   quickCheckWithResult, stdArgs)
+                   (Property, Result(Failure), chatty, counterexample,
+                   output, property, quickCheckWithResult, stdArgs)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property
                    ((.&&.), (.||.))
 
 ------------------------------------------------------------------------
-
--- | The type of a shrinker function.
-type Shrinker a = a -> [a]
-
--- | Keep generating until we actually get a value.
-genFromMaybe :: StateT s (StateT t Gen) (Maybe a) -> StateT s (StateT t Gen) a
-genFromMaybe g = do
-  mx <- g
-  case mx of
-    Nothing -> genFromMaybe g
-    Just x  -> return x
 
 -- | Lifts 'Prelude.any' to properties.
 anyP :: (a -> Property) -> [a] -> Property
@@ -70,7 +54,7 @@ shrinkPropertyHelper' prop p = monadicIO $ do
     _                                -> return ()
 
 -- | Given shrinkers for the components of a pair we can shrink the pair.
-shrinkPair :: Shrinker a -> Shrinker b -> Shrinker (a, b)
+shrinkPair :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])
 shrinkPair shrinkerA shrinkerB (x, y) =
   [ (x', y) | x' <- shrinkerA x ] ++
   [ (x, y') | y' <- shrinkerB y ]
