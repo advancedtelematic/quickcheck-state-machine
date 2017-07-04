@@ -81,8 +81,8 @@ data Operation act = forall resp. Typeable resp =>
 
 takeInvocations :: [HistoryEvent a] -> [HistoryEvent a]
 takeInvocations = takeWhile $ \h -> case h of
-  InvocationEvent _ _ _ _ -> True
-  _                       -> False
+  InvocationEvent {} -> True
+  _                  -> False
 
 findCorrespondingResp :: Pid -> History act -> [(Dynamic, History act)]
 findCorrespondingResp _   [] = []
@@ -129,7 +129,7 @@ linearise next post initial es = anyP (step initial) . linearTree $ es
     anyP' p xs = anyP p xs
 
 toBoxDrawings :: Set Var -> History act -> Doc
-toBoxDrawings knownVars h = exec evT (fmap (fmap out) $ Fork l p r)
+toBoxDrawings knownVars h = exec evT (fmap out <$> Fork l p r)
   where
     (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
     (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'

@@ -1,10 +1,7 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -61,7 +58,7 @@ data Action (v :: * -> *) :: * -> * where
 
 deriving instance Eq1 v => Eq (Action v resp)
 
-data Ref v = Ref (v (Opaque (IORef Int)))
+newtype Ref v = Ref (v (Opaque (IORef Int)))
 
 unRef :: Ref Concrete -> IORef Int
 unRef (Ref (Concrete (Opaque ref))) = ref
@@ -160,7 +157,7 @@ semantics prb (Write ref i) = writeIORef (unRef ref) i'
   -- reference.
   i' | i `elem` [5..10] = if prb == Bug then i + 1 else i
      | otherwise        = i
-semantics prb (Inc   ref)   = do
+semantics prb (Inc   ref)   =
   -- The other problem is that we introduce a possible race condition
   -- when incrementing.
   if prb == RaceCondition

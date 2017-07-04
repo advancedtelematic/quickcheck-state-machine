@@ -1,12 +1,6 @@
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE Rank2Types            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE KindSignatures    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -106,7 +100,7 @@ data Action a (v :: * -> *) :: * -> * where
   Find  :: Ref a v            -> Action a v (Opaque (Element a))
   Union :: Ref a v -> Ref a v -> Action a v ()
 
-data Ref a v = Ref (v (Opaque (Element a)))
+newtype Ref a v = Ref (v (Opaque (Element a)))
 
 unRef :: Ref a Concrete -> Element a
 unRef (Ref (Concrete (Opaque ref))) = ref

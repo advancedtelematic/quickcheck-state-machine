@@ -13,15 +13,14 @@ spec :: Spec
 spec = do
 
   describe "Sequential property" $
-    it "`prop_ticketDispenser`: the model is sequentially sound" $
+    it "`prop_ticketDispenser`: the model is sequentially sound"
       prop_ticketDispenser
 
   describe "Parallel property" $ do
 
-    modifyMaxSuccess (const 10) $ do
-
-      it "`prop_ticketDispenserParallelOK`: works with exclusive file locks" $
+    modifyMaxSuccess (const 10) $
+      it "`prop_ticketDispenserParallelOK`: works with exclusive file locks"
         prop_ticketDispenserParallelOK
 
-    it "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared" $
+    it "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared"
       prop_ticketDispenserParallelBad

@@ -88,7 +88,7 @@ filterInvalid precond trans = go
    go m known [] = ((m, known), [])
    go m known (x@(Internal act sym@(Symbolic var)) : xs)
      | getUsedVars act `S.isSubsetOf` known && precond m act =
-         fmap (x :) $ go (trans m act sym) (S.insert var known) xs
+         (x :) <$> go (trans m act sym) (S.insert var known) xs
      | otherwise = go m known xs
 
 liftModel
