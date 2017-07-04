@@ -205,20 +205,20 @@ we can improve it on the issue tracker!
     also uses the linearisability technique, and has found bugs in many
     distributed systems:
 
-    - [Knossos: Redis and linearizability](https://aphyr.com/posts/309-knossos-redis-and-linearizability)
-    - [Strong consistency models](https://aphyr.com/posts/313-strong-consistency-models)
-    - [Computational techniques in Knossos](https://aphyr.com/posts/314-computational-techniques-in-knossos)
-    - [Serializability, linearizability, and locality](https://aphyr.com/posts/333-serializability-linearizability-and-locality)
+    - [Knossos: Redis and linearizability](https://aphyr.com/posts/309-knossos-redis-and-linearizability);
+    - [Strong consistency models](https://aphyr.com/posts/313-strong-consistency-models);
+    - [Computational techniques in Knossos](https://aphyr.com/posts/314-computational-techniques-in-knossos);
+    - [Serializability, linearizability, and locality](https://aphyr.com/posts/333-serializability-linearizability-and-locality).
 
   * The use of state machines to model and verify properties about programs is
     quite well-established, as witnessed by several books on the subject:
 
       - [Specifying Systems](https://www.microsoft.com/en-us/research/publication/specifying-systems-the-tla-language-and-tools-for-hardware-and-software-engineers/):
-        The TLA+ Language and Tools for Hardware and Software Engineers
+        The TLA+ Language and Tools for Hardware and Software Engineers;
       - [Modeling in Event-B](http://www.event-b.org/abook.html): System and
-        Software Engineering
+        Software Engineering;
       - [Abstract State Machines](http://www.di.unipi.it/~boerger/AsmBook/): A
-        Method for High-Level System Design and Analysis
+        Method for High-Level System Design and Analysis.
 
     The books contain general advice how to model systems using state machines,
     and are hence relevant to us. For shorter texts on why state machines are
@@ -232,6 +232,30 @@ we can improve it on the issue tracker!
         *Sequential Abstract State Machines Capture Sequential
         Algorithms*
         [[PDF](http://delta-apache-vm.cs.tau.ac.il/~nachumd/models/gurevich.pdf)].
+
+  * Other similar libraries:
+
+      - Erlang QuickCheck, [eqc](http://quviq.com/documentation/eqc/), the first
+        property based testing library to have support for state machines
+        (closed source);
+
+      - The Haskell
+        library [Hedgehog](https://github.com/hedgehogqa/haskell-hedgehog), also
+        has support for state machine based testing (no parallel property yet
+        though);
+
+      - [ScalaCheck](http://www.scalacheck.org/), likewise has support for state
+        machine
+        based
+        [testing](https://github.com/rickynils/scalacheck/blob/master/doc/UserGuide.md#stateful-testing) (no
+        parallel property);
+
+      - The Python
+        library [Hypothesis](https://hypothesis.readthedocs.io/en/latest/), also
+        has support for state machine
+        based
+        [testing](https://hypothesis.readthedocs.io/en/latest/stateful.html) (no
+        parallel property).
 
 ### License
 
