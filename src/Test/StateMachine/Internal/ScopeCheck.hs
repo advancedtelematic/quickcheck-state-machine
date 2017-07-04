@@ -11,7 +11,7 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module provides scope-checking for internal commands. This
+-- This module provides scope-checking for internal actions. This
 -- functionality isn't used anywhere in the library, but can be useful
 -- for writing
 -- <https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference/Prop.hs metaproperties>.

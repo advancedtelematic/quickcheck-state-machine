@@ -24,7 +24,41 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Types where
+module Test.StateMachine.Types
+
+  ( -- * The types of the main things the user needs to supply
+    Generator
+  , Shrinker
+  , Precondition
+  , Transition
+  , Postcondition
+  , Semantics
+
+  -- * Higher-order functors, foldables and traversables
+  , HFunctor
+  , hfmap
+  , HFoldable
+  , hfoldMap
+  , HTraversable
+  , htraverse
+
+  -- * Referenses
+  , Opaque(..)
+  , Symbolic(..)
+  , Concrete(..)
+  , Var(..)
+
+  -- * Untyped actions
+  , Untyped
+  , Untyped'(..)
+
+  -- * Show related stuff
+  , ShowAction(..)
+  , ShowSymbolic(..)
+  , ShowResponse(..)
+  , showVar
+  )
+  where
 
 import           Control.Monad.Identity
                    (Identity(..), runIdentity)
@@ -41,34 +75,45 @@ import           Text.Read
 
 ------------------------------------------------------------------------
 
+-- | The type of the generating function of some actions.
 type Generator model act = model Symbolic -> Gen (Untyped act)
 
-type Shrinker (act :: (* -> *) -> * -> *) = forall v resp.
+-- | The type of the shrink function of some actions.
+type Shrinker act = forall (v :: * -> *) resp.
   act v resp -> [act v resp]
 
+-- | The type of pre-conditions of some actions.
 type Precondition model act = forall resp.
   model Symbolic -> act Symbolic resp -> Bool
 
+-- | The type of the transition functions of some actions.
 type Transition model act = forall resp v. Ord1 v =>
   model v -> act v resp -> v resp -> model v
 
+-- | The type of the post-conditions of some actions.
 type Postcondition model act = forall resp.
   model Concrete -> act Concrete resp -> resp -> Property
 
+-- | The type of the semantics of some actions.
+type Semantics act m = forall resp. act Concrete resp -> m resp
+
 ------------------------------------------------------------------------
 
+-- | Higher-order functors
 class HFunctor (f :: (* -> *) -> * -> *) where
   hfmap :: (forall a. g a -> h a) -> f g b -> f h b
 
   default hfmap :: HTraversable f => (forall a. g a -> h a) -> f g b -> f h b
   hfmap f = runIdentity . htraverse (Identity . f)
 
+-- | Higher-order foldables
 class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
   hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
 
   default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
   hfoldMap f = getConst . htraverse (Const . f)
 
+-- | Higher-order traversables
 class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
   htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
 
@@ -83,8 +128,7 @@ newtype Opaque a = Opaque
 instance Show (Opaque a) where
   showsPrec _ (Opaque _) = showString "Opaque"
 
-newtype Var =
-  Var Int
+newtype Var = Var Int
   deriving (Eq, Ord, Show, Num, Read)
 
 data Symbolic a where
@@ -147,8 +191,4 @@ instance Show1 ShowSymbolic where
 type Untyped act = Untyped' act Symbolic
 
 data Untyped' (act :: (* -> *) -> * -> *) (v :: * -> *) where
-  Untyped :: (Typeable resp, Show resp) => act v resp -> Untyped' act v
-
-data Internal (act :: (* -> *) -> * -> *) where
-  Internal :: (Typeable resp, Show resp) =>
-    act Symbolic resp -> Symbolic resp -> Internal act
+  Untyped :: Typeable resp => act v resp -> Untyped' act v

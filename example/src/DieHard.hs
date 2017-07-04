@@ -31,6 +31,8 @@ import           Test.QuickCheck
                    (Property, elements, property)
 
 import           Test.StateMachine
+import           Test.StateMachine.Internal.Types
+                   (Internal(Internal))
 
 ------------------------------------------------------------------------
 

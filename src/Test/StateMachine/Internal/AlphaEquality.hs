@@ -10,7 +10,7 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module provides \(\alpha\)-equality for internal commands. This
+-- This module provides \(\alpha\)-equality for internal actions. This
 -- functionality isn't used anywhere in the library, but can be useful
 -- for writing
 -- <https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference/Prop.hs metaproperties>.
@@ -55,7 +55,7 @@ canonical' (Internal act (Symbolic var) : acts) = do
   ih      <- canonical' acts
   return (Internal act' sym' : ih)
 
--- | Check if two forks of commands are equal modulo
+-- | Check if two forks of actions are equal modulo
 --   \(\alpha\)-conversion.
 alphaEqFork
   :: (HFunctor act, Eq (Internal act))

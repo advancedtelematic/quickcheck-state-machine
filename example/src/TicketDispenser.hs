@@ -38,9 +38,11 @@ import           System.IO.Strict
 import           Test.QuickCheck
                    (Property, frequency, ioProperty, property, (===))
 
+import           Test.StateMachine
+import           Test.StateMachine.Internal.Types
+                   (Internal(Internal))
 import           Test.StateMachine.Internal.Utils
                    (shrinkPropertyHelper)
-import           Test.StateMachine
 
 ------------------------------------------------------------------------
 

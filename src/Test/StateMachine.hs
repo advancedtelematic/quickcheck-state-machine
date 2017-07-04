@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Rank2Types       #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -34,17 +34,18 @@ import           Test.QuickCheck.Property
 
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
+import           Test.StateMachine.Internal.Types
+                   (Internal)
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
 -- | This function builds a property that tests if your model is agrees
---   with your semantics when running commands sequentially.
+--   with your semantics when running actions sequentially.
 sequentialProperty
   :: Monad m
   => Show (Internal act)
-  => HFunctor act
   => HFoldable act
   => Generator model act
   -> Shrinker act
@@ -52,18 +53,19 @@ sequentialProperty
   -> Transition    model act
   -> Postcondition model act
   -> (forall v. model v)                           -- ^ Initial model
-  -> (forall resp. act Concrete resp -> m resp)    -- ^ Semantics
+  -> Semantics act m
   -> (m Property -> Property)                      -- ^ Runner
   -> Property
 sequentialProperty gen shrinker precond trans postcond m sem runner =
   sequentialProperty' gen shrinker precond trans postcond m
     sem (return ()) (const runner) (const (return ()))
 
--- | Same as above, except it provides more flexibility.
+-- | Same as above, except with the possibility to setup some resource
+--   for the runner to use. The resource could be a database connection
+--   for example.
 sequentialProperty'
   :: Monad m
   => Show (Internal act)
-  => HFunctor act
   => HFoldable act
   => Generator model act
   -> Shrinker act
@@ -71,7 +73,7 @@ sequentialProperty'
   -> Transition    model act
   -> Postcondition model act
   -> (forall v. model v)                           -- ^ Initial model
-  -> (forall resp. act Concrete resp -> m resp)    -- ^ Semantics
+  -> Semantics act m
   -> IO setup                                      -- ^ Setup some resource
   -> (setup -> m Property -> Property)             -- ^ Runner
   -> (setup -> IO ())                              -- ^ Cleanup the resource
@@ -93,7 +95,7 @@ sequentialProperty' gen shrinker precond trans postcond m sem setup runner clean
 ------------------------------------------------------------------------
 
 -- | This function builds a property that tests your semantics for race
---   conditions, by runnings commands in parallel and then trying to
+--   conditions, by runnings actions in parallel and then trying to
 --   linearise the resulting history.
 --
 -- /Note:/ Make sure that your model passes the sequential property first.
@@ -107,15 +109,13 @@ parallelProperty
   -> Transition    model act
   -> Postcondition model act
   -> (forall v. model v)                                  -- ^ Initial model
-  -> (forall resp. act Concrete resp -> IO resp)          -- ^ Semantics
+  -> Semantics act IO
   -> Property
 parallelProperty gen shrinker precond trans postcond initial sem =
   parallelProperty' gen shrinker precond trans postcond
     initial (return ()) (const sem) (const (return ()))
 
--- | Same as above, but with the possibility of stateful generation, and
---   setting up and tearing down some resource used by the semantics.
---   The latter can be useful for connecting to a database for example.
+-- | Same as above, but with the possibility of setting up some resource.
 parallelProperty'
   :: ShowAction act
   => Show (Internal act) -- used by the forAllShrink

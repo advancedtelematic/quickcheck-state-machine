@@ -15,7 +15,15 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Internal.Types.Environment where
+module Test.StateMachine.Internal.Types.Environment
+  ( Environment(..)
+  , EnvironmentError(..)
+  , emptyEnvironment
+  , insertConcrete
+  , reifyDynamic
+  , reifyEnvironment
+  , reify
+  ) where
 
 import           Data.Dynamic
                    (Dynamic, Proxy(Proxy), TypeRep, Typeable,

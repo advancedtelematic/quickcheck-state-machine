@@ -59,13 +59,13 @@ code
 
 The rought idea is that the user of the library is asked to provide:
 
-  * a datatype of commands;
+  * a datatype of actions;
   * a datatype model;
-  * pre- and post-conditions of the commands on the model;
-  * a state transition function that given a model and a command advances the
+  * pre- and post-conditions of the actions on the model;
+  * a state transition function that given a model and a action advances the
     model to its next state;
-  * a way to generate and shrink commands;
-  * semantics for executing the commands.
+  * a way to generate and shrink actions;
+  * semantics for executing the actions.
 
 The library then gives back a sequential and a parallel property.
 
@@ -74,16 +74,16 @@ The library then gives back a sequential and a parallel property.
 The *sequential property* checks if the model is consistent with respect to the
 semantics. The way this is done is:
 
-  1. generate a list of commands;
+  1. generate a list of actions;
 
-  2. starting from the initial model, for each command do the the following:
+  2. starting from the initial model, for each action do the the following:
 
        1. check that the pre-condition holds;
-       2. if so, execute the command using the semantics;
+       2. if so, execute the action using the semantics;
        3. check if the the post-condition holds;
        4. advance the model using the transition function.
 
-  3. If something goes wrong, shrink the initial list of commands and present a
+  3. If something goes wrong, shrink the initial list of actions and present a
      minimal counter example.
 
 #### Parallel property
@@ -93,18 +93,18 @@ explained in terms of the sequential model. This is useful for trying to find
 race conditions -- which normally can be tricky to test for. It works as
 follows:
 
-  1. generate a list of commands that will act as a sequential prefix for the
+  1. generate a list of actions that will act as a sequential prefix for the
      parallel program (think of this as an initialisation bit that setups up
      some state);
 
-  2. generate two lists of commands that will act as parallel suffixes;
+  2. generate two lists of actions that will act as parallel suffixes;
 
   3. execute the prefix sequentially;
 
   4. execute the suffixes in parallel and gather the a trace (or history) of
-     invocations and responses of each command;
+     invocations and responses of each action;
 
-  5. try to find a possible sequential interleaving of command invocations and
+  5. try to find a possible sequential interleaving of action invocations and
      responses that respects the post-conditions.
 
 The last step basically tries to find
