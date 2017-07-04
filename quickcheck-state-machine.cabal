@@ -19,12 +19,11 @@ library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
                      , Test.StateMachine.Internal.AlphaEquality
-                     , Test.StateMachine.Internal.IxMap
                      , Test.StateMachine.Internal.Parallel
                      , Test.StateMachine.Internal.ScopeCheck
                      , Test.StateMachine.Internal.Sequential
                      , Test.StateMachine.Internal.Types
-                     , Test.StateMachine.Internal.Types.IntRef
+                     , Test.StateMachine.Internal.Types.Environment
                      , Test.StateMachine.Internal.Utils
                      , Test.StateMachine.Internal.Utils.BoxDrawer
                      , Test.StateMachine.Types
@@ -36,7 +35,6 @@ library
                      , parallel-io (>=0.3.3 && <0.4)
                      , QuickCheck (>=2.9.2 && <2.10)
                      , random (==1.1.*)
-                     , singletons (==2.2.*)
                      , stm (>=2.4.4.1 && <2.5)
   default-language:    Haskell2010
 

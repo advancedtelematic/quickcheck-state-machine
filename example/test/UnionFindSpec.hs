@@ -9,6 +9,6 @@ import           UnionFind
 
 spec :: Spec
 spec =
-  describe "Sequential property" $ do
-    it "`prop_sequential`: invariants hold" $
-      prop_sequential
+  describe "Sequential property" $
+    it "`prop_unionFind`: invariants hold"
+      prop_unionFind

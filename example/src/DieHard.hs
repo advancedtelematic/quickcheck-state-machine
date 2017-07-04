@@ -1,6 +1,6 @@
-{-# LANGUAGE DataKinds  #-}
-{-# LANGUAGE GADTs      #-}
-{-# LANGUAGE TypeInType #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE KindSignatures    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -18,7 +18,7 @@
 -----------------------------------------------------------------------------
 
 module DieHard
-  ( Step(..)
+  ( Action(..)
   , Model(..)
   , initModel
   , transitions
@@ -27,12 +27,8 @@ module DieHard
 
 import           Control.Monad.Identity
                    (Identity, runIdentity)
-import           Data.Singletons.Prelude
-                   (ConstSym1)
-import           Data.Void
-                   (Void)
 import           Test.QuickCheck
-                   (Gen, Property, elements, property)
+                   (Property, elements, property)
 
 import           Test.StateMachine
 
@@ -41,30 +37,28 @@ import           Test.StateMachine
 -- The problem is to measure exactly 4 liters of water given a 3- and
 -- 5-liter jug.
 
--- We start of defining the different actions (or commands) that are
--- allowed:
+-- We start of defining the different actions that are allowed:
 
-data Step :: Signature Void where
-  FillBig      :: Step refs ('Response ())  -- Fill the 5-liter jug.
-  FillSmall    :: Step refs ('Response ())  -- Fill the 3-liter jug.
-  EmptyBig     :: Step refs ('Response ())  -- Empty the 5-liter jug.
-  EmptySmall   :: Step refs ('Response ())
-  SmallIntoBig :: Step refs ('Response ())  -- Pour the contents of
-                                            -- the 3-liter jug into
-                                            -- 5-liter jug.
-  BigIntoSmall :: Step refs ('Response ())
+data Action (v :: * -> *) :: * -> * where
+  FillBig      :: Action v ()  -- Fill the 5-liter jug.
+  FillSmall    :: Action v ()  -- Fill the 3-liter jug.
+  EmptyBig     :: Action v ()  -- Empty the 5-liter jug.
+  EmptySmall   :: Action v ()
+  SmallIntoBig :: Action v ()  -- Pour the contents of the 3-liter jug
+                               -- into 5-liter jug.
+  BigIntoSmall :: Action v ()
 
 ------------------------------------------------------------------------
 
 -- The model (or state) keeps track of what amount of water is in the
 -- two jugs.
 
-data Model refs = Model
+data Model (v :: * -> *) = Model
   { bigJug   :: Int
   , smallJug :: Int
   } deriving (Show, Eq)
 
-initModel :: Model refs
+initModel :: Model v
 initModel = Model 0 0
 
 ------------------------------------------------------------------------
@@ -72,16 +66,16 @@ initModel = Model 0 0
 -- There are no pre-conditions for our actions. That simply means that
 -- any action can happen at any state.
 
-preconditions :: Model refs -> Step refs resp -> Bool
+preconditions :: Precondition Model Action
 preconditions _ _ = True
 
 -- The transitions describe how the actions change the state.
 
-transitions :: Model refs -> Step refs resp -> Response_ refs resp -> Model refs
-transitions s FillBig   _  = s { bigJug   = 5 }
-transitions s FillSmall _  = s { smallJug = 3 }
-transitions s EmptyBig  _  = s { bigJug   = 0 }
-transitions s EmptySmall _ = s { smallJug = 0 }
+transitions :: Transition Model Action
+transitions m FillBig   _  = m { bigJug   = 5 }
+transitions m FillSmall _  = m { smallJug = 3 }
+transitions m EmptyBig  _  = m { bigJug   = 0 }
+transitions m EmptySmall _ = m { smallJug = 0 }
 transitions (Model big small) SmallIntoBig _ =
             let big' = min 5 (big + small) in
             Model { bigJug = big'
@@ -89,7 +83,8 @@ transitions (Model big small) SmallIntoBig _ =
 transitions (Model big small) BigIntoSmall _ =
     let small' = min 3 (big + small) in
     Model { bigJug = big - (small' - small)
-          , smallJug = small' }
+          , smallJug = small'
+          }
 
 -- The post-condition is used in a bit of a funny way. Recall that we
 -- want to find a series of actions that leads to the big jug containing
@@ -99,21 +94,16 @@ transitions (Model big small) BigIntoSmall _ =
 -- actually does contain 4 liters, then a minimal counter example will
 -- be presented -- this will be our solution.
 
-postconditions :: Model refs -> Step refs resp -> Response_ refs resp -> Property
-postconditions s c r = property (bigJug (transitions s c r) /= 4)
-
--- (We pack all our model related stuff up into a record is it's easier
--- to pass around.)
-smm :: StateMachineModel Model Step
-smm = StateMachineModel preconditions postconditions transitions initModel
+postconditions :: Postcondition Model Action
+postconditions s c r = property (bigJug (transitions s c (Concrete r)) /= 4)
 
 ------------------------------------------------------------------------
 
 -- The generator of actions is simple, with equal distribution pick an
 -- action.
 
-gen :: Gen (Untyped Step (RefPlaceholder Void))
-gen = elements
+gen :: Generator Model Action
+gen _ = elements
   [ Untyped FillBig
   , Untyped FillSmall
   , Untyped EmptyBig
@@ -124,7 +114,7 @@ gen = elements
 
 -- There's nothing to shrink.
 
-shrink1 :: Step refs resp -> [Step refs resp ]
+shrink1 :: Action v resp -> [Action v resp ]
 shrink1 _ = []
 
 ------------------------------------------------------------------------
@@ -132,53 +122,34 @@ shrink1 _ = []
 -- We are not modeling an actual program here, so there's no semantics
 -- for our actions. We are merely doing model-checking here.
 
-semStep :: Step (ConstSym1 Void) resp -> Identity (Response_ (ConstSym1 Void) resp)
-semStep FillBig      = return ()
-semStep FillSmall    = return ()
-semStep EmptyBig     = return ()
-semStep EmptySmall   = return ()
-semStep SmallIntoBig = return ()
-semStep BigIntoSmall = return ()
+semAction :: Action v resp -> Identity resp
+semAction FillBig      = return ()
+semAction FillSmall    = return ()
+semAction EmptyBig     = return ()
+semAction EmptySmall   = return ()
+semAction SmallIntoBig = return ()
+semAction BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
--- What follows are a bunch of bolierplate instances, we hope to
--- automate these away in the future.
+instance Show (Internal Action) where
+  show (Internal FillBig      _) = "FillBig"
+  show (Internal FillSmall    _) = "FillSmall"
+  show (Internal EmptyBig     _) = "EmptyBig"
+  show (Internal EmptySmall   _) = "EmptySmall"
+  show (Internal SmallIntoBig _) = "SmallIntoBig"
+  show (Internal BigIntoSmall _) = "BigIntoSmall"
 
-instance HasResponse Step where
-  response FillBig      = SResponse
-  response FillSmall    = SResponse
-  response EmptyBig     = SResponse
-  response EmptySmall   = SResponse
-  response SmallIntoBig = SResponse
-  response BigIntoSmall = SResponse
+instance HFunctor     Action
+instance HFoldable    Action
 
-instance IxFoldable Step where
-  ifoldMap _ _ = mempty -- (Not needed, since there are no references.)
-
-instance IxTraversable Step where
-  ifor _ FillBig      _ = pure FillBig
-  ifor _ FillSmall    _ = pure FillSmall
-  ifor _ EmptyBig     _ = pure EmptyBig
-  ifor _ EmptySmall   _ = pure EmptySmall
-  ifor _ SmallIntoBig _ = pure SmallIntoBig
-  ifor _ BigIntoSmall _ = pure BigIntoSmall
-
-instance IxFunctor Step where
-  ifmap _ FillBig      = FillBig
-  ifmap _ FillSmall    = FillSmall
-  ifmap _ EmptyBig     = EmptyBig
-  ifmap _ EmptySmall   = EmptySmall
-  ifmap _ SmallIntoBig = SmallIntoBig
-  ifmap _ BigIntoSmall = BigIntoSmall
-
-instance ShowCmd Step where
-  showCmd FillBig      = "FillBig"
-  showCmd FillSmall    = "FillSmall"
-  showCmd EmptyBig     = "EmptyBig"
-  showCmd EmptySmall   = "EmptySmall"
-  showCmd SmallIntoBig = "SmallIntoBig"
-  showCmd BigIntoSmall = "BigIntoSmall"
+instance HTraversable Action where
+  htraverse _ FillBig      = pure FillBig
+  htraverse _ FillSmall    = pure FillSmall
+  htraverse _ EmptyBig     = pure EmptyBig
+  htraverse _ EmptySmall   = pure EmptySmall
+  htraverse _ SmallIntoBig = pure SmallIntoBig
+  htraverse _ BigIntoSmall = pure BigIntoSmall
 
 ------------------------------------------------------------------------
 
@@ -186,25 +157,20 @@ instance ShowCmd Step where
 
 prop_dieHard :: Property
 prop_dieHard = sequentialProperty
-  smm
   gen
   shrink1
-  semStep
+  preconditions
+  transitions
+  postconditions
+  initModel
+  semAction
   runIdentity
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --
 -- @
 --     *** Failed! Falsifiable (after 32 tests and 16 shrinks):
---     [FillBig (),BigIntoSmall (),EmptySmall (),BigIntoSmall (),FillBig (),BigIntoSmall ()]
---
---     The model when the post-condition for `BigIntoSmall' fails is:
---
---         Model {bigJug = 5, smallJug = 2}
---
---     The model transitions into:
---
---         Model {bigJug = 4, smallJug = 3}
+--     [FillBig,BigIntoSmall,EmptySmall,BigIntoSmall,FillBig,BigIntoSmall]
 -- @
 --
 -- Let's check if that's a valid solution by writing out the state after each action:

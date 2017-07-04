@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-{-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
 module DieHardSpec (spec) where
 
+import           Data.Functor.Classes
+                   (Eq1(..))
 import           Data.Dynamic
                    (cast)
 import           Data.List
@@ -22,13 +22,12 @@ import           Text.Read
                    readListPrecDefault, readPrec)
 
 import           DieHard
-import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-import           Test.StateMachine.Types
+import           Test.StateMachine
 
 ------------------------------------------------------------------------
 
-validSolutions :: [[Step ConstIntRef ('Response ())]]
+validSolutions :: [[Action v ()]]
 validSolutions =
   [ [ FillBig
     , BigIntoSmall
@@ -73,12 +72,14 @@ validSolutions =
 testValidSolutions :: Bool
 testValidSolutions = all ((/= 4) . bigJug . run) validSolutions
   where
-  run = foldr (\c s -> transitions s c ()) initModel
+  run = foldr (\c s -> transitions s c (Concrete ())) initModel
 
 prop_bigJug4 :: Property
 prop_bigJug4 = shrinkPropertyHelper' prop_dieHard $ \output ->
-  let counterExample = read $ lines output !! 1 in
-  case find (== counterExample) (map (map (flip IntRefed ())) validSolutions) of
+  let counterExample :: [Untyped Action]
+      counterExample = read $ lines output !! 1
+  in
+  case find (== counterExample) (map (map Untyped) validSolutions) of
     Nothing -> property False
     Just ex -> label (show ex) (property True)
 
@@ -97,22 +98,32 @@ spec =
 
 ------------------------------------------------------------------------
 
-deriving instance Show (Step resp refs)
-deriving instance Eq   (Step resp refs)
+instance Show (Untyped Action) where
+  show (Untyped FillBig)      = "FillBig"
+  show (Untyped FillSmall)    = "FillSmall"
+  show (Untyped EmptyBig)     = "EmptyBig"
+  show (Untyped EmptySmall)   = "EmptySmall"
+  show (Untyped SmallIntoBig) = "SmallIntoBig"
+  show (Untyped BigIntoSmall) = "BigIntoSmall"
 
-instance Eq (IntRefed Step) where
-  IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
+instance Read (Untyped Action) where
 
-instance Read (IntRefed Step) where
-  readPrec = parens $ choice
-    [ IntRefed <$> parens (FillBig      <$ key "FillBig")      <*> readPrec
-    , IntRefed <$> parens (FillSmall    <$ key "FillSmall")    <*> readPrec
-    , IntRefed <$> parens (EmptyBig     <$ key "EmptyBig")     <*> readPrec
-    , IntRefed <$> parens (EmptySmall   <$ key "EmptySmall")   <*> readPrec
-    , IntRefed <$> parens (SmallIntoBig <$ key "SmallIntoBig") <*> readPrec
-    , IntRefed <$> parens (BigIntoSmall <$ key "BigIntoSmall") <*> readPrec
+  readPrec = choice
+    [ Untyped FillBig      <$ lift (string "FillBig")
+    , Untyped FillSmall    <$ lift (string "FillSmall")
+    , Untyped EmptyBig     <$ lift (string "EmptyBig")
+    , Untyped EmptySmall   <$ lift (string "EmptySmall")
+    , Untyped SmallIntoBig <$ lift (string "SmallIntoBig")
+    , Untyped BigIntoSmall <$ lift (string "BigIntoSmall")
     ]
-    where
-    key s = lift (string s)
 
   readListPrec = readListPrecDefault
+
+instance Eq (Untyped Action) where
+  Untyped FillBig      == Untyped FillBig      = True
+  Untyped FillSmall    == Untyped FillSmall    = True
+  Untyped EmptyBig     == Untyped EmptyBig     = True
+  Untyped EmptySmall   == Untyped EmptySmall   = True
+  Untyped SmallIntoBig == Untyped SmallIntoBig = True
+  Untyped BigIntoSmall == Untyped BigIntoSmall = True
+  _                    == _                    = False

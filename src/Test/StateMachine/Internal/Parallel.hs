@@ -1,15 +1,6 @@
-{-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE KindSignatures            #-}
-{-# LANGUAGE MultiParamTypeClasses     #-}
-{-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE Rank2Types                #-}
-{-# LANGUAGE RecordWildCards           #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE TypeInType                #-}
-{-# LANGUAGE TypeOperators             #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -44,20 +35,14 @@ import           Control.Concurrent.STM.TChan
 import           Control.Monad
                    (foldM)
 import           Control.Monad.State
-                   (StateT, evalStateT, execStateT, lift)
+                   (StateT, evalStateT, execStateT, get, lift, modify)
 import           Data.Dynamic
-                   (Dynamic, fromDynamic, toDyn)
-import           Data.Kind
-                   (Type)
+                   (Dynamic, toDyn)
 import           Data.List
                    (partition)
-import qualified Data.Map                                   as M
-import           Data.Maybe
-                   (fromMaybe)
-import           Data.Singletons.Decide
-                   (SDecide)
-import           Data.Singletons.Prelude
-                   (DemoteRep, SingKind, TyFun, fromSing)
+import           Data.Set
+                   (Set)
+import qualified Data.Set                                     as S
 import           Data.Tree
                    (Tree(Node))
 import           Data.Typeable
@@ -65,141 +50,55 @@ import           Data.Typeable
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Gen, Property, counterexample, property, (.&&.))
+                   (Gen, Property, counterexample, property,
+                   shrinkList, (.&&.))
 import           Test.QuickCheck.Monadic
                    (PropertyM)
 import           Text.PrettyPrint.ANSI.Leijen
-                   (Doc, Pretty, pretty, prettyList, text, vsep, (<+>))
+                   (Doc)
 
-import           Test.StateMachine.Internal.IxMap
-                   (IxMap)
-import qualified Test.StateMachine.Internal.IxMap           as IxM
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Types.IntRef
-                   (showRef)
+import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Utils.BoxDrawer
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
--- | Lift a generator of untyped commands with reference placeholders
---   into a generator of forks of untyped internal commands.
-liftGenFork
-  :: Ord       ix
-  => SingKind  ix
-  => DemoteRep ix ~ ix
-  => IxTraversable cmd
-  => HasResponse   cmd
-  => Generator ix cmd gstate
-  -> Gen (Fork [IntRefed cmd])
-liftGenFork gen = do
-  ((prefix, gs'), ns) <- liftGenHelper gen 0 M.empty
-  let gen'            =  gen { initGenState = gs' }
-  left                <- fst . fst <$> liftGenHelper gen' 1 ns
-  right               <- fst . fst <$> liftGenHelper gen' 2 ns
-  return $ Fork
-    (map (\(IntRefed cmd miref) ->
-            IntRefed (ifmap (fixPid ns) cmd) miref) left)
-    prefix
-    (map (\(IntRefed cmd miref) ->
-            IntRefed (ifmap (fixPid ns) cmd) miref) right)
-  where
-  fixPid ns i iref@(IntRef (Ref ref) _)
-    | ref <= ns M.! fromSing i = IntRef (Ref ref) 0
-    | otherwise                = iref
+type History act = [HistoryEvent (Untyped' act Concrete)]
 
-------------------------------------------------------------------------
+data HistoryEvent act
+  = InvocationEvent act     String Var Pid
+  | ResponseEvent   Dynamic String     Pid
 
--- | Lift a shrinker of internal commands into a shrinker of forks of
---   untyped internal commands.
-liftShrinkFork
-  :: forall ix cmd gstate
-  .  IxFoldable  cmd
-  => HasResponse cmd
-  => Generator ix cmd gstate
-  -> (forall resp. Shrinker (cmd ConstIntRef resp)) -- ^ Shrinker to be lifted.
-  -> Shrinker (Fork [IntRefed cmd])
-liftShrinkFork gen shrinker f@(Fork l0 p0 r0)
-  = fmap (fmap (filterPrecondition gen)) $
+getProcessIdEvent :: HistoryEvent act -> Pid
+getProcessIdEvent (InvocationEvent _ _ _ pid) = pid
+getProcessIdEvent (ResponseEvent   _ _ pid)   = pid
 
-  -- Only shrink the branches:
-  [ Fork l' p0 r'
-  | (l', r') <- shrinkPair (liftShrinkHelper shrinker)
-                           (liftShrinkHelper shrinker)
-                           (l0, r0)
-  ] ++
+data Operation act = forall resp. Typeable resp =>
+  Operation (act Concrete resp) String (Concrete resp) Pid
 
-  -- Only shrink the prefix:
-  shrinkPrefix f
-
-  where
-  shrinkPrefix :: Fork [IntRefed cmd] -> [Fork [IntRefed cmd]]
-  shrinkPrefix (Fork _ []       _) = []
-  shrinkPrefix (Fork l (p : ps) r) =
-      [ Fork l'   []                      r'   ] ++
-      [ Fork l''  (removeCommands p ps) r''  ] ++
-      [ Fork l''' (p' : ps')              r'''
-      | (p', Fork l''' ps' r''') <- shrinkPair (liftShrinker shrinker)
-                                               shrinkPrefix
-                                               (p, Fork l ps r)
-      ]
-      where
-      l'  = removeManyCommands (p : ps) l
-      r'  = removeManyCommands (p : ps) r
-
-      l'' = removeCommands p l
-      r'' = removeCommands p r
-
-      removeManyCommands :: [IntRefed cmd] -> [IntRefed cmd] -> [IntRefed cmd]
-      removeManyCommands []       ds = ds
-      removeManyCommands (c : cs) ds = removeManyCommands cs (removeCommands c ds)
-
-------------------------------------------------------------------------
-
-type History cmd = [HistoryEvent (IntRefed cmd)]
-
-data HistoryEvent cmd
-  = InvocationEvent cmd     Pid
-  | ResponseEvent   Dynamic Pid
-
-getProcessIdEvent :: HistoryEvent cmd -> Pid
-getProcessIdEvent (InvocationEvent _ pid) = pid
-getProcessIdEvent (ResponseEvent   _ pid) = pid
-
-data Operation cmd = forall resp.
-  (Show (GetResponse_ resp),
-   HasResponse cmd,
-   Typeable resp,
-   Typeable (Response_ ConstIntRef resp)) =>
-  Operation (cmd ConstIntRef resp) (Response_ ConstIntRef resp) Pid
-
-instance (ShowCmd cmd, IxFunctor cmd) => Pretty (Operation cmd) where
-  pretty (Operation cmd resp _) =
-    text (showCmd $ ifmap (const showRef) cmd) <+> text "-->" <+> text (showResponse_ (response cmd) resp)
-  prettyList                     = vsep . map pretty
-
-takeInvocations :: History cmd -> [HistoryEvent (IntRefed cmd)]
+takeInvocations :: [HistoryEvent a] -> [HistoryEvent a]
 takeInvocations = takeWhile $ \h -> case h of
-  InvocationEvent _ _ -> True
-  _                   -> False
+  InvocationEvent {} -> True
+  _                  -> False
 
-findCorrespondingResp :: Pid -> History cmd -> [(Dynamic, History cmd)]
+findCorrespondingResp :: Pid -> History act -> [(Dynamic, History act)]
 findCorrespondingResp _   [] = []
-findCorrespondingResp pid (ResponseEvent resp pid' : es) | pid == pid' = [(resp, es)]
+findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
-linearTree :: HasResponse cmd => History cmd -> [Tree (Operation cmd)]
+linearTree :: History act -> [Tree (Operation act)]
 linearTree [] = []
 linearTree es =
-  [ Node (Operation cmd (dynResp resp) pid) (linearTree es')
-  | InvocationEvent (IntRefed cmd _) pid <- takeInvocations es
+  [ Node (Operation act str (dynResp resp) pid) (linearTree es')
+  | InvocationEvent (Untyped act) str _ pid <- takeInvocations es
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
-  dynResp resp = fromMaybe (error "linearTree: impossible.") (fromDynamic resp)
+  dynResp resp = either (error . show) id (reifyDynamic resp)
 
   filter1 :: (a -> Bool) -> [a] -> [a]
   filter1 _ []                   = []
@@ -207,116 +106,106 @@ linearTree es =
                      | otherwise = xs
 
   -- Hmm, is this enough?
-  matchInv pid (InvocationEvent _ pid') = pid == pid'
-  matchInv _   _                        = False
+  matchInv pid (InvocationEvent _ _ _ pid') = pid == pid'
+  matchInv _   _                            = False
 
 linearise
-  :: forall cmd model
-  .  HasResponse cmd
-  => StateMachineModel model cmd
-  -> History cmd
+  :: forall model act
+  .  Transition    model act
+  -> Postcondition model act
+  -> (forall v. model v)
+  -> History act
   -> Property
-linearise _                        [] = property True
-linearise StateMachineModel {..} xs0 = anyP (step initialModel) . linearTree $ xs0
+linearise _    _    _       [] = property True
+linearise next post initial es = anyP (step initial) . linearTree $ es
   where
-  step :: model ConstIntRef -> Tree (Operation cmd) -> Property
-  step m (Node (Operation cmd resp _) roses) =
-    postcondition m cmd resp .&&.
-    anyP' (step (transition m cmd resp)) roses
+  step :: model Concrete -> Tree (Operation act) -> Property
+  step m (Node (Operation act _ resp@(Concrete resp') _) roses) =
+    post m act resp' .&&.
+    anyP' (step (next m act resp)) roses
     where
     anyP' :: (a -> Property) -> [a] -> Property
     anyP' _ [] = property True
     anyP' p xs = anyP p xs
 
-------------------------------------------------------------------------
-
-toForkOfOps :: forall cmd. HasResponse cmd => History cmd -> Fork [Operation cmd]
-toForkOfOps h = Fork (mkOps l) p' (mkOps r)
+toBoxDrawings :: Set Var -> History act -> Doc
+toBoxDrawings knownVars h = exec evT (fmap out <$> Fork l p r)
   where
-  (p, h') = partition (\e -> getProcessIdEvent e == 0) h
-  (l, r)  = partition (\e -> getProcessIdEvent e == 1) h'
+    (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
+    (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
 
-  p'      = mkOps p
+    out :: HistoryEvent act -> String
+    out (InvocationEvent _ str var _) | var `S.member` knownVars = showVar var ++ " ← " ++ str
+                                      | otherwise = str
+    out (ResponseEvent _ str _) = str
 
-  mkOps :: [HistoryEvent (IntRefed cmd)] -> [Operation cmd]
-  mkOps [] = []
-  mkOps (InvocationEvent (IntRefed cmd _) _ : ResponseEvent resp pid : es)
-    = Operation cmd (dynResp resp) pid : mkOps es
-    where
-    dynResp = fromMaybe (error "toForkOfOps: impossible.") . fromDynamic
-  mkOps _  = error "mkOps: Impossible."
-
-toBoxDrawings :: forall cmd. (IxFunctor cmd, ShowCmd cmd, HasResponse cmd) => History cmd -> Doc
-toBoxDrawings h = exec evT (fmap out (toForkOfOps h))
-  where
-    out :: [Operation cmd] -> [String]
-    out [] = []
-    out (Operation cmd resp _ : os) = showCmd (ifmap (const showRef) cmd)
-                                  : showResponse_ (response cmd) resp
-                                  : out os
     toEventType :: History cmd -> [(EventType, Pid)]
     toEventType = map $ \e -> case e of
-      InvocationEvent _ pid -> (Open, pid)
-      ResponseEvent _ pid   -> (Close, pid)
+      InvocationEvent _ _ _ (Pid pid) -> (Open, Pid pid)
+      ResponseEvent _ _ (Pid pid)     -> (Close, Pid pid)
     evT :: [(EventType, Pid)]
-    evT = toEventType (filter (\e -> getProcessIdEvent e `elem` [1,2]) h)
+    evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
 
 ------------------------------------------------------------------------
 
-data HistoryKit cmd refs = HistoryKit
-  { getHistoryChannel   :: TChan (HistoryEvent (IntRefed cmd))
-  , getProcessIdHistory :: Pid
-  }
+liftGenFork
+  :: Generator    model act
+  -> Precondition model act
+  -> Transition   model act
+  -> model Symbolic
+  -> Gen (Fork [Internal act])
+liftGenFork gen pre next model = do
+  (prefix, model') <- liftGen gen pre next model  0
+  (left,   _)      <- liftGen gen pre next model' (length prefix + 1)
+  (right,  _)      <- liftGen gen pre next model' (length left + 1)
+  return (Fork left prefix right)
 
-mkHistoryKit :: Pid -> IO (HistoryKit cmd refs)
-mkHistoryKit pid = do
-  chan <- newTChanIO
-  return $ HistoryKit chan pid
+forkFilterInvalid
+  :: HFoldable act
+  => Precondition model act
+  -> Transition model act
+  -> model Symbolic
+  -> Fork [Internal act]
+  -> Fork [Internal act]
+forkFilterInvalid pre trans m (Fork l p r) =
+  Fork (snd $ filterInvalid pre trans m' vars l)
+       p'
+       (snd $ filterInvalid pre trans m' vars r)
+  where
+    ((m', vars), p') = filterInvalid pre trans m S.empty p
 
-runMany
-  :: SDecide ix
-  => IxFunctor   cmd
-  => HasResponse cmd
-  => HistoryKit cmd ConstIntRef
-  -> (forall resp. cmd refs resp -> IO (Response_ refs resp))
-  -> [IntRefed cmd]
-  -> StateT (IxMap ix IntRef refs) IO ()
-runMany kit sem = flip foldM () $ \_ cmd'@(IntRefed cmd iref) -> do
-  lift $ atomically $ writeTChan (getHistoryChannel kit) $
-    InvocationEvent cmd' (getProcessIdHistory kit)
-  resp <- liftSem sem cmd iref
+liftShrinkFork
+  :: HFoldable act
+  => (forall v resp. act v resp -> [act v resp])
+  -> Precondition model act
+  -> Transition model act
+  -> model Symbolic
+  -> (Fork [Internal act] -> [Fork [Internal act]])
+liftShrinkFork oldShrink pre trans model (Fork l p r) =
+  map (forkFilterInvalid pre trans model)
+  [ Fork l' p' r' | (p', (l', r')) <- shrinkPair shrinkSub (shrinkPair shrinkSub shrinkSub) (p, (l, r))]
+  where
+    shrinkSub = shrinkList (liftShrinkInternal oldShrink)
 
-  lift $ do
-    threadDelay =<< randomRIO (0, 20)
-    atomically $ writeTChan (getHistoryChannel kit) $
-      ResponseEvent (toDyn resp) (getProcessIdHistory kit)
-
--- | Lift the semantics of a single typed command into a semantics for
---   forks of untyped internal commands. The prefix of the fork is
---   executed sequentially, while the two suffixes are executed in
---   parallel, and the result (or trace) is collected in a so called
---   history.
+-- | Lift the semantics of a single action into a semantics for forks of
+--   internal actions. The prefix of the fork is executed sequentially,
+--   while the two suffixes are executed in parallel, and the result (or
+--   trace) is collected in a so called history.
 liftSemFork
-  :: forall
-     (ix    :: Type)
-     (cmd   :: Signature ix)
-     (refs  :: TyFun ix Type -> Type)
-  .  SDecide ix
-  => IxFunctor   cmd
-  => HasResponse cmd
-  => (forall resp. cmd refs resp ->
-        IO (Response_ refs resp))       -- ^ Semantics to be lifted.
-  -> Fork [IntRefed cmd]
-  -> IO (History cmd)
+  :: HTraversable act
+  => ShowAction act
+  => (forall resp. act Concrete resp -> IO resp)
+  -> Fork [Internal act]
+  -> IO (History act)
 liftSemFork sem (Fork left prefix right) = do
-  kit <- mkHistoryKit 0
-  env <- execStateT (runMany kit sem prefix) IxM.empty
+  hchan <- newTChanIO
+  env   <- execStateT (runMany sem hchan (Pid 0) prefix) emptyEnvironment
   withPool 2 $ \pool ->
     parallel_ pool
-      [ evalStateT (runMany (kit { getProcessIdHistory = 1}) sem left)  env
-      , evalStateT (runMany (kit { getProcessIdHistory = 2}) sem right) env
+      [ evalStateT (runMany sem hchan (Pid 1) left)  env
+      , evalStateT (runMany sem hchan (Pid 2) right) env
       ]
-  getChanContents $ getHistoryChannel kit
+  getChanContents hchan
   where
   getChanContents :: forall a. TChan a -> IO [a]
   getChanContents chan = reverse <$> atomically (go [])
@@ -328,11 +217,40 @@ liftSemFork sem (Fork left prefix right) = do
         Just x  -> go $ x : acc
         Nothing -> return acc
 
+runMany
+  :: HTraversable act
+  => ShowAction act
+  => (forall resp. act Concrete resp -> IO resp)
+  -> TChan (HistoryEvent (Untyped' act Concrete))
+  -> Pid
+  -> [Internal act]
+  -> StateT Environment IO ()
+runMany sem hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
+  env <- get
+  let showAct = showAction $ hfmap (\(Symbolic v) -> ShowSymbolic v) act
+  let invStr = theAction showAct
+  let cact = either (error . show) id (reify env act)
+  lift $ atomically $ writeTChan hchan $ InvocationEvent (Untyped cact) invStr var pid
+  resp <- lift (sem cact)
+  modify (insertConcrete sym (Concrete resp))
+  lift $ do
+    threadDelay =<< randomRIO (0, 20)
+    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (showResp showAct resp) pid
+
 -- | Check if a history can be linearised.
 checkParallelInvariant
-  :: (ShowCmd cmd, IxFunctor cmd, HasResponse cmd)
-  => StateMachineModel model cmd -> History cmd -> PropertyM IO ()
-checkParallelInvariant smm hist
+  :: HFoldable act
+  => Transition    model act
+  -> Postcondition model act
+  -> (forall v. model v)
+  -> Fork [Internal act]
+  -> History act
+  -> PropertyM IO ()
+checkParallelInvariant next post initial prog hist
   = liftProperty
-  . counterexample (("Couldn't linearise:\n\n" ++) $ show $ toBoxDrawings hist)
-  $ linearise smm hist
+  . counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars hist))
+  $ linearise next post initial hist
+  where
+  vars xs    = [ getUsedVars x | Internal x _ <- xs]
+  Fork l p r = fmap (S.unions . vars) prog
+  allVars    = S.unions [l,p,r]

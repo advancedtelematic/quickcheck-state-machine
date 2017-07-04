@@ -1,10 +1,7 @@
-{-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveFunctor        #-}
-{-# LANGUAGE ExplicitNamespaces   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeInType           #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -25,51 +22,25 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Types
-  ( IntRef(..)
-  , Pid(..)
-  , Ref(..)
-  , ConstIntRef
-  , IntRefed(..)
+  ( Pid(..)
   , Fork(..)
-  , showResponse_
-  , MayResponse_
-  , filterPrecondition
   ) where
 
-import           Data.Kind
-                   (Type)
 import           Data.Monoid
                    ((<>))
-import           Data.Singletons.Prelude
-                   (type (@@), TyFun)
-import           Data.Typeable
-                   (Typeable)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Pretty, align, dot, indent, int, pretty, text,
                    underline, vsep, (<+>))
 
-import           Test.StateMachine.Internal.Types.IntRef
-import           Test.StateMachine.Types
-
 ------------------------------------------------------------------------
 
--- | Type-level function that maybe returns a reference.
-type family MayResponse_ (refs :: TyFun ix k -> Type) (resp :: Response ix) :: k where
-  MayResponse_ refs ('Response  t) = ()
-  MayResponse_ refs ('Reference i) = refs @@ i
-
--- | Internal untyped commands.
-data IntRefed (f :: Signature ix) where
-  IntRefed :: ( Show     (GetResponse_ resp)
-              , Typeable (Response_ ConstIntRef resp)
-              , Typeable resp
-              ) => f ConstIntRef resp -> MayResponse_ ConstIntRef resp -> IntRefed f
-
-instance (IxFunctor cmd, ShowCmd cmd, HasResponse cmd) => Show (IntRefed cmd) where
-  show (IntRefed cmd miref) = showCmd (ifmap (\ _ r -> "(" ++ show r ++ ")") cmd) ++ " " ++
-       case response cmd of
-         SResponse    -> "()"
-         SReference _ -> "(" ++ show miref ++ ")"
+-- | A process id is merely a natural number that keeps track of which
+--   thread the reference comes from. In the sequential case the process
+--   id is always @0@. Likewise the sequential prefix of a parallel
+--   program also has process id @0@, while the left suffix has process
+--   id @1@, and then right suffix has process id @2@.
+newtype Pid = Pid Int
+  deriving (Eq, Show)
 
 -- | Forks are used to represent parallel programs. They have a sequential
 --   prefix (the middle argument of the constructor), and two parallel suffixes
@@ -85,22 +56,3 @@ instance Pretty a => Pretty (Fork a) where
     , indent 2 $ int 1 <> dot <+> align (pretty l)
     , indent 2 $ int 2 <> dot <+> align (pretty r)
     ]
-
-------------------------------------------------------------------------
-
--- | Show function for 'Response_'.
-showResponse_
-  :: Show (GetResponse_ resp)
-  => SResponse ix resp -> Response_ ConstIntRef resp -> String
-showResponse_ SResponse      = show
-showResponse_ (SReference _) = showRef
-
--- | Remove commands whose pre-condition isn't satisfied.
-filterPrecondition
-  :: Generator ix cmd gstate -> [IntRefed cmd] -> [IntRefed cmd]
-filterPrecondition Generator {..} = go initGenState
-  where
-  go _  [] = []
-  go gs (cmd'@(IntRefed cmd _) : cmds)
-    | gprecondition gs cmd = cmd' : go (gtransition gs cmd) cmds
-    | otherwise            =        go gs                   cmds

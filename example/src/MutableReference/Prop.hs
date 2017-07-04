@@ -2,7 +2,6 @@
 
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -28,7 +27,6 @@ import           Data.Dynamic
                    (cast)
 import           Data.List
                    (isSubsequenceOf)
-import qualified Data.Map                                 as M
 import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Test.QuickCheck
@@ -36,14 +34,15 @@ import           Test.QuickCheck
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
-                   (choice, lift, parens, readListPrec,
-                   readListPrecDefault, readPrec)
+                   (choice, lift, readListPrec, readListPrecDefault,
+                   readPrec)
 
-import           Test.StateMachine.Types
+import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.ScopeCheck
 import           Test.StateMachine.Internal.Sequential
+                   (liftGen)
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
 
@@ -53,57 +52,54 @@ import           MutableReference
 
 prop_genScope :: Property
 prop_genScope = forAll
-  (fst <$> liftGen (liftGenerator gen) (Pid 0) M.empty)
+  (fst <$> liftGen generator precondition transition initModel 0)
   scopeCheck
 
 prop_genForkScope :: Property
 prop_genForkScope = forAll
-  (liftGenFork (liftGenerator gen))
+  (liftGenFork generator precondition transition initModel)
   scopeCheckFork
 
 prop_sequentialShrink :: Property
-prop_sequentialShrink = shrinkPropertyHelper (prop_sequential Bug) $ alphaEq
-  [ IntRefed New                                (IntRef 0 0)
-  , IntRefed (Write (IntRef (Ref 0) (Pid 0)) 5) ()
-  , IntRefed (Read  (IntRef (Ref 0) (Pid 0)))   ()
+prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
+  [ Internal New                   sym0
+  , Internal (Write (Ref sym0)  5) (Symbolic (Var 1))
+  , Internal (Read  (Ref sym0))    (Symbolic (Var 2))
   ]
   . read . (!! 1) . lines
+  where
+  sym0 = Symbolic (Var 0)
 
-deriving instance Eq (MemStep ConstIntRef resp)
-
-instance Eq (IntRefed MemStep) where
-  IntRefed c1 _ == IntRefed c2 _ = Just c1 == cast c2
-
-cheat :: Fork [IntRefed MemStep] -> Fork [IntRefed MemStep]
-cheat = fmap (map (\ms -> case ms of
-  IntRefed (Write ref _) () -> IntRefed (Write ref 0) ()
-  _                         -> ms))
+cheat :: Fork [Internal Action] -> Fork [Internal Action]
+cheat = fmap (map (\iact -> case iact of
+  Internal (Write ref _) sym -> Internal (Write ref 0) sym
+  _                          -> iact))
 
 prop_shrinkForkSubseq :: Property
 prop_shrinkForkSubseq = forAll
-  (liftGenFork (liftGenerator gen))
+  (liftGenFork generator precondition transition initModel)
   $ \f@(Fork l p r) ->
     all (\(Fork l' p' r') -> void l' `isSubsequenceOf` void l &&
                              void p' `isSubsequenceOf` void p &&
                              void r' `isSubsequenceOf` void r)
-        (liftShrinkFork (liftGenerator gen) shrink1 (cheat f))
+        (liftShrinkFork shrink1 precondition transition initModel (cheat f))
 
 prop_shrinkForkScope :: Property
 prop_shrinkForkScope = forAll
-  (liftGenFork (liftGenerator gen))
-  $ \f -> all scopeCheckFork (liftShrinkFork (liftGenerator gen) shrink1 f)
+  (liftGenFork generator precondition transition initModel) $ \f ->
+    all scopeCheckFork (liftShrinkFork shrink1 precondition transition initModel f)
 
 ------------------------------------------------------------------------
 
 prop_shrinkForkMinimal :: Property
-prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \out ->
+prop_shrinkForkMinimal = shrinkPropertyHelper (prop_referencesParallel RaceCondition) $ \out ->
   let f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f || isMinimal f
   where
-  hasMinimalShrink :: Fork [IntRefed MemStep] -> Bool
+  hasMinimalShrink :: Fork [Internal Action] -> Bool
   hasMinimalShrink
     = anyTree isMinimal
-    . unfoldTree (id &&& liftShrinkFork (liftGenerator gen) shrink1)
+    . unfoldTree (id &&& liftShrinkFork shrink1 precondition transition initModel)
     where
     anyTree :: (a -> Bool) -> Tree a -> Bool
     anyTree p = foldTree (\x ih -> p x || or ih)
@@ -113,14 +109,14 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
       foldTree f = go where
         go (Node x ts) = f x (map go ts)
 
-  isMinimal :: Fork [IntRefed MemStep] -> Bool
+  isMinimal :: Fork [Internal Action] -> Bool
   isMinimal xs = any (alphaEqFork xs) minimal
 
-  minimal :: [Fork [IntRefed MemStep]]
+  minimal :: [Fork [Internal Action]]
   minimal  = minimal' ++ map mirrored minimal'
     where
-    minimal' = [ Fork [w0, IntRefed (Read var) ()]
-                      [IntRefed New var]
+    minimal' = [ Fork [w0, Internal (Read ref0) (Symbolic var1)]
+                      [Internal New (Symbolic var0)]
                       [w1]
                | w0 <- writes
                , w1 <- writes
@@ -129,20 +125,30 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_parallel RaceCondition) $ \o
     mirrored :: Fork a -> Fork a
     mirrored (Fork l p r) = Fork r p l
 
-    var    = IntRef 0 0
-    writes = [IntRefed (Write var 0) (), IntRefed (Inc var) ()]
+    var0   = Var 0
+    var1   = Var 1
+    ref0   = Ref (Symbolic var0)
 
-instance Read (IntRefed MemStep) where
-  readPrec = parens $ choice
-    [ IntRefed <$> parens (New <$ key "New") <*> readPrec
-    , IntRefed <$>
-        parens (Read <$ key "Read" <*> readPrec) <*> readPrec
-    , IntRefed <$>
-        parens (Write <$ key "Write" <*> readPrec <*> readPrec) <*> readPrec
-    , IntRefed <$>
-        parens (Inc <$ key "Inc" <*> readPrec) <*> readPrec
+    writes =
+      [ Internal (Write ref0 0) (Symbolic var1)
+      , Internal (Inc   ref0)   (Symbolic var1)
+      ]
+
+instance Read (Ref Symbolic) where
+  readPrec     = Ref . Symbolic <$> readPrec
+  readListPrec = readListPrecDefault
+
+instance Read (Internal Action) where
+
+  readPrec = choice
+    [ Internal <$> (New   <$ lift (string "New"))  <*> readPrec
+    , Internal <$> (Read  <$ lift (string "Read")  <*> readPrec) <*> readPrec
+    , Internal <$> (Write <$ lift (string "Write") <*> readPrec <*> readPrec) <*> readPrec
+    , Internal <$> (Inc   <$ lift (string "Inc")   <*> readPrec) <*> readPrec
     ]
-    where
-    key s = lift (string s)
 
   readListPrec = readListPrecDefault
+
+instance Eq (Internal Action) where
+  Internal act1 sym1 == Internal act2 sym2 =
+    cast act1 == Just act2 && cast sym1 == Just sym2
