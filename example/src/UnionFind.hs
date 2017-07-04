@@ -167,9 +167,6 @@ postconditions m act resp = case act of
 
 ------------------------------------------------------------------------
 
--- The generation of actions is parametrised by the number of @New@'s
--- that have been generated.
-
 gen :: (Arbitrary a, Typeable a) => Generator (Model a) (Action a)
 gen (Model m)
   | null m    = Untyped . New <$> arbitrary
