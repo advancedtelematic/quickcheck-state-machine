@@ -53,7 +53,7 @@ import           MutableReference
 
 prop_genScope :: Property
 prop_genScope = forAll
-  (liftGen generator initModel precondition transition)
+  (fst <$> liftGen generator precondition transition initModel 0)
   scopeCheck
 
 prop_genForkScope :: Property

@@ -38,31 +38,20 @@ import           Test.StateMachine.Types
 liftGen
   :: forall model act
   .  Generator model act
-  -> model Symbolic
-  -> Precondition model act
-  -> Transition model act
-  -> Gen [Internal act]
-liftGen gen model precond next
-   =  (\(acts, _, _) -> acts)
-  <$> liftGenHelper gen precond next model 0
-
-liftGenHelper
-  :: forall model act
-  .  Generator model act
   -> Precondition model act
   -> Transition model act
   -> model Symbolic
   -> Int
-  -> Gen ([Internal act], model Symbolic, Int)
-liftGenHelper gen precond next model0 n = sized $ \size -> go size n model0
+  -> Gen ([Internal act], model Symbolic)
+liftGen gen precond next model0 n = sized $ \size -> go size n model0
   where
-  go :: Int -> Int -> model Symbolic -> Gen ([Internal act], model Symbolic, Int)
-  go 0  i model = return ([], model, i)
+  go :: Int -> Int -> model Symbolic -> Gen ([Internal act], model Symbolic)
+  go 0  _ model = return ([], model)
   go sz i model = do
     Untyped act <- gen model `suchThat` \(Untyped act) -> precond model act
     let sym = Symbolic (Var i)
-    (acts, model', j) <- go (sz - 1) (i + 1) (next model act sym)
-    return (Internal act sym : acts, model', j + 1)
+    (acts, model') <- go (sz - 1) (i + 1) (next model act sym)
+    return (Internal act sym : acts, model')
 
 liftShrinkInternal
   :: (forall v resp. act v resp -> [act v resp])

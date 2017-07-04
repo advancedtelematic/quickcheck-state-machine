@@ -78,7 +78,7 @@ sequentialProperty'
   -> Property
 sequentialProperty' gen shrinker precond trans postcond m sem setup runner cleanup =
   forAllShrink
-  (liftGen gen m precond trans)
+  (fst <$> liftGen gen precond trans m 0)
   (liftShrink shrinker precond trans m)
   $ \acts ->
     monadic (ioProperty . runnerWithSetup)

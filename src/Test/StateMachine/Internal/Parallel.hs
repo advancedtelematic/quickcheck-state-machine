@@ -155,9 +155,9 @@ liftGenFork
   -> model Symbolic
   -> Gen (Fork [Internal act])
 liftGenFork gen pre next model = do
-  (prefix, model', m) <- liftGenHelper gen pre next model  0
-  (left,   _,      n) <- liftGenHelper gen pre next model' m
-  (right,  _,      _) <- liftGenHelper gen pre next model' n
+  (prefix, model') <- liftGen gen pre next model  0
+  (left,   _)      <- liftGen gen pre next model' (length prefix + 1)
+  (right,  _)      <- liftGen gen pre next model' (length left + 1)
   return (Fork left prefix right)
 
 forkFilterInvalid

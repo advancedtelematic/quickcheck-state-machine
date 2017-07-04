@@ -39,6 +39,35 @@ import           Test.QuickCheck
 import           Text.Read
                    (readPrec)
 
+------------------------------------------------------------------------
+
+type Generator model act = model Symbolic -> Gen (Untyped act)
+
+type Precondition model act = forall resp.
+  model Symbolic -> act Symbolic resp -> Bool
+
+type Transition model act = forall resp v. Ord1 v =>
+  model v -> act v resp -> v resp -> model v
+
+type Postcondition model act = forall resp.
+  model Concrete -> act Concrete resp -> resp -> Property
+
+------------------------------------------------------------------------
+
+class HFunctor (f :: (* -> *) -> * -> *) where
+  hfmap :: (forall a. g a -> h a) -> f g b -> f h b
+
+  default hfmap :: HTraversable f => (forall a. g a -> h a) -> f g b -> f h b
+  hfmap f = runIdentity . htraverse (Identity . f)
+
+class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
+  hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
+
+  default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
+  hfoldMap f = getConst . htraverse (Const . f)
+
+class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
+  htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
 
 ------------------------------------------------------------------------
 
@@ -94,29 +123,6 @@ instance Ord1 Concrete where
 
 ------------------------------------------------------------------------
 
-type Untyped act = Untyped' act Symbolic
-
-data Untyped' (act :: (* -> *) -> * -> *) (v :: * -> *) where
-  Untyped :: (Typeable resp, Show resp) => act v resp -> Untyped' act v
-
-data Internal (act :: (* -> *) -> * -> *) where
-  Internal :: (Typeable resp, Show resp) => act Symbolic resp -> Symbolic resp -> Internal act
-
-class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
-  htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
-
-class HFunctor (f :: (* -> *) -> * -> *) where
-  hfmap :: (forall a. g a -> h a) -> f g b -> f h b
-
-  default hfmap :: HTraversable f => (forall a. g a -> h a) -> f g b -> f h b
-  hfmap f = runIdentity . htraverse (Identity . f)
-
-class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
-  hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
-
-  default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
-  hfoldMap f = getConst . htraverse (Const . f)
-
 data ShowResponse resp = ShowResponse
   { theAction :: String
   , showResp  :: resp -> String
@@ -135,13 +141,11 @@ instance Show1 ShowSymbolic where
 
 ------------------------------------------------------------------------
 
-type Generator model act = model Symbolic -> Gen (Untyped act)
+type Untyped act = Untyped' act Symbolic
 
-type Precondition model act = forall resp.
-  model Symbolic -> act Symbolic resp -> Bool
+data Untyped' (act :: (* -> *) -> * -> *) (v :: * -> *) where
+  Untyped :: (Typeable resp, Show resp) => act v resp -> Untyped' act v
 
-type Transition model act = forall resp v. Ord1 v =>
-  model v -> act v resp -> v resp -> model v
-
-type Postcondition model act = forall resp.
-  model Concrete -> act Concrete resp -> resp -> Property
+data Internal (act :: (* -> *) -> * -> *) where
+  Internal :: (Typeable resp, Show resp) =>
+    act Symbolic resp -> Symbolic resp -> Internal act
