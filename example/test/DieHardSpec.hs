@@ -1,14 +1,10 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
 
 module DieHardSpec (spec) where
 
-import           Data.Functor.Classes
-                   (Eq1(..))
-import           Data.Dynamic
-                   (cast)
 import           Data.List
                    (find)
 import           Test.Hspec
@@ -18,12 +14,12 @@ import           Test.QuickCheck
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
-                   (choice, lift, parens, readListPrec,
-                   readListPrecDefault, readPrec)
+                   (choice, lift, readListPrec, readListPrecDefault,
+                   readPrec)
 
 import           DieHard
-import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine
+import           Test.StateMachine.Internal.Utils
 
 ------------------------------------------------------------------------
 
