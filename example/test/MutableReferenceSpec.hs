@@ -1,10 +1,9 @@
 module MutableReferenceSpec (spec) where
 
 import           Test.Hspec
-                   (Spec, describe, it, xit)
+                   (Spec, describe, it)
 import           Test.Hspec.QuickCheck
                    (modifyMaxSuccess)
-import           Test.QuickCheck (property)
 
 import           MutableReference
 import           MutableReference.Prop
