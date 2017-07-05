@@ -44,6 +44,8 @@ import           Test.QuickCheck
                    ioProperty, property, shrink, (===))
 
 import           Test.StateMachine
+import           Test.StateMachine.Internal.Types
+                   (Internal(Internal))
 
 ------------------------------------------------------------------------
 

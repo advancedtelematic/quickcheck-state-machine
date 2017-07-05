@@ -31,6 +31,8 @@ import           Test.QuickCheck
                    (.||.), (===))
 
 import           Test.StateMachine
+import           Test.StateMachine.Internal.Types
+                   (Internal(Internal))
 
 ------------------------------------------------------------------------
 

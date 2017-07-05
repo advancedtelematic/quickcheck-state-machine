@@ -17,6 +17,13 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Sequential
+  ( liftGen
+  , liftShrinkInternal
+  , liftShrink
+  , getUsedVars
+  , filterInvalid
+  , liftModel
+  )
   where
 
 import           Control.Monad.State
@@ -29,19 +36,24 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (PropertyM, pre, run)
 
+import           Test.StateMachine.Internal.Types
+                   (Internal(Internal))
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+-- | Given a generator, precondition, transition function and an initial
+--   model we can generate a list of internal actions which respect the
+--   precondition together with the resulting model.
 liftGen
   :: forall model act
   .  Generator model act
   -> Precondition model act
   -> Transition model act
   -> model Symbolic
-  -> Int
+  -> Int                     -- ^ Name supply for symbolic variables.
   -> Gen ([Internal act], model Symbolic)
 liftGen gen precond next model0 n = sized $ \size -> go size n model0
   where
@@ -53,15 +65,15 @@ liftGen gen precond next model0 n = sized $ \size -> go size n model0
     (acts, model') <- go (sz - 1) (i + 1) (next model act sym)
     return (Internal act sym : acts, model')
 
-liftShrinkInternal
-  :: (forall v resp. act v resp -> [act v resp])
-  -> Internal act -> [Internal act]
+-- | Given a shrinker of typed actions we can lift it to a shrinker of
+--   internal actions.
+liftShrinkInternal :: Shrinker act -> (Internal act -> [Internal act])
 liftShrinkInternal shrinker (Internal act sym) =
   [ Internal act' sym | act' <- shrinker act ]
 
 liftShrink
   :: HFoldable act
-  => (forall v resp. act v resp -> [act v resp])
+  => Shrinker act
   -> Precondition model act
   -> Transition model act
   -> model Symbolic
@@ -71,17 +83,18 @@ liftShrink oldShrink precond trans model
   = map (snd . filterInvalid precond trans model S.empty)
   . shrinkList (liftShrinkInternal oldShrink)
 
-getUsedVars
-  :: HFoldable act
-  => act Symbolic a -> Set Var
+-- | Returns the set of references an action uses.
+getUsedVars :: HFoldable act => act Symbolic a -> Set Var
 getUsedVars = hfoldMap (\(Symbolic v) -> S.singleton v)
 
+-- | Remove actions whose pre-conditions are false, or if they use
+--   references that are not in scope.
 filterInvalid
   :: HFoldable act
   => Precondition model act
   -> Transition model act
   -> model Symbolic
-  -> Set Var
+  -> Set Var        -- ^ References in scope.
   -> [Internal act] -> ((model Symbolic, Set Var), [Internal act])
 filterInvalid precond trans = go
  where
@@ -94,11 +107,13 @@ filterInvalid precond trans = go
 liftModel
   :: Monad m
   => HFunctor act
-  => model Symbolic
-  -> model Concrete
+  => model Symbolic  -- ^ The model with symbolic references is used to
+                     -- check pre-conditions against.
+  -> model Concrete  -- ^ While the one with concrete referenes is used
+                     -- for checking post-conditions.
   -> [Internal act]
   -> Precondition model act
-  -> (forall resp. act Concrete resp -> m resp) -- ^ Semantics
+  -> Semantics act m
   -> Transition model act
   -> Postcondition model act
   -> PropertyM (StateT Environment m) ()

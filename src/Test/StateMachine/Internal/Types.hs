@@ -1,11 +1,7 @@
-{-# LANGUAGE DeriveFunctor        #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeInType           #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveFunctor    #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs            #-}
+{-# LANGUAGE KindSignatures   #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -24,21 +20,23 @@
 module Test.StateMachine.Internal.Types
   ( Pid(..)
   , Fork(..)
+  , Internal(..)
   ) where
 
 import           Data.Monoid
                    ((<>))
+import           Data.Typeable
+                   (Typeable)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Pretty, align, dot, indent, int, pretty, text,
                    underline, vsep, (<+>))
 
+import           Test.StateMachine.Types
+                   (Symbolic)
+
 ------------------------------------------------------------------------
 
--- | A process id is merely a natural number that keeps track of which
---   thread the reference comes from. In the sequential case the process
---   id is always @0@. Likewise the sequential prefix of a parallel
---   program also has process id @0@, while the left suffix has process
---   id @1@, and then right suffix has process id @2@.
+-- | A process id.
 newtype Pid = Pid Int
   deriving (Eq, Show)
 
@@ -56,3 +54,9 @@ instance Pretty a => Pretty (Fork a) where
     , indent 2 $ int 1 <> dot <+> align (pretty l)
     , indent 2 $ int 2 <> dot <+> align (pretty r)
     ]
+
+-- | An internal action is an action together with the symbolic variable that
+--   will hold its result.
+data Internal (act :: (* -> *) -> * -> *) where
+  Internal :: Typeable resp =>
+    act Symbolic resp -> Symbolic resp -> Internal act
