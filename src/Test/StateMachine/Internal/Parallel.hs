@@ -135,7 +135,7 @@ toBoxDrawings knownVars h = exec evT (fmap out <$> Fork l p r)
     (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
 
     out :: HistoryEvent act -> String
-    out (InvocationEvent _ str var _) | var `S.member` knownVars = showVar var ++ " ← " ++ str
+    out (InvocationEvent _ str var _) | var `S.member` knownVars = show var ++ " ← " ++ str
                                       | otherwise = str
     out (ResponseEvent _ str _) = str
 
@@ -153,11 +153,11 @@ liftGenFork
   -> Precondition model act
   -> Transition   model act
   -> model Symbolic
-  -> Gen (Fork [Internal act])
+  -> Gen (Fork (Program act))
 liftGenFork gen pre next model = do
   (prefix, model') <- liftGen gen pre next model  0
-  (left,   _)      <- liftGen gen pre next model' (length prefix + 1)
-  (right,  _)      <- liftGen gen pre next model' (length left + 1)
+  (left,   _)      <- liftGen gen pre next model' (length (unProgram prefix) + 1)
+  (right,  _)      <- liftGen gen pre next model' (length (unProgram left)   + 1)
   return (Fork left prefix right)
 
 forkFilterInvalid
@@ -165,27 +165,29 @@ forkFilterInvalid
   => Precondition model act
   -> Transition model act
   -> model Symbolic
-  -> Fork [Internal act]
-  -> Fork [Internal act]
+  -> Fork (Program act)
+  -> Fork (Program act)
 forkFilterInvalid pre trans m (Fork l p r) =
-  Fork (snd $ filterInvalid pre trans m' vars l)
-       p'
-       (snd $ filterInvalid pre trans m' vars r)
+  Fork (Program $ snd $ filterInvalid pre trans m' vars (unProgram l))
+       (Program p')
+       (Program $ snd $ filterInvalid pre trans m' vars (unProgram r))
   where
-    ((m', vars), p') = filterInvalid pre trans m S.empty p
+    ((m', vars), p') = filterInvalid pre trans m S.empty (unProgram p)
 
 liftShrinkFork
   :: HFoldable act
-  => (forall v resp. act v resp -> [act v resp])
+  => Shrinker act
   -> Precondition model act
   -> Transition model act
   -> model Symbolic
-  -> (Fork [Internal act] -> [Fork [Internal act]])
-liftShrinkFork oldShrink pre trans model (Fork l p r) =
+  -> (Fork (Program act) -> [Fork (Program act)])
+liftShrinkFork shrinker pre trans model (Fork (Program l) (Program p) (Program r)) =
   map (forkFilterInvalid pre trans model)
-  [ Fork l' p' r' | (p', (l', r')) <- shrinkPair shrinkSub (shrinkPair shrinkSub shrinkSub) (p, (l, r))]
+  [ Fork (Program l') (Program p') (Program r')
+  | (p', (l', r')) <- shrinkPair shrinkSub (shrinkPair shrinkSub shrinkSub) (p, (l, r))
+  ]
   where
-    shrinkSub = shrinkList (liftShrinkInternal oldShrink)
+  shrinkSub = shrinkList (liftShrinkInternal shrinker)
 
 -- | Lift the semantics of a single action into a semantics for forks of
 --   internal actions. The prefix of the fork is executed sequentially,
@@ -195,15 +197,15 @@ liftSemFork
   :: HTraversable act
   => ShowAction act
   => (forall resp. act Concrete resp -> IO resp)
-  -> Fork [Internal act]
+  -> Fork (Program act)
   -> IO (History act)
 liftSemFork sem (Fork left prefix right) = do
   hchan <- newTChanIO
-  env   <- execStateT (runMany sem hchan (Pid 0) prefix) emptyEnvironment
+  env   <- execStateT (runMany sem hchan (Pid 0) (unProgram prefix)) emptyEnvironment
   withPool 2 $ \pool ->
     parallel_ pool
-      [ evalStateT (runMany sem hchan (Pid 1) left)  env
-      , evalStateT (runMany sem hchan (Pid 2) right) env
+      [ evalStateT (runMany sem hchan (Pid 1) (unProgram left))  env
+      , evalStateT (runMany sem hchan (Pid 2) (unProgram right)) env
       ]
   getChanContents hchan
   where
@@ -227,7 +229,7 @@ runMany
   -> StateT Environment IO ()
 runMany sem hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
   env <- get
-  let showAct = showAction $ hfmap (\(Symbolic v) -> ShowSymbolic v) act
+  let showAct = showAction act
   let invStr = theAction showAct
   let cact = either (error . show) id (reify env act)
   lift $ atomically $ writeTChan hchan $ InvocationEvent (Untyped cact) invStr var pid
@@ -243,7 +245,7 @@ checkParallelInvariant
   => Transition    model act
   -> Postcondition model act
   -> (forall v. model v)
-  -> Fork [Internal act]
+  -> Fork (Program act)
   -> History act
   -> PropertyM IO ()
 checkParallelInvariant next post initial prog hist
@@ -252,5 +254,5 @@ checkParallelInvariant next post initial prog hist
   $ linearise next post initial hist
   where
   vars xs    = [ getUsedVars x | Internal x _ <- xs]
-  Fork l p r = fmap (S.unions . vars) prog
-  allVars    = S.unions [l,p,r]
+  Fork l p r = fmap (S.unions . vars . unProgram) prog
+  allVars    = S.unions [l, p, r]

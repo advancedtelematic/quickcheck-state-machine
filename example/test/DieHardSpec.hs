@@ -20,6 +20,8 @@ import           Text.Read
 import           DieHard
 import           Test.StateMachine
 import           Test.StateMachine.Internal.Utils
+import           Test.StateMachine.Internal.AlphaEquality
+import           Test.StateMachine.Internal.Types
 
 ------------------------------------------------------------------------
 
@@ -72,10 +74,11 @@ testValidSolutions = all ((/= 4) . bigJug . run) validSolutions
 
 prop_bigJug4 :: Property
 prop_bigJug4 = shrinkPropertyHelper' prop_dieHard $ \output ->
-  let counterExample :: [Untyped Action]
+  let counterExample :: Program Action
       counterExample = read $ lines output !! 1
   in
-  case find (== counterExample) (map (map Untyped) validSolutions) of
+  case find (alphaEq counterExample)
+         (map (Program . map (flip Internal (Symbolic (Var 0)))) validSolutions) of
     Nothing -> property False
     Just ex -> label (show ex) (property True)
 
@@ -102,24 +105,24 @@ instance Show (Untyped Action) where
   show (Untyped SmallIntoBig) = "SmallIntoBig"
   show (Untyped BigIntoSmall) = "BigIntoSmall"
 
-instance Read (Untyped Action) where
+instance Read (Internal Action) where
 
   readPrec = choice
-    [ Untyped FillBig      <$ lift (string "FillBig")
-    , Untyped FillSmall    <$ lift (string "FillSmall")
-    , Untyped EmptyBig     <$ lift (string "EmptyBig")
-    , Untyped EmptySmall   <$ lift (string "EmptySmall")
-    , Untyped SmallIntoBig <$ lift (string "SmallIntoBig")
-    , Untyped BigIntoSmall <$ lift (string "BigIntoSmall")
+    [ Internal <$> (FillBig      <$ lift (string "FillBig"))      <*> readPrec
+    , Internal <$> (FillSmall    <$ lift (string "FillSmall"))    <*> readPrec
+    , Internal <$> (EmptyBig     <$ lift (string "EmptyBig"))     <*> readPrec
+    , Internal <$> (EmptySmall   <$ lift (string "EmptySmall"))   <*> readPrec
+    , Internal <$> (SmallIntoBig <$ lift (string "SmallIntoBig")) <*> readPrec
+    , Internal <$> (BigIntoSmall <$ lift (string "BigIntoSmall")) <*> readPrec
     ]
 
   readListPrec = readListPrecDefault
 
-instance Eq (Untyped Action) where
-  Untyped FillBig      == Untyped FillBig      = True
-  Untyped FillSmall    == Untyped FillSmall    = True
-  Untyped EmptyBig     == Untyped EmptyBig     = True
-  Untyped EmptySmall   == Untyped EmptySmall   = True
-  Untyped SmallIntoBig == Untyped SmallIntoBig = True
-  Untyped BigIntoSmall == Untyped BigIntoSmall = True
-  _                    == _                    = False
+instance Eq (Internal Action) where
+  Internal FillBig      _ == Internal FillBig      _ = True
+  Internal FillSmall    _ == Internal FillSmall    _ = True
+  Internal EmptyBig     _ == Internal EmptyBig     _ = True
+  Internal EmptySmall   _ == Internal EmptySmall   _ = True
+  Internal SmallIntoBig _ == Internal SmallIntoBig _ = True
+  Internal BigIntoSmall _ == Internal BigIntoSmall _ = True
+  _                       == _                       = False

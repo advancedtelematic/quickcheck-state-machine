@@ -23,6 +23,8 @@ module Test.StateMachine.Internal.ScopeCheck
   , scopeCheckFork
   ) where
 
+import           Data.Monoid
+                   ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                              as S
@@ -34,10 +36,10 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
--- | Scope-check a list of internal actions, i.e. make sure that no
---   action uses a reference that doesn't exist.
-scopeCheck :: forall act. HFoldable act => [Internal act] -> Bool
-scopeCheck = go S.empty
+-- | Scope-check a program, i.e. make sure that no action uses a
+--   reference that doesn't exist.
+scopeCheck :: forall act. HFoldable act => Program act -> Bool
+scopeCheck = go S.empty . unProgram
   where
   go :: Set Var -> [Internal act] -> Bool
   go _     []                                    = True
@@ -45,6 +47,6 @@ scopeCheck = go S.empty
     getUsedVars act `S.isSubsetOf` known && go (S.insert var known) iacts
 
 -- | Same as above, but for forks rather than lists.
-scopeCheckFork :: HFoldable act => Fork [Internal act] -> Bool
+scopeCheckFork :: HFoldable act => Fork (Program act) -> Bool
 scopeCheckFork (Fork l p r) =
-  scopeCheck (p ++ l) && scopeCheck (p ++ r)
+  scopeCheck (p <> l) && scopeCheck (p <> r)

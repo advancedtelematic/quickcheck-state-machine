@@ -39,8 +39,6 @@ import           Test.QuickCheck
                    (Property, frequency, ioProperty, property, (===))
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Types
-                   (Internal(Internal))
 import           Test.StateMachine.Internal.Utils
                    (shrinkPropertyHelper)
 
@@ -56,8 +54,8 @@ data Action (v :: * -> *) :: * -> * where
 -- resetting the number counter of the dispenser.
 
 instance ShowAction Action where
-  showAction TakeTicket = ShowResponse "TakeTicket" show
-  showAction Reset      = ShowResponse "Reset"      show
+  showAction TakeTicket = showResponse "TakeTicket"
+  showAction Reset      = showResponse "Reset"
 
 ------------------------------------------------------------------------
 
@@ -135,10 +133,6 @@ semantics se (tdb, tlock) cmd = case cmd of
     unlockFile lock
 
 ------------------------------------------------------------------------
-
-instance Show (Internal Action) where
-  show (Internal TakeTicket _) = "TakeTicket"
-  show (Internal Reset      _) = "Reset"
 
 instance HTraversable Action where
   htraverse _ TakeTicket = pure TakeTicket

@@ -44,8 +44,6 @@ import           Test.QuickCheck
                    ioProperty, property, shrink, (===))
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Types
-                   (Internal(Internal))
 
 ------------------------------------------------------------------------
 
@@ -71,20 +69,12 @@ instance Eq1 v => Eq (Ref v) where
 instance Show1 v => Show (Ref v) where
   show (Ref v) = showsPrec1 10 v ""
 
-instance Show (Internal Action) where
-  show (Internal New           sym) = "New (" ++ show sym ++ ")"
-  show (Internal (Read  ref)   sym) =
-    "Read ("  ++ show ref ++ ") (" ++ show sym ++ ")"
-  show (Internal (Write ref i) sym) =
-    "Write (" ++ show ref ++ ") (" ++ show i ++ ") (" ++ show sym ++ ")"
-  show (Internal (Inc   ref)   sym) =
-    "Inc ("   ++ show ref ++ ") (" ++ show sym ++ ")"
-
 instance ShowAction Action where
-  showAction New           = ShowResponse "New"                                   show
-  showAction (Read ref)    = ShowResponse ("Read " ++ show ref)                   show
-  showAction (Write ref i) = ShowResponse ("Write " ++ show ref ++ " " ++ show i) show
-  showAction (Inc ref)     = ShowResponse ("Inc " ++ show ref)                    show
+  showAction New           = showResponse "New"
+  showAction (Read ref)    = showResponse ("Read ("  ++ show ref ++ ")")
+  showAction (Write ref i) = showResponse ("Write (" ++ show ref ++ ") (" ++
+                                           show i ++ ")")
+  showAction (Inc ref)     = showResponse ("Inc ("   ++ show ref ++ ")")
 
 instance HFunctor Action
 instance HFoldable Action

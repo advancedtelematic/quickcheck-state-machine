@@ -31,8 +31,6 @@ import           Test.QuickCheck
                    (.||.), (===))
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Types
-                   (Internal(Internal))
 
 ------------------------------------------------------------------------
 
@@ -112,13 +110,6 @@ instance (Eq a, Eq1 v) => Eq (Ref a v) where
 
 instance Show1 v => Show (Ref a v) where
   show (Ref v) = showsPrec1 10 v ""
-
-instance Show a => Show (Internal (Action a)) where
-  show (Internal (New x)           sym) = "New " ++ show x ++ " (" ++ show sym ++ ")"
-  show (Internal (Find ref)        _)   =
-    "Find ("  ++ show ref ++ ")"
-  show (Internal (Union ref1 ref2) _)   =
-    "Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")"
 
 ------------------------------------------------------------------------
 
@@ -204,11 +195,11 @@ instance HFoldable (Action a)
 
 instance Show a => ShowAction (Action a) where
   showAction (New   x)         =
-    ShowResponse ("New "    ++ show x)                                 show
+    showResponse ("New "    ++ show x)
   showAction (Find  ref)       =
-    ShowResponse ("Find ("  ++ show ref ++ ")")                        show
+    showResponse ("Find ("  ++ show ref ++ ")")
   showAction (Union ref1 ref2) =
-    ShowResponse ("Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")") show
+    showResponse ("Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")")
 
 ------------------------------------------------------------------------
 

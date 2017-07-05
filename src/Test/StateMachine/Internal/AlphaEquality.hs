@@ -36,13 +36,13 @@ import           Test.StateMachine.Internal.Types
 -- | Check if two lists of actions are equal modulo
 --   \(\alpha\)-conversion.
 alphaEq
-  :: (HFunctor act, Eq (Internal act))
-  => [Internal act] -> [Internal act]     -- ^ The two input lists.
+  :: (HFunctor act, Eq (Program act))
+  => Program act -> Program act     -- ^ The two input programs.
   -> Bool
 alphaEq acts1 acts2 = canonical acts1 == canonical acts2
 
-canonical :: HFunctor act => [Internal act] -> [Internal act]
-canonical = fst . flip runState M.empty . canonical'
+canonical :: HFunctor act => Program act -> Program act
+canonical = Program . fst . flip runState M.empty . canonical' . unProgram
 
 canonical' :: HFunctor act => [Internal act] -> State (Map Var Var) [Internal act]
 canonical' []                                   = return []
@@ -58,14 +58,14 @@ canonical' (Internal act (Symbolic var) : acts) = do
 -- | Check if two forks of actions are equal modulo
 --   \(\alpha\)-conversion.
 alphaEqFork
-  :: (HFunctor act, Eq (Internal act))
-  => Fork [Internal act] -> Fork [Internal act] -- ^ The two input forks.
+  :: (HFunctor act, Eq (Program act))
+  => Fork (Program act) -> Fork (Program act) -- ^ The two input forks.
   -> Bool
 alphaEqFork f1 f2 = canonicalFork f1 == canonicalFork f2
 
-canonicalFork :: HFunctor act => Fork [Internal act] -> Fork [Internal act]
-canonicalFork (Fork l p r) = Fork l' p' r'
+canonicalFork :: HFunctor act => Fork (Program act) -> Fork (Program act)
+canonicalFork (Fork l p r) = Fork (Program l') (Program p') (Program r')
   where
-  (p', m) = runState  (canonical' p) M.empty
-  l'      = evalState (canonical' l) m
-  r'      = evalState (canonical' r) m
+  (p', m) = runState  (canonical' (unProgram p)) M.empty
+  l'      = evalState (canonical' (unProgram l)) m
+  r'      = evalState (canonical' (unProgram r)) m

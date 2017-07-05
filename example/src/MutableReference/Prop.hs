@@ -62,26 +62,27 @@ prop_genForkScope = forAll
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
-  [ Internal New                   sym0
-  , Internal (Write (Ref sym0)  5) (Symbolic (Var 1))
-  , Internal (Read  (Ref sym0))    (Symbolic (Var 2))
-  ]
+  (Program [ Internal New                   sym0
+           , Internal (Write (Ref sym0)  5) (Symbolic (Var 1))
+           , Internal (Read  (Ref sym0))    (Symbolic (Var 2))
+           ])
   . read . (!! 1) . lines
   where
   sym0 = Symbolic (Var 0)
 
-cheat :: Fork [Internal Action] -> Fork [Internal Action]
-cheat = fmap (map (\iact -> case iact of
+cheat :: Fork (Program Action) -> Fork (Program Action)
+cheat = fmap (Program . map (\iact -> case iact of
   Internal (Write ref _) sym -> Internal (Write ref 0) sym
-  _                          -> iact))
+  _                          -> iact) . unProgram)
 
 prop_shrinkForkSubseq :: Property
 prop_shrinkForkSubseq = forAll
   (liftGenFork generator precondition transition initModel)
   $ \f@(Fork l p r) ->
-    all (\(Fork l' p' r') -> void l' `isSubsequenceOf` void l &&
-                             void p' `isSubsequenceOf` void p &&
-                             void r' `isSubsequenceOf` void r)
+    all (\(Fork l' p' r') ->
+           void (unProgram l') `isSubsequenceOf` void (unProgram l) &&
+           void (unProgram p') `isSubsequenceOf` void (unProgram p) &&
+           void (unProgram r') `isSubsequenceOf` void (unProgram r))
         (liftShrinkFork shrink1 precondition transition initModel (cheat f))
 
 prop_shrinkForkScope :: Property
@@ -96,7 +97,7 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_referencesParallel RaceCondi
   let f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f || isMinimal f
   where
-  hasMinimalShrink :: Fork [Internal Action] -> Bool
+  hasMinimalShrink :: Fork (Program Action) -> Bool
   hasMinimalShrink
     = anyTree isMinimal
     . unfoldTree (id &&& liftShrinkFork shrink1 precondition transition initModel)
@@ -109,15 +110,15 @@ prop_shrinkForkMinimal = shrinkPropertyHelper (prop_referencesParallel RaceCondi
       foldTree f = go where
         go (Node x ts) = f x (map go ts)
 
-  isMinimal :: Fork [Internal Action] -> Bool
+  isMinimal :: Fork (Program Action) -> Bool
   isMinimal xs = any (alphaEqFork xs) minimal
 
-  minimal :: [Fork [Internal Action]]
+  minimal :: [Fork (Program Action)]
   minimal  = minimal' ++ map mirrored minimal'
     where
-    minimal' = [ Fork [w0, Internal (Read ref0) (Symbolic var1)]
-                      [Internal New (Symbolic var0)]
-                      [w1]
+    minimal' = [ Fork (Program [w0, Internal (Read ref0) (Symbolic var1)])
+                      (Program [Internal New (Symbolic var0)])
+                      (Program [w1])
                | w0 <- writes
                , w1 <- writes
                ]

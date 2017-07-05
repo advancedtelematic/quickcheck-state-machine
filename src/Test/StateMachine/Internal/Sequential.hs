@@ -28,6 +28,8 @@ module Test.StateMachine.Internal.Sequential
 
 import           Control.Monad.State
                    (StateT, get, lift, modify)
+import           Data.Bifunctor
+                   (bimap)
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
@@ -37,7 +39,6 @@ import           Test.QuickCheck.Monadic
                    (PropertyM, pre, run)
 
 import           Test.StateMachine.Internal.Types
-                   (Internal(Internal))
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Types
@@ -54,8 +55,9 @@ liftGen
   -> Transition model act
   -> model Symbolic
   -> Int                     -- ^ Name supply for symbolic variables.
-  -> Gen ([Internal act], model Symbolic)
-liftGen gen precond next model0 n = sized $ \size -> go size n model0
+  -> Gen (Program act, model Symbolic)
+liftGen gen precond next model0 n = sized $ \size ->
+  bimap Program id <$> go size n model0
   where
   go :: Int -> Int -> model Symbolic -> Gen ([Internal act], model Symbolic)
   go 0  _ model = return ([], model)
@@ -77,11 +79,12 @@ liftShrink
   -> Precondition model act
   -> Transition model act
   -> model Symbolic
-  -> [Internal act]
-  -> [[Internal act]]
-liftShrink oldShrink precond trans model
-  = map (snd . filterInvalid precond trans model S.empty)
-  . shrinkList (liftShrinkInternal oldShrink)
+  -> Program act
+  -> [Program act]
+liftShrink shrinker precond trans model
+  = map (Program . snd . filterInvalid precond trans model S.empty)
+  . shrinkList (liftShrinkInternal shrinker)
+  . unProgram
 
 -- | Returns the set of references an action uses.
 getUsedVars :: HFoldable act => act Symbolic a -> Set Var
@@ -111,14 +114,14 @@ liftModel
                      -- check pre-conditions against.
   -> model Concrete  -- ^ While the one with concrete referenes is used
                      -- for checking post-conditions.
-  -> [Internal act]
+  -> Program act
   -> Precondition model act
   -> Semantics act m
   -> Transition model act
   -> Postcondition model act
   -> PropertyM (StateT Environment m) ()
-liftModel _ _  []                        _       _   _     _        = return ()
-liftModel m m' (Internal act sym : acts) precond sem trans postcond = do
+liftModel _ _  (Program [])                        _       _   _     _        = return ()
+liftModel m m' (Program (Internal act sym : acts)) precond sem trans postcond = do
   pre (precond m act)
   env <- run get
   let act' = hfmap (fromSymbolic env) act
@@ -129,7 +132,7 @@ liftModel m m' (Internal act sym : acts) precond sem trans postcond = do
   liftModel
     (trans m  act sym)
     (trans m' act' (Concrete resp))
-    acts precond sem trans postcond
+    (Program acts) precond sem trans postcond
 
   where
   fromSymbolic :: Environment -> Symbolic v ->  Concrete v
