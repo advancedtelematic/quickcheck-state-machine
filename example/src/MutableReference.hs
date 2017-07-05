@@ -70,14 +70,11 @@ instance Show1 v => Show (Ref v) where
   show (Ref v) = showsPrec1 10 v ""
 
 instance ShowAction Action where
-  showAction New           =
-    ShowResponse "New"                                             show
-  showAction (Read ref)    =
-    ShowResponse ("Read ("  ++ show ref ++ ")")                    show
-  showAction (Write ref i) =
-    ShowResponse ("Write (" ++ show ref ++ ") (" ++ show i ++ ")") show
-  showAction (Inc ref)     =
-    ShowResponse ("Inc ("   ++ show ref ++ ")")                    show
+  showAction New           = showResponse "New"
+  showAction (Read ref)    = showResponse ("Read ("  ++ show ref ++ ")")
+  showAction (Write ref i) = showResponse ("Write (" ++ show ref ++ ") (" ++
+                                           show i ++ ")")
+  showAction (Inc ref)     = showResponse ("Inc ("   ++ show ref ++ ")")
 
 instance HFunctor Action
 instance HFoldable Action

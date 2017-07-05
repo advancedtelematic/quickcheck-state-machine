@@ -195,11 +195,11 @@ instance HFoldable (Action a)
 
 instance Show a => ShowAction (Action a) where
   showAction (New   x)         =
-    ShowResponse ("New "    ++ show x)                                 show
+    showResponse ("New "    ++ show x)
   showAction (Find  ref)       =
-    ShowResponse ("Find ("  ++ show ref ++ ")")                        show
+    showResponse ("Find ("  ++ show ref ++ ")")
   showAction (Union ref1 ref2) =
-    ShowResponse ("Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")") show
+    showResponse ("Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")")
 
 ------------------------------------------------------------------------
 

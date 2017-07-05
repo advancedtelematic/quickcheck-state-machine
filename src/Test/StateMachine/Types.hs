@@ -55,6 +55,7 @@ module Test.StateMachine.Types
   -- * Show related stuff
   , ShowAction(..)
   , ShowResponse(..)
+  , showResponse
   )
   where
 
@@ -172,6 +173,9 @@ data ShowResponse resp = ShowResponse
   { theAction :: String
   , showResp  :: resp -> String
   }
+
+showResponse :: Show resp => String -> ShowResponse resp
+showResponse s = ShowResponse s show
 
 class ShowAction (act :: (* -> *) -> * -> *) where
   showAction :: Show1 v => act v resp -> ShowResponse resp

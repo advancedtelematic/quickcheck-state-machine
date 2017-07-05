@@ -54,8 +54,8 @@ data Action (v :: * -> *) :: * -> * where
 -- resetting the number counter of the dispenser.
 
 instance ShowAction Action where
-  showAction TakeTicket = ShowResponse "TakeTicket" show
-  showAction Reset      = ShowResponse "Reset"      show
+  showAction TakeTicket = showResponse "TakeTicket"
+  showAction Reset      = showResponse "Reset"
 
 ------------------------------------------------------------------------
 

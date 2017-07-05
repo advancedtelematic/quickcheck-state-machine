@@ -133,12 +133,12 @@ semAction BigIntoSmall = return ()
 ------------------------------------------------------------------------
 
 instance ShowAction Action where
-  showAction FillBig      = ShowResponse "FillBig"      show
-  showAction FillSmall    = ShowResponse "FillSmall"    show
-  showAction EmptyBig     = ShowResponse "EmptyBig"     show
-  showAction EmptySmall   = ShowResponse "EmptySmall"   show
-  showAction SmallIntoBig = ShowResponse "SmallIntoBig" show
-  showAction BigIntoSmall = ShowResponse "BigIntoSmall" show
+  showAction FillBig      = showResponse "FillBig"
+  showAction FillSmall    = showResponse "FillSmall"
+  showAction EmptyBig     = showResponse "EmptyBig"
+  showAction EmptySmall   = showResponse "EmptySmall"
+  showAction SmallIntoBig = showResponse "SmallIntoBig"
+  showAction BigIntoSmall = showResponse "BigIntoSmall"
 
 instance HFunctor     Action
 instance HFoldable    Action
