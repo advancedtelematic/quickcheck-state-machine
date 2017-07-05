@@ -54,9 +54,7 @@ module Test.StateMachine.Types
 
   -- * Show related stuff
   , ShowAction(..)
-  , ShowSymbolic(..)
   , ShowResponse(..)
-  , showVar
   )
   where
 
@@ -177,14 +175,6 @@ data ShowResponse resp = ShowResponse
 
 class ShowAction (act :: (* -> *) -> * -> *) where
   showAction :: Show1 v => act v resp -> ShowResponse resp
-
-newtype ShowSymbolic a = ShowSymbolic Var
-
-showVar :: Var -> String
-showVar (Var i) = "$" ++ show i
-
-instance Show1 ShowSymbolic where
-  liftShowsPrec _ _ _ (ShowSymbolic var) _ = showVar var
 
 ------------------------------------------------------------------------
 

@@ -31,8 +31,6 @@ import           Test.QuickCheck
                    (Property, elements, property)
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Types
-                   (Internal(Internal))
 
 ------------------------------------------------------------------------
 
@@ -134,13 +132,13 @@ semAction BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
-instance Show (Internal Action) where
-  show (Internal FillBig      _) = "FillBig"
-  show (Internal FillSmall    _) = "FillSmall"
-  show (Internal EmptyBig     _) = "EmptyBig"
-  show (Internal EmptySmall   _) = "EmptySmall"
-  show (Internal SmallIntoBig _) = "SmallIntoBig"
-  show (Internal BigIntoSmall _) = "BigIntoSmall"
+instance ShowAction Action where
+  showAction FillBig      = ShowResponse "FillBig"      show
+  showAction FillSmall    = ShowResponse "FillSmall"    show
+  showAction EmptyBig     = ShowResponse "EmptyBig"     show
+  showAction EmptySmall   = ShowResponse "EmptySmall"   show
+  showAction SmallIntoBig = ShowResponse "SmallIntoBig" show
+  showAction BigIntoSmall = ShowResponse "BigIntoSmall" show
 
 instance HFunctor     Action
 instance HFoldable    Action
