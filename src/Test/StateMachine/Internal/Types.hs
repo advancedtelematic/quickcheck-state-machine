@@ -23,6 +23,7 @@ module Test.StateMachine.Internal.Types
   , Fork(..)
   , Internal(..)
   , Program(..)
+  , ParallelProgram(..)
   ) where
 
 import           Data.List
@@ -56,7 +57,7 @@ data Internal (act :: (* -> *) -> * -> *) where
     act Symbolic resp -> Symbolic resp -> Internal act
 
 -- | A program as a list of internal actions.
-data Program act = Program { unProgram :: [Internal act] }
+newtype Program act = Program { unProgram :: [Internal act] }
 
 instance Monoid (Program act) where
   mempty                                = Program []
@@ -77,3 +78,9 @@ instance (Show (Untyped act), HFoldable act) => Show (Program act) where
       show (Untyped act) ++ " (" ++ show var ++ ")"
 
     bracket s = "[" ++ s ++ "]"
+
+-- | A parallel program as a fork of program
+newtype ParallelProgram act = ParallelProgram { unParallelProgram :: Fork (Program act)}
+
+instance (Show (Untyped act), HFoldable act) => Show (ParallelProgram act) where
+  show = show . unParallelProgram

@@ -28,6 +28,7 @@ module Test.StateMachine.Types
   , Transition
   , Postcondition
   , Semantics
+  , InitialModel
 
   -- * Untyped actions
   , Untyped(..)
@@ -82,6 +83,8 @@ type Postcondition model act = forall resp.
 -- | The type of the semantics of some actions.
 type Semantics act m = forall resp. act Concrete resp -> m resp
 
+-- | The initial model
+type InitialModel m = forall (v :: * -> *). m v
 ------------------------------------------------------------------------
 
 -- | Untyped actions pack up the response type using an existential type.
