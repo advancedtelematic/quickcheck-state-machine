@@ -56,7 +56,8 @@ data Action (v :: * -> *) :: * -> * where
   Write :: Ref v -> Int -> Action v ()
   Inc   :: Ref v -> Action v ()
 
-deriving instance Eq1 v => Eq (Action v resp)
+deriving instance Eq1   v => Eq   (Action v resp)
+deriving instance Show1 v => Show (Action v resp)
 
 newtype Ref v = Ref (v (Opaque (IORef Int)))
 
@@ -69,12 +70,8 @@ instance Eq1 v => Eq (Ref v) where
 instance Show1 v => Show (Ref v) where
   show (Ref v) = showsPrec1 10 v ""
 
-instance ShowAction Action where
-  showAction New           = showResponse "New"
-  showAction (Read ref)    = showResponse ("Read ("  ++ show ref ++ ")")
-  showAction (Write ref i) = showResponse ("Write (" ++ show ref ++ ") (" ++
-                                           show i ++ ")")
-  showAction (Inc ref)     = showResponse ("Inc ("   ++ show ref ++ ")")
+instance Show (Untyped Action) where
+  show (Untyped act) = show act
 
 instance HFunctor Action
 instance HFoldable Action

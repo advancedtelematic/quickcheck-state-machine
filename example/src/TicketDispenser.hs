@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -25,6 +26,8 @@ module TicketDispenser
 
 import           Data.Char
                    (isSpace)
+import           Data.Functor.Classes
+                   (Show1)
 import           Prelude                          hiding
                    (readFile)
 import           System.Directory
@@ -50,12 +53,13 @@ data Action (v :: * -> *) :: * -> * where
   TakeTicket :: Action v Int
   Reset      :: Action v ()
 
+deriving instance Show1 v => Show (Action v resp)
+
 -- Which correspond to taking a ticket and getting the next number, and
 -- resetting the number counter of the dispenser.
 
-instance ShowAction Action where
-  showAction TakeTicket = showResponse "TakeTicket"
-  showAction Reset      = showResponse "Reset"
+instance Show (Untyped Action) where
+  show (Untyped act) = show act
 
 ------------------------------------------------------------------------
 

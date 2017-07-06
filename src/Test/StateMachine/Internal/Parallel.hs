@@ -1,4 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE Rank2Types                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 
@@ -66,7 +69,11 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
-type History act = [HistoryEvent (Untyped' act Concrete)]
+data UntypedConcrete (act :: (* -> *) -> * -> *) where
+  UntypedConcrete :: (Show resp, Typeable resp) =>
+    act Concrete resp -> UntypedConcrete act
+
+type History act = [HistoryEvent (UntypedConcrete act)]
 
 data HistoryEvent act
   = InvocationEvent act     String Var Pid
@@ -94,7 +101,7 @@ linearTree :: History act -> [Tree (Operation act)]
 linearTree [] = []
 linearTree es =
   [ Node (Operation act str (dynResp resp) pid) (linearTree es')
-  | InvocationEvent (Untyped act) str _ pid <- takeInvocations es
+  | InvocationEvent (UntypedConcrete act) str _ pid <- takeInvocations es
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
@@ -195,8 +202,8 @@ liftShrinkFork shrinker pre trans model (Fork (Program l) (Program p) (Program r
 --   trace) is collected in a so called history.
 liftSemFork
   :: HTraversable act
-  => ShowAction act
-  => (forall resp. act Concrete resp -> IO resp)
+  => Show (Untyped act)
+  => Semantics act IO
   -> Fork (Program act)
   -> IO (History act)
 liftSemFork sem (Fork left prefix right) = do
@@ -221,23 +228,22 @@ liftSemFork sem (Fork left prefix right) = do
 
 runMany
   :: HTraversable act
-  => ShowAction act
+  => Show (Untyped act)
   => (forall resp. act Concrete resp -> IO resp)
-  -> TChan (HistoryEvent (Untyped' act Concrete))
+  -> TChan (HistoryEvent (UntypedConcrete act))
   -> Pid
   -> [Internal act]
   -> StateT Environment IO ()
 runMany sem hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
   env <- get
-  let showAct = showAction act
-  let invStr = theAction showAct
   let cact = either (error . show) id (reify env act)
-  lift $ atomically $ writeTChan hchan $ InvocationEvent (Untyped cact) invStr var pid
+  lift $ atomically $ writeTChan hchan $
+    InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
   resp <- lift (sem cact)
   modify (insertConcrete sym (Concrete resp))
   lift $ do
     threadDelay =<< randomRIO (0, 20)
-    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (showResp showAct resp) pid
+    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
 
 -- | Check if a history can be linearised.
 checkParallelInvariant

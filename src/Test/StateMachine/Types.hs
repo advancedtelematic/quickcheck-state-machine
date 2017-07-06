@@ -34,6 +34,9 @@ module Test.StateMachine.Types
   , Postcondition
   , Semantics
 
+  -- * Untyped actions
+  , Untyped(..)
+
   -- * Higher-order functors, foldables and traversables
   , HFunctor
   , hfmap
@@ -47,15 +50,6 @@ module Test.StateMachine.Types
   , Symbolic(..)
   , Concrete(..)
   , Var(..)
-
-  -- * Untyped actions
-  , Untyped
-  , Untyped'(..)
-
-  -- * Show related stuff
-  , ShowAction(..)
-  , ShowResponse(..)
-  , showResponse
   )
   where
 
@@ -95,6 +89,11 @@ type Postcondition model act = forall resp.
 
 -- | The type of the semantics of some actions.
 type Semantics act m = forall resp. act Concrete resp -> m resp
+
+------------------------------------------------------------------------
+
+data Untyped (act :: (* -> *) -> * -> *) where
+  Untyped :: (Show resp, Typeable resp) => act Symbolic resp -> Untyped act
 
 ------------------------------------------------------------------------
 
@@ -166,23 +165,3 @@ instance Eq1 Concrete where
 
 instance Ord1 Concrete where
   liftCompare comp (Concrete x) (Concrete y) = comp x y
-
-------------------------------------------------------------------------
-
-data ShowResponse resp = ShowResponse
-  { theAction :: String
-  , showResp  :: resp -> String
-  }
-
-showResponse :: Show resp => String -> ShowResponse resp
-showResponse s = ShowResponse s show
-
-class ShowAction (act :: (* -> *) -> * -> *) where
-  showAction :: Show1 v => act v resp -> ShowResponse resp
-
-------------------------------------------------------------------------
-
-type Untyped act = Untyped' act Symbolic
-
-data Untyped' (act :: (* -> *) -> * -> *) (v :: * -> *) where
-  Untyped :: Typeable resp => act v resp -> Untyped' act v

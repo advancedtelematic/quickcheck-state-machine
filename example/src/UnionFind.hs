@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -100,6 +101,8 @@ data Action a (v :: * -> *) :: * -> * where
   Find  :: Ref a v            -> Action a v (Opaque (Element a))
   Union :: Ref a v -> Ref a v -> Action a v ()
 
+deriving instance (Show a, Show1 v) => Show (Action a v resp)
+
 newtype Ref a v = Ref (v (Opaque (Element a)))
 
 unRef :: Ref a Concrete -> Element a
@@ -193,13 +196,8 @@ instance HTraversable (Action a) where
 instance HFunctor  (Action a)
 instance HFoldable (Action a)
 
-instance Show a => ShowAction (Action a) where
-  showAction (New   x)         =
-    showResponse ("New "    ++ show x)
-  showAction (Find  ref)       =
-    showResponse ("Find ("  ++ show ref ++ ")")
-  showAction (Union ref1 ref2) =
-    showResponse ("Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")")
+instance Show a => Show (Untyped (Action a)) where
+  show (Untyped act) = show act
 
 ------------------------------------------------------------------------
 
