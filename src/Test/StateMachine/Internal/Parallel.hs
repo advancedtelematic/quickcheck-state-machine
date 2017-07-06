@@ -21,10 +21,14 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Parallel
-  ( liftGenFork
+  ( liftGenParallelProgram
+  , liftShrinkParallelProgram
+  , liftSemParallelProgram
+  , liftGenFork
   , liftShrinkFork
   , liftSemFork
   , checkParallelInvariant
+  , History
   ) where
 
 import           Control.Concurrent
@@ -167,6 +171,15 @@ liftGenFork gen pre next model = do
   (right,  _)      <- liftGen gen pre next model' (length (unProgram left)   + 1)
   return (Fork left prefix right)
 
+liftGenParallelProgram
+  :: Generator    model act
+  -> Precondition model act
+  -> Transition   model act
+  -> model Symbolic
+  -> Gen (ParallelProgram act)
+liftGenParallelProgram gen pre next model =
+  fmap ParallelProgram (liftGenFork gen pre next model)
+
 forkFilterInvalid
   :: HFoldable act
   => Precondition model act
@@ -195,6 +208,17 @@ liftShrinkFork shrinker pre trans model (Fork (Program l) (Program p) (Program r
   ]
   where
   shrinkSub = shrinkList (liftShrinkInternal shrinker)
+
+liftShrinkParallelProgram
+  :: HFoldable act
+  => Shrinker act
+  -> Precondition model act
+  -> Transition model act
+  -> model Symbolic
+  -> (ParallelProgram act -> [ParallelProgram act])
+liftShrinkParallelProgram shrinker pre trans model =
+  fmap ParallelProgram . liftShrinkFork shrinker pre trans model . unParallelProgram
+
 
 -- | Lift the semantics of a single action into a semantics for forks of
 --   internal actions. The prefix of the fork is executed sequentially,
@@ -226,6 +250,19 @@ liftSemFork sem (Fork left prefix right) = do
         Just x  -> go $ x : acc
         Nothing -> return acc
 
+-- | Lift the semantics of a single action into a semantics for parallel
+--   programs. The prefix of the fork is executed sequentially,
+--   while the two suffixes are executed in parallel, and the result (or
+--   trace) is collected in a so called history.
+liftSemParallelProgram
+  :: HTraversable act
+  => Show (Untyped act)
+  => Semantics act IO
+  -> ParallelProgram act
+  -> IO (History act)
+liftSemParallelProgram sem = liftSemFork sem . unParallelProgram
+
+
 runMany
   :: HTraversable act
   => Show (Untyped act)
@@ -250,15 +287,14 @@ checkParallelInvariant
   :: HFoldable act
   => Transition    model act
   -> Postcondition model act
-  -> (forall v. model v)
-  -> Fork (Program act)
+  -> InitialModel model
+  -> ParallelProgram act
   -> History act
-  -> PropertyM IO ()
+  -> Property
 checkParallelInvariant next post initial prog hist
-  = liftProperty
-  . counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars hist))
+  = counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars hist))
   $ linearise next post initial hist
   where
   vars xs    = [ getUsedVars x | Internal x _ <- xs]
-  Fork l p r = fmap (S.unions . vars . unProgram) prog
+  Fork l p r = fmap (S.unions . vars . unProgram) $ unParallelProgram prog
   allVars    = S.unions [l, p, r]

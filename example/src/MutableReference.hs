@@ -170,10 +170,11 @@ semantics prb (Inc   ref)   =
 -- RaceCondition)@ will!
 
 prop_references :: Problem -> Property
-prop_references prb = sequentialProperty generator shrink1 precondition
-  transition postcondition initModel (semantics prb) ioProperty
-
+prop_references prb = forAllProgram generator shrink1 precondition transition initModel $
+  runSequentialProgram precondition transition postcondition initModel (semantics prb) ioProperty
 
 prop_referencesParallel :: Problem -> Property
-prop_referencesParallel prb = parallelProperty generator shrink1 precondition
-  transition postcondition initModel (semantics prb)
+prop_referencesParallel prb =
+  forAllParallelProgram generator shrink1 precondition transition initModel $ \parallel ->
+    runParallelProgram (semantics prb) parallel $
+      checkParallelInvariant transition postcondition initModel parallel

@@ -17,71 +17,105 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine
-  ( -- * Sequential property helper
-    sequentialProperty
-  , sequentialProperty'
-    -- * Parallel property helper
-  , parallelProperty
-  , parallelProperty'
+  ( -- * ForAll combinator for program
+    forAllProgram
+  , forAllParallelProgram
+    -- * Run sequential program, and check model
+  , runSequentialProgram
+  , runSequentialProgram'
+    -- * Run parallel program
+  , runParallelProgram
+  , runParallelProgram'
+  , checkParallelInvariant
   , module Test.StateMachine.Types
+  , ParallelProgram
+  , Program
   ) where
 
 import           Control.Monad.State
                    (evalStateT, replicateM_)
 import           Test.QuickCheck.Monadic
-                   (monadic, monadicIO, run)
+                   (PropertyM, monadic, monadicIO, run)
 import           Test.QuickCheck.Property
                    (Property, forAllShrink, ioProperty)
 
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
+import           Test.StateMachine.Internal.Types
+                   (ParallelProgram, Program)
 import           Test.StateMachine.Internal.Types.Environment
+import           Test.StateMachine.Internal.Utils
+                   (liftProperty)
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
--- | This function builds a property that tests if your model is agrees
---   with your semantics when running actions sequentially.
-sequentialProperty
-  :: Monad m
-  => Show (Untyped act)
+-- | This function is like a `forAllShrink` for `Program act`.
+forAllProgram
+  :: Show (Untyped act)
   => HFoldable act
   => Generator model act
   -> Shrinker act
   -> Precondition model act
-  -> Transition    model act
-  -> Postcondition model act
-  -> (forall v. model v)                           -- ^ Initial model
-  -> Semantics act m
-  -> (m Property -> Property)                      -- ^ Runner
+  -> Transition model act
+  -> InitialModel model
+  -> (Program act -> Property)
   -> Property
-sequentialProperty gen shrinker precond trans postcond m sem runner =
-  sequentialProperty' gen shrinker precond trans postcond m
-    sem (return ()) (const runner) (const (return ()))
+forAllProgram gen shrinker precond trans m =
+  forAllShrink
+    (fst <$> liftGen gen precond trans m 0)
+    (liftShrink shrinker precond trans m)
+
+-- | This function is like a `forAllShrink` for `ParallelProgram act`,
+--   which is a concurrent program.
+forAllParallelProgram
+  :: Show (Untyped act)
+  => HFoldable act
+  => Generator model act
+  -> Shrinker act
+  -> Precondition model act
+  -> Transition model act
+  -> InitialModel model
+  -> (ParallelProgram act -> Property)
+  -> Property
+forAllParallelProgram gen shrinker precond trans initial =
+  forAllShrink
+    (liftGenParallelProgram gen precond trans initial)
+    (liftShrinkParallelProgram shrinker precond trans initial)
+
+-- | Run a `Program act` sequentially and check if your model agrees
+--   with your semantics.
+runSequentialProgram
+  :: Monad m
+  => HFunctor act
+  => Precondition model act
+  -> Transition model act
+  -> Postcondition model act
+  -> InitialModel model
+  -> Semantics act m
+  -> (m Property -> Property)
+  -> Program act
+  -> Property
+runSequentialProgram precond trans postcond m sem runner =
+  runSequentialProgram' precond trans postcond m sem (return ()) (const runner) (const (return ()))
 
 -- | Same as above, except with the possibility to setup some resource
 --   for the runner to use. The resource could be a database connection
 --   for example.
-sequentialProperty'
+runSequentialProgram'
   :: Monad m
-  => Show (Untyped act)
-  => HFoldable act
-  => Generator model act
-  -> Shrinker act
-  -> Precondition model act
-  -> Transition    model act
+  => HFunctor act
+  => Precondition model act
+  -> Transition model act
   -> Postcondition model act
-  -> (forall v. model v)                           -- ^ Initial model
+  -> InitialModel model
   -> Semantics act m
-  -> IO setup                                      -- ^ Setup some resource
-  -> (setup -> m Property -> Property)             -- ^ Runner
-  -> (setup -> IO ())                              -- ^ Cleanup the resource
+  -> IO setup
+  -> (setup -> m Property -> Property)
+  -> (setup -> IO ())
+  -> Program act
   -> Property
-sequentialProperty' gen shrinker precond trans postcond m sem setup runner cleanup =
-  forAllShrink
-  (fst <$> liftGen gen precond trans m 0)
-  (liftShrink shrinker precond trans m)
-  $ \acts ->
+runSequentialProgram' precond trans postcond m sem setup runner cleanup acts =
     monadic (ioProperty . runnerWithSetup)
       (liftModel m m acts precond sem trans postcond)
   where
@@ -91,48 +125,30 @@ sequentialProperty' gen shrinker precond trans postcond m sem setup runner clean
     cleanup s
     return prop
 
-------------------------------------------------------------------------
-
--- | This function builds a property that tests your semantics for race
---   conditions, by runnings actions in parallel and then trying to
---   linearise the resulting history.
---
--- /Note:/ Make sure that your model passes the sequential property first.
-parallelProperty
+-- | Run a parallel program `ParallelProgram act` which provides
+--   a history.
+runParallelProgram
   :: Show (Untyped act)
   => HTraversable act
-  => Generator model act
-  -> Shrinker act
-  -> Precondition  model act
-  -> Transition    model act
-  -> Postcondition model act
-  -> (forall v. model v)                                  -- ^ Initial model
-  -> Semantics act IO
+  => Semantics act IO
+  -> ParallelProgram act
+  -> (History act -> Property)
   -> Property
-parallelProperty gen shrinker precond trans postcond initial sem =
-  parallelProperty' gen shrinker precond trans postcond
-    initial (return ()) (const sem) (const (return ()))
+runParallelProgram sem = runParallelProgram' (return ()) (const sem) (const (return ()))
 
 -- | Same as above, but with the possibility of setting up some resource.
-parallelProperty'
+runParallelProgram'
   :: Show (Untyped act)
   => HTraversable act
-  => Generator model act
-  -> Shrinker act
-  -> Precondition  model act
-  -> Transition    model act
-  -> Postcondition model act
-  -> (forall v. model v)                                  -- ^ Initial model
-  -> IO setup                                             -- ^ Setup
-  -> (forall resp. setup -> act Concrete resp -> IO resp) -- ^ Semantics
-  -> (setup -> IO ())                                     -- ^ Cleanup
+  => IO setup
+  -> (setup -> Semantics act IO)
+  -> (setup -> IO ())
+  -> ParallelProgram act
+  -> (History act -> Property)
   -> Property
-parallelProperty' gen shrinker precond trans postcond initial setup sem clean =
-  forAllShrink
-    (liftGenFork gen precond trans initial)
-    (liftShrinkFork shrinker precond trans initial) $ \fork -> monadicIO $ do
-      res <- run setup
-      replicateM_ 10 $ do
-        hist <- run $ liftSemFork (sem res) fork
-        run (clean res)
-        checkParallelInvariant trans postcond initial fork hist
+runParallelProgram' setup sem clean fork checkhistory = monadicIO $ do
+  res <- run setup
+  replicateM_ 10 $ do
+    hist <- run $ liftSemParallelProgram (sem res) fork
+    run (clean res)
+    liftProperty $ checkhistory hist

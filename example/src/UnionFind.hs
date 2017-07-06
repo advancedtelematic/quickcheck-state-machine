@@ -202,12 +202,7 @@ instance Show a => Show (Untyped (Action a)) where
 ------------------------------------------------------------------------
 
 prop_unionFind :: Property
-prop_unionFind = sequentialProperty
-  gen
-  shrink1
-  preconditions
-  transitions
-  postconditions
-  (initModel :: Model Int v)
-  semantics
-  ioProperty
+prop_unionFind = forAllProgram gen shrink1 preconditions transitions model $
+  runSequentialProgram preconditions transitions postconditions model semantics ioProperty
+  where
+    model = initModel :: Model Int v

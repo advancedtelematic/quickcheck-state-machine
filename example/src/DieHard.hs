@@ -156,15 +156,8 @@ instance HTraversable Action where
 -- Finally we have all the pieces needed to get the sequential property!
 
 prop_dieHard :: Property
-prop_dieHard = sequentialProperty
-  gen
-  shrink1
-  preconditions
-  transitions
-  postconditions
-  initModel
-  semAction
-  runIdentity
+prop_dieHard = forAllProgram gen shrink1 preconditions transitions initModel $
+  runSequentialProgram preconditions transitions postconditions initModel semAction runIdentity
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --
