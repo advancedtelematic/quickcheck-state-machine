@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -11,30 +12,30 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module contains the building blocks needed to implement the
--- 'Test.StateMachine.sequentialProperty' helper.
+-- This module contains helpers for generating, shrinking, and checking
+-- sequential programs.
 --
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Sequential
-  ( liftGen
-  , liftShrinkInternal
-  , liftShrink
-  , getUsedVars
+  ( generateProgram
   , filterInvalid
-  , liftModel
+  , getUsedVars
+  , liftShrinkInternal
+  , shrinkProgram
+  , checkProgram
   )
   where
 
+import           Control.Monad
+                   (filterM, foldM_)
 import           Control.Monad.State
-                   (StateT, get, lift, modify)
-import           Data.Bifunctor
-                   (bimap)
+                   (State, StateT, get, lift, modify, put, evalState)
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
 import           Test.QuickCheck
-                   (Gen, shrinkList, sized, suchThat)
+                   (Gen, shrinkList, sized, choose, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, pre, run)
 
@@ -45,27 +46,52 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
--- | Given a generator, precondition, transition function and an initial
---   model we can generate a list of internal actions which respect the
---   precondition together with the resulting model.
-liftGen
+-- | Generate programs whose actions all respect their pre-conditions.
+generateProgram
   :: forall model act
-  .  Generator model act
+  .  Generator    model act
   -> Precondition model act
-  -> Transition model act
-  -> model Symbolic
+  -> Transition   model act
   -> Int                     -- ^ Name supply for symbolic variables.
-  -> Gen (Program act, model Symbolic)
-liftGen gen precond next model0 n = sized $ \size ->
-  bimap Program id <$> go size n model0
+  -> StateT (model Symbolic) Gen (Program act)
+generateProgram generator precondition transition index = do
+  size <- lift (sized (\k -> choose (0, k)))
+  Program <$> go size index
   where
-  go :: Int -> Int -> model Symbolic -> Gen ([Internal act], model Symbolic)
-  go 0  _ model = return ([], model)
-  go sz i model = do
-    Untyped act <- gen model `suchThat` \(Untyped act) -> precond model act
-    let sym = Symbolic (Var i)
-    (acts, model') <- go (sz - 1) (i + 1) (next model act sym)
-    return (Internal act sym : acts, model')
+  go :: Int -> Int -> StateT (model Symbolic) Gen [Internal act]
+  go 0  _  = return []
+  go sz ix = do
+    model <- get
+    Untyped act <- lift (generator model `suchThat`
+      \(Untyped act) -> precondition model act)
+    let sym = Symbolic (Var ix)
+    put (transition model act sym)
+    acts <- go (sz - 1) (ix + 1)
+    return (Internal act sym : acts)
+
+-- | Filter out invalid actions from a program. An action is invalid if
+--   either its pre-condition doesn't hold, or it uses references that
+--   are not in scope.
+filterInvalid
+  :: HFoldable act
+  => Precondition model act
+  -> Transition   model act
+  -> Program act
+  -> State (model Symbolic, Set Var) (Program act) -- ^ Where @Set Var@
+                                                   --   is the scope.
+filterInvalid precondition transition
+  = fmap Program
+  . filterM go
+  . unProgram
+  where
+  go (Internal act sym@(Symbolic var)) = do
+    (model, scope) <- get
+    put (transition model act sym, S.insert var scope)
+    return (precondition model act && getUsedVars act `S.isSubsetOf` scope)
+
+-- | Returns the set of references an action uses.
+getUsedVars :: HFoldable act => act Symbolic a -> Set Var
+getUsedVars = hfoldMap (\(Symbolic v) -> S.singleton v)
 
 -- | Given a shrinker of typed actions we can lift it to a shrinker of
 --   internal actions.
@@ -73,69 +99,53 @@ liftShrinkInternal :: Shrinker act -> (Internal act -> [Internal act])
 liftShrinkInternal shrinker (Internal act sym) =
   [ Internal act' sym | act' <- shrinker act ]
 
-liftShrink
+-- | Shrink a program in a pre-condition and scope respecting way.
+shrinkProgram
   :: HFoldable act
-  => Shrinker act
+  => Shrinker  act
   -> Precondition model act
-  -> Transition model act
+  -> Transition   model act
   -> model Symbolic
-  -> Program act
+  ->  Program act             -- ^ Program to shrink.
   -> [Program act]
-liftShrink shrinker precond trans model
-  = map (Program . snd . filterInvalid precond trans model S.empty)
+shrinkProgram shrinker precondition transition model
+  = map ( flip evalState (model, S.empty)
+        . filterInvalid precondition transition
+        . Program
+        )
   . shrinkList (liftShrinkInternal shrinker)
   . unProgram
 
--- | Returns the set of references an action uses.
-getUsedVars :: HFoldable act => act Symbolic a -> Set Var
-getUsedVars = hfoldMap (\(Symbolic v) -> S.singleton v)
-
--- | Remove actions whose pre-conditions are false, or if they use
---   references that are not in scope.
-filterInvalid
-  :: HFoldable act
-  => Precondition model act
-  -> Transition model act
-  -> model Symbolic
-  -> Set Var        -- ^ References in scope.
-  -> [Internal act] -> ((model Symbolic, Set Var), [Internal act])
-filterInvalid precond trans = go
- where
-   go m known [] = ((m, known), [])
-   go m known (x@(Internal act sym@(Symbolic var)) : xs)
-     | getUsedVars act `S.isSubsetOf` known && precond m act =
-         (x :) <$> go (trans m act sym) (S.insert var known) xs
-     | otherwise = go m known xs
-
-liftModel
+-- | For each action in a program, check that if the pre-condition holds
+--   for the action, then so does the post-condition.
+checkProgram
   :: Monad m
   => HFunctor act
-  => model Symbolic  -- ^ The model with symbolic references is used to
+  => Precondition  model act
+  -> Transition    model act
+  -> Postcondition model act
+  -> model Symbolic  -- ^ The model with symbolic references is used to
                      -- check pre-conditions against.
   -> model Concrete  -- ^ While the one with concrete referenes is used
                      -- for checking post-conditions.
-  -> Program act
-  -> Precondition model act
   -> Semantics act m
-  -> Transition model act
-  -> Postcondition model act
+  -> Program   act
   -> PropertyM (StateT Environment m) ()
-liftModel _ _  (Program [])                        _       _   _     _        = return ()
-liftModel m m' (Program (Internal act sym : acts)) precond sem trans postcond = do
-  pre (precond m act)
-  env <- run get
-  let act' = hfmap (fromSymbolic env) act
-  resp <- run (lift (sem act'))
-  liftProperty (postcond m' act' resp)
-  run (modify (insertConcrete sym (Concrete resp)))
-
-  liftModel
-    (trans m  act sym)
-    (trans m' act' (Concrete resp))
-    (Program acts) precond sem trans postcond
-
+checkProgram precondition transition postcondition smodel0 cmodel0 semantics
+  = foldM_ go (smodel0, cmodel0)
+  . unProgram
   where
-  fromSymbolic :: Environment -> Symbolic v ->  Concrete v
-  fromSymbolic env sym' = case reifyEnvironment env sym' of
-    Left  err -> error (show err)
-    Right con -> con
+  go (smodel, cmodel) (Internal act sym) = do
+    pre (precondition smodel act)
+    env <- run get
+    let cact = hfmap (fromSymbolic env) act
+    resp <- run (lift (semantics cact))
+    liftProperty (postcondition cmodel cact resp)
+    let cresp = Concrete resp
+    run (modify (insertConcrete sym cresp))
+    return (transition smodel act sym, transition cmodel cact cresp)
+    where
+    fromSymbolic :: Environment -> Symbolic v ->  Concrete v
+    fromSymbolic env sym' = case reifyEnvironment env sym' of
+      Left  err -> error (show err)
+      Right con -> con

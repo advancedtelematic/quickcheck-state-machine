@@ -116,8 +116,8 @@ runSequentialProgram'
   -> Program act
   -> Property
 runSequentialProgram' precond trans postcond m sem setup runner cleanup acts =
-    monadic (ioProperty . runnerWithSetup)
-      (liftModel m m acts precond sem trans postcond)
+  monadic (ioProperty . runnerWithSetup)
+    (checkProgram precond trans postcond m m sem acts)
   where
   runnerWithSetup mp = do
     s <- setup

@@ -42,7 +42,8 @@ import           Control.Concurrent.STM.TChan
 import           Control.Monad
                    (foldM)
 import           Control.Monad.State
-                   (StateT, evalStateT, execStateT, get, lift, modify)
+                   (StateT, runStateT, evalState, evalStateT, execStateT, get,
+                   lift, modify, runState)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.List
@@ -166,9 +167,9 @@ liftGenFork
   -> model Symbolic
   -> Gen (Fork (Program act))
 liftGenFork gen pre next model = do
-  (prefix, model') <- liftGen gen pre next model  0
-  (left,   _)      <- liftGen gen pre next model' (length (unProgram prefix) + 1)
-  (right,  _)      <- liftGen gen pre next model' (length (unProgram left)   + 1)
+  (prefix, model') <- runStateT  (generateProgram gen pre next 0) model
+  left             <- evalStateT (generateProgram gen pre next (length (unProgram prefix) + 1)) model'
+  right            <- evalStateT (generateProgram gen pre next (length (unProgram prefix) + 1)) model'
   return (Fork left prefix right)
 
 liftGenParallelProgram
@@ -183,16 +184,16 @@ liftGenParallelProgram gen pre next model =
 forkFilterInvalid
   :: HFoldable act
   => Precondition model act
-  -> Transition model act
+  -> Transition   model act
   -> model Symbolic
   -> Fork (Program act)
   -> Fork (Program act)
-forkFilterInvalid pre trans m (Fork l p r) =
-  Fork (Program $ snd $ filterInvalid pre trans m' vars (unProgram l))
-       (Program p')
-       (Program $ snd $ filterInvalid pre trans m' vars (unProgram r))
+forkFilterInvalid precondition transition model (Fork l p r) = Fork l' p' r'
   where
-    ((m', vars), p') = filterInvalid pre trans m S.empty (unProgram p)
+  (p', (model', scope))
+     = runState  (filterInvalid precondition transition p) (model, S.empty)
+  l' = evalState (filterInvalid precondition transition l) (model', scope)
+  r' = evalState (filterInvalid precondition transition r) (model', scope)
 
 liftShrinkFork
   :: HFoldable act
