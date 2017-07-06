@@ -19,6 +19,7 @@ module Test.StateMachine.Internal.Utils
   , shrinkPropertyHelper
   , shrinkPropertyHelper'
   , shrinkPair
+  , shrinkPair'
   ) where
 
 import           Test.QuickCheck
@@ -54,7 +55,11 @@ shrinkPropertyHelper' prop p = monadicIO $ do
     _                                -> return ()
 
 -- | Given shrinkers for the components of a pair we can shrink the pair.
-shrinkPair :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])
-shrinkPair shrinkerA shrinkerB (x, y) =
+shrinkPair' :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])
+shrinkPair' shrinkerA shrinkerB (x, y) =
   [ (x', y) | x' <- shrinkerA x ] ++
   [ (x, y') | y' <- shrinkerB y ]
+
+-- | Same above, but for homogeneous pairs.
+shrinkPair :: (a -> [a]) -> ((a, a) -> [(a, a)])
+shrinkPair shrinker = shrinkPair' shrinker shrinker

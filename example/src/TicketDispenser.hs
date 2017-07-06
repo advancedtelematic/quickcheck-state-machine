@@ -164,7 +164,7 @@ prop_ticketDispenserParallel :: SharedExclusive -> Property
 prop_ticketDispenserParallel se =
   forAllParallelProgram gen shrink1 preconditions transitions initModel $ \parallel ->
     runParallelProgram' setup (semantics se) cleanup parallel $
-    checkParallelInvariant transitions postconditions initModel parallel
+    checkParallelProgram transitions postconditions initModel parallel
   where
 
   -- In the parallel case we create a temporary files for the database and
