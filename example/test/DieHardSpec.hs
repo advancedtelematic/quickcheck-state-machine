@@ -97,14 +97,6 @@ spec =
 
 ------------------------------------------------------------------------
 
-instance Show (Untyped Action) where
-  show (Untyped FillBig)      = "FillBig"
-  show (Untyped FillSmall)    = "FillSmall"
-  show (Untyped EmptyBig)     = "EmptyBig"
-  show (Untyped EmptySmall)   = "EmptySmall"
-  show (Untyped SmallIntoBig) = "SmallIntoBig"
-  show (Untyped BigIntoSmall) = "BigIntoSmall"
-
 instance Read (Internal Action) where
 
   readPrec = choice

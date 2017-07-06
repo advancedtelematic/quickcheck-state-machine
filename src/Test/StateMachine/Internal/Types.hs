@@ -27,9 +27,6 @@ module Test.StateMachine.Internal.Types
 
 import           Data.List
                    (intercalate)
-import           Data.Set
-                   (Set)
-import qualified Data.Set                as S
 import           Data.Typeable
                    (Typeable)
 import           Text.Read
@@ -55,7 +52,7 @@ data Fork a = Fork a a a
 -- | An internal action is an action together with the symbolic variable that
 --   will hold its result.
 data Internal (act :: (* -> *) -> * -> *) where
-  Internal :: Typeable resp =>
+  Internal :: (Show resp, Typeable resp) =>
     act Symbolic resp -> Symbolic resp -> Internal act
 
 -- | A program as a list of internal actions.
@@ -72,18 +69,11 @@ instance Read (Internal act) => Read (Program act) where
 instance Eq (Internal act) => Eq (Program act) where
   Program acts1 == Program acts2 = acts1 == acts2
 
-instance (ShowAction act, HFoldable act) => Show (Program act) where
+instance (Show (Untyped act), HFoldable act) => Show (Program act) where
   show (Program iacts) = bracket . intercalate "," . map go $ iacts
     where
 
-    go (Internal act (Symbolic var))
-      | var `S.member` usedRefs = sact ++ " (" ++ show var ++ ")"
-      | otherwise               = sact ++ " (" ++ show var ++ ")"
-      where
-      sact = theAction (showAction act)
+    go (Internal act (Symbolic var)) =
+      show (Untyped act) ++ " (" ++ show var ++ ")"
 
     bracket s = "[" ++ s ++ "]"
-
-    usedRefs :: Set Var
-    usedRefs = foldMap (\(Internal act _) ->
-                 hfoldMap (\(Symbolic v) -> S.singleton v) act) iacts

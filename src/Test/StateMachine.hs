@@ -44,7 +44,7 @@ import           Test.StateMachine.Types
 --   with your semantics when running actions sequentially.
 sequentialProperty
   :: Monad m
-  => ShowAction act
+  => Show (Untyped act)
   => HFoldable act
   => Generator model act
   -> Shrinker act
@@ -64,7 +64,7 @@ sequentialProperty gen shrinker precond trans postcond m sem runner =
 --   for example.
 sequentialProperty'
   :: Monad m
-  => ShowAction act
+  => Show (Untyped act)
   => HFoldable act
   => Generator model act
   -> Shrinker act
@@ -99,7 +99,7 @@ sequentialProperty' gen shrinker precond trans postcond m sem setup runner clean
 --
 -- /Note:/ Make sure that your model passes the sequential property first.
 parallelProperty
-  :: ShowAction act
+  :: Show (Untyped act)
   => HTraversable act
   => Generator model act
   -> Shrinker act
@@ -115,7 +115,7 @@ parallelProperty gen shrinker precond trans postcond initial sem =
 
 -- | Same as above, but with the possibility of setting up some resource.
 parallelProperty'
-  :: ShowAction act
+  :: Show (Untyped act)
   => HTraversable act
   => Generator model act
   -> Shrinker act

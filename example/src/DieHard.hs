@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -27,6 +28,8 @@ module DieHard
 
 import           Control.Monad.Identity
                    (Identity, runIdentity)
+import           Data.Functor.Classes
+                   (Show1)
 import           Test.QuickCheck
                    (Property, elements, property)
 
@@ -47,6 +50,8 @@ data Action (v :: * -> *) :: * -> * where
   SmallIntoBig :: Action v ()  -- Pour the contents of the 3-liter jug
                                -- into 5-liter jug.
   BigIntoSmall :: Action v ()
+
+deriving instance Show1 v => Show (Action v resp)
 
 ------------------------------------------------------------------------
 
@@ -132,13 +137,8 @@ semAction BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
-instance ShowAction Action where
-  showAction FillBig      = showResponse "FillBig"
-  showAction FillSmall    = showResponse "FillSmall"
-  showAction EmptyBig     = showResponse "EmptyBig"
-  showAction EmptySmall   = showResponse "EmptySmall"
-  showAction SmallIntoBig = showResponse "SmallIntoBig"
-  showAction BigIntoSmall = showResponse "BigIntoSmall"
+instance Show (Untyped Action) where
+  show (Untyped act) = show act
 
 instance HFunctor     Action
 instance HFoldable    Action
