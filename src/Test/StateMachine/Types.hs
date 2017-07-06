@@ -1,12 +1,7 @@
-{-# LANGUAGE DefaultSignatures          #-}
-{-# LANGUAGE DeriveFoldable             #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DeriveTraversable          #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE Rank2Types                 #-}
-{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE KindSignatures    #-}
+{-# LANGUAGE Rank2Types        #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -46,25 +41,22 @@ module Test.StateMachine.Types
   , htraverse
 
   -- * Referenses
-  , Opaque(..)
-  , Symbolic(..)
-  , Concrete(..)
-  , Var(..)
+  , module Test.StateMachine.Types.References
   )
   where
 
 import           Control.Monad.Identity
                    (Identity(..), runIdentity)
 import           Data.Functor.Classes
-                   (Eq1(..), Ord1(..), Show1(..), showsPrec1)
+                   (Ord1)
 import           Data.Functor.Const
                    (Const(..))
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
                    (Gen, Property)
-import           Text.Read
-                   (readPrec)
+
+import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 
@@ -92,6 +84,7 @@ type Semantics act m = forall resp. act Concrete resp -> m resp
 
 ------------------------------------------------------------------------
 
+-- | Untyped actions pack up the response type using an existential type.
 data Untyped (act :: (* -> *) -> * -> *) where
   Untyped :: (Show resp, Typeable resp) => act Symbolic resp -> Untyped act
 
@@ -99,6 +92,7 @@ data Untyped (act :: (* -> *) -> * -> *) where
 
 -- | Higher-order functors
 class HFunctor (f :: (* -> *) -> * -> *) where
+  -- | Higher-order version of 'fmap'.
   hfmap :: (forall a. g a -> h a) -> f g b -> f h b
 
   default hfmap :: HTraversable f => (forall a. g a -> h a) -> f g b -> f h b
@@ -106,6 +100,7 @@ class HFunctor (f :: (* -> *) -> * -> *) where
 
 -- | Higher-order foldables
 class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
+  -- | Higher-order version of 'foldMap'.
   hfoldMap :: Monoid m => (forall a. v a -> m) -> t v b -> m
 
   default hfoldMap :: (HTraversable t, Monoid m) => (forall a. v a -> m) -> t v b -> m
@@ -113,55 +108,5 @@ class HFunctor t => HFoldable (t :: (* -> *) -> * -> *) where
 
 -- | Higher-order traversables
 class (HFunctor t, HFoldable t) => HTraversable (t :: (* -> *) -> * -> *) where
+  -- | Higher-order version of 'traverse'.
   htraverse :: Applicative f => (forall a. g a -> f (h a)) -> t g b -> f (t h b)
-
-------------------------------------------------------------------------
-
--- Stuff taken from Hedgehog.
-
-newtype Opaque a = Opaque
-  { unOpaque :: a
-  } deriving (Eq, Ord)
-
-instance Show (Opaque a) where
-  showsPrec _ (Opaque _) = showString "Opaque"
-
-newtype Var = Var Int
-  deriving (Eq, Ord, Show, Num, Read)
-
-data Symbolic a where
-  Symbolic :: Typeable a => Var -> Symbolic a
-
-deriving instance Eq  (Symbolic a)
-deriving instance Ord (Symbolic a)
-
-instance Show (Symbolic a) where
-  showsPrec p (Symbolic x) = showsPrec p x
-
-instance Show1 Symbolic where
-  liftShowsPrec _ _ p (Symbolic x) = showsPrec p x
-
-instance Typeable a => Read (Symbolic a) where
-  readPrec = Symbolic <$> readPrec
-
-instance Eq1 Symbolic where
-  liftEq _ (Symbolic x) (Symbolic y) = x == y
-
-instance Ord1 Symbolic where
-  liftCompare _ (Symbolic x) (Symbolic y) = compare x y
-
-newtype Concrete a where
-  Concrete :: a -> Concrete a
-  deriving (Eq, Ord, Functor, Foldable, Traversable)
-
-instance Show a => Show (Concrete a) where
-  showsPrec = showsPrec1
-
-instance Show1 Concrete where
-  liftShowsPrec sp _ p (Concrete x) = sp p x
-
-instance Eq1 Concrete where
-  liftEq eq (Concrete x) (Concrete y) = eq x y
-
-instance Ord1 Concrete where
-  liftCompare comp (Concrete x) (Concrete y) = comp x y
