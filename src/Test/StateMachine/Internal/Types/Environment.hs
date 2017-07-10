@@ -11,7 +11,9 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- Symbolic environments.
+-- This module contains environments that are used to translate between symbolic
+-- and concrete references. It's taken verbatim from the Hedgehog
+-- <https://hackage.haskell.org/package/hedgehog library>.
 --
 -----------------------------------------------------------------------------
 

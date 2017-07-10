@@ -20,7 +20,7 @@
 
 module Test.StateMachine.Internal.ScopeCheck
   ( scopeCheck
-  , scopeCheckFork
+  , scopeCheckParallel
   ) where
 
 import           Data.Monoid
@@ -46,7 +46,7 @@ scopeCheck = go S.empty . unProgram
   go known (Internal act (Symbolic var) : iacts) =
     getUsedVars act `S.isSubsetOf` known && go (S.insert var known) iacts
 
--- | Same as above, but for forks rather than lists.
-scopeCheckFork :: HFoldable act => Fork (Program act) -> Bool
-scopeCheckFork (Fork l p r) =
+-- | Same as above, but for parallel programs.
+scopeCheckParallel :: HFoldable act => ParallelProgram act -> Bool
+scopeCheckParallel (ParallelProgram (Fork l p r)) =
   scopeCheck (p <> l) && scopeCheck (p <> r)

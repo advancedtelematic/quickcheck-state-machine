@@ -177,4 +177,4 @@ prop_referencesParallel :: Problem -> Property
 prop_referencesParallel prb =
   forAllParallelProgram generator shrink1 precondition transition initModel $ \parallel ->
     runParallelProgram (semantics prb) parallel $
-      checkParallelInvariant transition postcondition initModel parallel
+      checkParallelProgram transition postcondition initModel parallel

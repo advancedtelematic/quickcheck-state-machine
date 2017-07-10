@@ -15,19 +15,16 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module contains the building blocks needed to implement the
--- 'Test.StateMachine.parallelProperty' helper.
+-- This module contains helpers for generating, shrinking, and checking
+-- parallel programs.
 --
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Internal.Parallel
-  ( liftGenParallelProgram
-  , liftShrinkParallelProgram
-  , liftSemParallelProgram
-  , liftGenFork
-  , liftShrinkFork
-  , liftSemFork
-  , checkParallelInvariant
+  ( generateParallelProgram
+  , shrinkParallelProgram
+  , executeParallelProgram
+  , checkParallelProgram
   , History
   ) where
 
@@ -42,7 +39,8 @@ import           Control.Concurrent.STM.TChan
 import           Control.Monad
                    (foldM)
 import           Control.Monad.State
-                   (StateT, evalStateT, execStateT, get, lift, modify)
+                   (StateT, runStateT, evalState, evalStateT, execStateT, get,
+                   lift, modify, runState)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.List
@@ -59,8 +57,6 @@ import           System.Random
 import           Test.QuickCheck
                    (Gen, Property, counterexample, property,
                    shrinkList, (.&&.))
-import           Test.QuickCheck.Monadic
-                   (PropertyM)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 
@@ -73,11 +69,135 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
+-- | Generate a parallel program whose actions all respect their
+--   pre-conditions.
+generateParallelProgram
+  :: Generator    model act
+  -> Precondition model act
+  -> Transition   model act
+  -> model Symbolic
+  -> Gen (ParallelProgram act)
+generateParallelProgram generator precondition transition model = do
+  let generate     =  generateProgram generator precondition transition
+  (prefix, model') <- runStateT  (generate 0) model
+  let offset       =  length (unProgram prefix)
+  left             <- evalStateT (generate offset) model'
+  let offset'      =  offset + length (unProgram left)
+  right            <- evalStateT (generate offset') model'
+  return (ParallelProgram (Fork left prefix right))
+
+-- | Shrink a parallel program in a pre-condition and scope respecting
+--   way.
+shrinkParallelProgram
+  :: HFoldable act
+  => Shrinker act
+  -> Precondition model act
+  -> Transition model act
+  -> model Symbolic
+  -> (ParallelProgram act -> [ParallelProgram act])
+shrinkParallelProgram shrinker precondition transition model
+  = fmap ParallelProgram
+  . go
+  . unParallelProgram
+  where
+  go (Fork l p r) = map forkFilterInvalid
+    [ Fork l' p' r'
+    | (p', (l', r')) <- shrinkPair' shrinker' (shrinkPair shrinker') (p, (l, r))
+    ]
+    where
+    shrinker'
+      = map Program
+      . shrinkList (liftShrinkInternal shrinker)
+      . unProgram
+
+  forkFilterInvalid (Fork l p r) =
+    let
+      filterProgram         = filterInvalid precondition transition
+      (p', (model', scope)) = runState  (filterProgram p) (model, S.empty)
+      l'                    = evalState (filterProgram l) (model', scope)
+      r'                    = evalState (filterProgram r) (model', scope)
+    in Fork l' p' r'
+
+-- | Run a parallel program, by first executing the prefix sequentially
+--   and then the suffixes in parallel, and return the history (or
+--   trace) of the execution.
+executeParallelProgram
+  :: forall act. HTraversable act
+  => Show (Untyped act)
+  => Semantics act IO
+  -> ParallelProgram act
+  -> IO (History act)
+executeParallelProgram semantics = liftSemFork . unParallelProgram
+  where
+  liftSemFork
+    :: HTraversable act
+    => Show (Untyped act)
+    => Fork (Program act)
+    -> IO (History act)
+  liftSemFork (Fork left prefix right) = do
+    hchan <- newTChanIO
+    env   <- execStateT (runMany hchan (Pid 0) (unProgram prefix)) emptyEnvironment
+    withPool 2 $ \pool ->
+      parallel_ pool
+        [ evalStateT (runMany hchan (Pid 1) (unProgram left))  env
+        , evalStateT (runMany hchan (Pid 2) (unProgram right)) env
+        ]
+    getChanContents hchan
+    where
+    getChanContents :: forall a. TChan a -> IO [a]
+    getChanContents chan = reverse <$> atomically (go [])
+      where
+      go :: [a] -> STM [a]
+      go acc = do
+        mx <- tryReadTChan chan
+        case mx of
+          Just x  -> go $ x : acc
+          Nothing -> return acc
+
+  runMany
+    :: HTraversable act
+    => Show (Untyped act)
+    => TChan (HistoryEvent (UntypedConcrete act))
+    -> Pid
+    -> [Internal act]
+    -> StateT Environment IO ()
+  runMany hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
+    env <- get
+    let cact = either (error . show) id (reify env act)
+    lift $ atomically $ writeTChan hchan $
+      InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
+    resp <- lift (semantics cact)
+    modify (insertConcrete sym (Concrete resp))
+    lift $ do
+      threadDelay =<< randomRIO (0, 20)
+      atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
+
+-- | Check if a history from a parallel execution can be linearised.
+checkParallelProgram
+  :: HFoldable act
+  => Transition    model act
+  -> Postcondition model act
+  -> InitialModel model
+  -> ParallelProgram act
+  -> History act             -- ^ History to be checked.
+  -> Property
+checkParallelProgram transition postcondition model prog history
+  = counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars history))
+  $ linearise transition postcondition model history
+  where
+  vars xs    = [ getUsedVars x | Internal x _ <- xs]
+  Fork l p r = fmap (S.unions . vars . unProgram) $ unParallelProgram prog
+  allVars    = S.unions [l, p, r]
+
+------------------------------------------------------------------------
+
+-- The code below is used by checkParallelProgram.
+
+type History act = [HistoryEvent (UntypedConcrete act)]
+
 data UntypedConcrete (act :: (* -> *) -> * -> *) where
   UntypedConcrete :: (Show resp, Typeable resp) =>
     act Concrete resp -> UntypedConcrete act
-
-type History act = [HistoryEvent (UntypedConcrete act)]
 
 data HistoryEvent act
   = InvocationEvent act     String Var Pid
@@ -156,145 +276,3 @@ toBoxDrawings knownVars h = exec evT (fmap out <$> Fork l p r)
       ResponseEvent _ _ (Pid pid)     -> (Close, Pid pid)
     evT :: [(EventType, Pid)]
     evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
-
-------------------------------------------------------------------------
-
-liftGenFork
-  :: Generator    model act
-  -> Precondition model act
-  -> Transition   model act
-  -> model Symbolic
-  -> Gen (Fork (Program act))
-liftGenFork gen pre next model = do
-  (prefix, model') <- liftGen gen pre next model  0
-  (left,   _)      <- liftGen gen pre next model' (length (unProgram prefix) + 1)
-  (right,  _)      <- liftGen gen pre next model' (length (unProgram left)   + 1)
-  return (Fork left prefix right)
-
-liftGenParallelProgram
-  :: Generator    model act
-  -> Precondition model act
-  -> Transition   model act
-  -> model Symbolic
-  -> Gen (ParallelProgram act)
-liftGenParallelProgram gen pre next model =
-  fmap ParallelProgram (liftGenFork gen pre next model)
-
-forkFilterInvalid
-  :: HFoldable act
-  => Precondition model act
-  -> Transition model act
-  -> model Symbolic
-  -> Fork (Program act)
-  -> Fork (Program act)
-forkFilterInvalid pre trans m (Fork l p r) =
-  Fork (Program $ snd $ filterInvalid pre trans m' vars (unProgram l))
-       (Program p')
-       (Program $ snd $ filterInvalid pre trans m' vars (unProgram r))
-  where
-    ((m', vars), p') = filterInvalid pre trans m S.empty (unProgram p)
-
-liftShrinkFork
-  :: HFoldable act
-  => Shrinker act
-  -> Precondition model act
-  -> Transition model act
-  -> model Symbolic
-  -> (Fork (Program act) -> [Fork (Program act)])
-liftShrinkFork shrinker pre trans model (Fork (Program l) (Program p) (Program r)) =
-  map (forkFilterInvalid pre trans model)
-  [ Fork (Program l') (Program p') (Program r')
-  | (p', (l', r')) <- shrinkPair shrinkSub (shrinkPair shrinkSub shrinkSub) (p, (l, r))
-  ]
-  where
-  shrinkSub = shrinkList (liftShrinkInternal shrinker)
-
-liftShrinkParallelProgram
-  :: HFoldable act
-  => Shrinker act
-  -> Precondition model act
-  -> Transition model act
-  -> model Symbolic
-  -> (ParallelProgram act -> [ParallelProgram act])
-liftShrinkParallelProgram shrinker pre trans model =
-  fmap ParallelProgram . liftShrinkFork shrinker pre trans model . unParallelProgram
-
-
--- | Lift the semantics of a single action into a semantics for forks of
---   internal actions. The prefix of the fork is executed sequentially,
---   while the two suffixes are executed in parallel, and the result (or
---   trace) is collected in a so called history.
-liftSemFork
-  :: HTraversable act
-  => Show (Untyped act)
-  => Semantics act IO
-  -> Fork (Program act)
-  -> IO (History act)
-liftSemFork sem (Fork left prefix right) = do
-  hchan <- newTChanIO
-  env   <- execStateT (runMany sem hchan (Pid 0) (unProgram prefix)) emptyEnvironment
-  withPool 2 $ \pool ->
-    parallel_ pool
-      [ evalStateT (runMany sem hchan (Pid 1) (unProgram left))  env
-      , evalStateT (runMany sem hchan (Pid 2) (unProgram right)) env
-      ]
-  getChanContents hchan
-  where
-  getChanContents :: forall a. TChan a -> IO [a]
-  getChanContents chan = reverse <$> atomically (go [])
-    where
-    go :: [a] -> STM [a]
-    go acc = do
-      mx <- tryReadTChan chan
-      case mx of
-        Just x  -> go $ x : acc
-        Nothing -> return acc
-
--- | Lift the semantics of a single action into a semantics for parallel
---   programs. The prefix of the fork is executed sequentially,
---   while the two suffixes are executed in parallel, and the result (or
---   trace) is collected in a so called history.
-liftSemParallelProgram
-  :: HTraversable act
-  => Show (Untyped act)
-  => Semantics act IO
-  -> ParallelProgram act
-  -> IO (History act)
-liftSemParallelProgram sem = liftSemFork sem . unParallelProgram
-
-
-runMany
-  :: HTraversable act
-  => Show (Untyped act)
-  => (forall resp. act Concrete resp -> IO resp)
-  -> TChan (HistoryEvent (UntypedConcrete act))
-  -> Pid
-  -> [Internal act]
-  -> StateT Environment IO ()
-runMany sem hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
-  env <- get
-  let cact = either (error . show) id (reify env act)
-  lift $ atomically $ writeTChan hchan $
-    InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
-  resp <- lift (sem cact)
-  modify (insertConcrete sym (Concrete resp))
-  lift $ do
-    threadDelay =<< randomRIO (0, 20)
-    atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
-
--- | Check if a history can be linearised.
-checkParallelInvariant
-  :: HFoldable act
-  => Transition    model act
-  -> Postcondition model act
-  -> InitialModel model
-  -> ParallelProgram act
-  -> History act
-  -> Property
-checkParallelInvariant next post initial prog hist
-  = counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars hist))
-  $ linearise next post initial hist
-  where
-  vars xs    = [ getUsedVars x | Internal x _ <- xs]
-  Fork l p r = fmap (S.unions . vars . unProgram) $ unParallelProgram prog
-  allVars    = S.unions [l, p, r]

@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -21,16 +21,20 @@ import           Control.Arrow
                    ((&&&))
 import           Control.Monad
                    (void)
+import           Control.Monad.State
+                   (evalStateT)
 import           Data.Char
                    (isSpace)
 import           Data.Dynamic
                    (cast)
 import           Data.List
                    (isSubsequenceOf)
+import           Data.Monoid
+                   ((<>))
 import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Test.QuickCheck
-                   (Property, forAll)
+                   (Property, forAll, (===))
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
@@ -42,7 +46,7 @@ import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.ScopeCheck
 import           Test.StateMachine.Internal.Sequential
-                   (liftGen)
+                   (generateProgram)
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
 
@@ -52,13 +56,27 @@ import           MutableReference
 
 prop_genScope :: Property
 prop_genScope = forAll
-  (fst <$> liftGen generator precondition transition initModel 0)
+  (evalStateT (generateProgram generator precondition transition 0) initModel)
   scopeCheck
 
-prop_genForkScope :: Property
-prop_genForkScope = forAll
-  (liftGenFork generator precondition transition initModel)
-  scopeCheckFork
+prop_genParallelScope :: Property
+prop_genParallelScope = forAll
+  (generateParallelProgram generator precondition transition initModel)
+  scopeCheckParallel
+
+prop_genParallelSequence :: Property
+prop_genParallelSequence = forAll
+  (generateParallelProgram generator precondition transition initModel)
+  go
+  where
+  go :: ParallelProgram Action -> Property
+  go (ParallelProgram (Fork l p r)) =
+    vars prog === [0 .. length (unProgram prog) - 1]
+    where
+    prog = p <> l <> r
+
+    vars :: Program Action -> [Int]
+    vars = map (\(Internal _ (Symbolic (Var i))) -> i) . unProgram
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
@@ -70,38 +88,49 @@ prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
   where
   sym0 = Symbolic (Var 0)
 
-cheat :: Fork (Program Action) -> Fork (Program Action)
-cheat = fmap (Program . map (\iact -> case iact of
-  Internal (Write ref _) sym -> Internal (Write ref 0) sym
-  _                          -> iact) . unProgram)
+cheat :: ParallelProgram Action -> ParallelProgram Action
+cheat = ParallelProgram . fmap go . unParallelProgram
+  where
+  go = Program
+     . map (\iact -> case iact of
+               Internal (Write ref _) sym -> Internal (Write ref 0) sym
+               _                          -> iact)
+     . unProgram
 
-prop_shrinkForkSubseq :: Property
-prop_shrinkForkSubseq = forAll
-  (liftGenFork generator precondition transition initModel)
-  $ \f@(Fork l p r) ->
-    all (\(Fork l' p' r') ->
+prop_shrinkParallelSubseq :: Property
+prop_shrinkParallelSubseq = forAll
+  (generateParallelProgram generator precondition transition initModel)
+  $ \prog@(ParallelProgram (Fork l p r)) ->
+    all (\(ParallelProgram (Fork l' p' r')) ->
            void (unProgram l') `isSubsequenceOf` void (unProgram l) &&
            void (unProgram p') `isSubsequenceOf` void (unProgram p) &&
            void (unProgram r') `isSubsequenceOf` void (unProgram r))
-        (liftShrinkFork shrink1 precondition transition initModel (cheat f))
+        (shrinkParallelProgram shrink1 precondition transition initModel (cheat prog))
 
-prop_shrinkForkScope :: Property
-prop_shrinkForkScope = forAll
-  (liftGenFork generator precondition transition initModel) $ \f ->
-    all scopeCheckFork (liftShrinkFork shrink1 precondition transition initModel f)
+prop_shrinkParallelScope :: Property
+prop_shrinkParallelScope = forAll
+  (generateParallelProgram generator precondition transition initModel) $ \p ->
+    all scopeCheckParallel (shrinkParallelProgram shrink1 precondition transition initModel p)
 
 ------------------------------------------------------------------------
 
-prop_shrinkForkMinimal :: Property
-prop_shrinkForkMinimal = shrinkPropertyHelper (prop_referencesParallel RaceCondition) $ \out ->
-  let f = read $ dropWhile isSpace (lines out !! 1)
+prop_shrinkParallelMinimal :: Property
+prop_shrinkParallelMinimal = shrinkPropertyHelper (prop_referencesParallel RaceCondition) $ \out ->
+  let f :: Fork (Program Action)
+      f = read $ dropWhile isSpace (lines out !! 1)
   in hasMinimalShrink f || isMinimal f
   where
   hasMinimalShrink :: Fork (Program Action) -> Bool
   hasMinimalShrink
     = anyTree isMinimal
-    . unfoldTree (id &&& liftShrinkFork shrink1 precondition transition initModel)
+    . unfoldTree (id &&& shrinker)
     where
+    shrinker :: Fork (Program Action) -> [Fork (Program Action)]
+    shrinker
+      = map unParallelProgram
+      . shrinkParallelProgram shrink1 precondition transition initModel
+      . ParallelProgram
+
     anyTree :: (a -> Bool) -> Tree a -> Bool
     anyTree p = foldTree (\x ih -> p x || or ih)
       where

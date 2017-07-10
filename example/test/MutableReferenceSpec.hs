@@ -18,8 +18,11 @@ spec = do
     it "`prop_genScope`: generate well-scoped programs"
       prop_genScope
 
-    it "`prop_genForkScope`: generate well-scoped parallel programs"
-      prop_genForkScope
+    it "`prop_genParallelScope`: generate well-scoped parallel programs"
+      prop_genParallelScope
+
+    it "`prop_genParallelSequence`: generate parallel programs where the symbolic references form a sequence"
+      prop_genParallelSequence
 
   describe "Sequential property" $ do
 
@@ -33,11 +36,11 @@ spec = do
 
     modifyMaxSuccess (const 20) $ do
 
-      it "`prop_shrinkForkSubseq`: shrinking parallel programs preserves subsequences"
-        prop_shrinkForkSubseq
+      it "`prop_shrinkParallelSubseq`: shrinking parallel programs preserves subsequences"
+        prop_shrinkParallelSubseq
 
-      it "`prop_shrinkForkScope`: shrinking parallel programs preserves scope"
-        prop_shrinkForkScope
+      it "`prop_shrinkParallelScope`: shrinking parallel programs preserves scope"
+        prop_shrinkParallelScope
 
   describe "Parallel property" $
 
@@ -46,5 +49,5 @@ spec = do
       it "`prop_referencesParallel None`: linearisation is possible when there are no race conditions" $
         prop_referencesParallel None
 
-      it "`prop_shrinkForkMinimal`: the minimal counterexample is found when there's a race condition"
-        prop_shrinkForkMinimal
+      it "`prop_shrinkParallelMinimal`: the minimal counterexample is found when there's a race condition"
+        prop_shrinkParallelMinimal

@@ -11,8 +11,8 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- The main module for state machine based testing, it contains the
--- sequential and parallel property helpers.
+-- The main module for state machine based testing, it contains
+-- combinators that help you build sequential and parallel properties.
 --
 -----------------------------------------------------------------------------
 
@@ -26,16 +26,16 @@ module Test.StateMachine
     -- * Run parallel program
   , runParallelProgram
   , runParallelProgram'
-  , checkParallelInvariant
+  , checkParallelProgram
   , module Test.StateMachine.Types
-  , ParallelProgram
   , Program
+  , ParallelProgram
   ) where
 
 import           Control.Monad.State
                    (evalStateT, replicateM_)
 import           Test.QuickCheck.Monadic
-                   (PropertyM, monadic, monadicIO, run)
+                   (monadic, monadicIO, run)
 import           Test.QuickCheck.Property
                    (Property, forAllShrink, ioProperty)
 
@@ -50,41 +50,42 @@ import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
--- | This function is like a `forAllShrink` for `Program act`.
+-- | This function is like a 'forAllShrink' for sequential programs.
 forAllProgram
   :: Show (Untyped act)
   => HFoldable act
   => Generator model act
   -> Shrinker act
   -> Precondition model act
-  -> Transition model act
+  -> Transition   model act
   -> InitialModel model
-  -> (Program act -> Property)
+  -> (Program act -> Property)  -- ^ Predicate that should hold for all
+                                --   programs.
   -> Property
-forAllProgram gen shrinker precond trans m =
+forAllProgram generator shrinker precondition transition model =
   forAllShrink
-    (fst <$> liftGen gen precond trans m 0)
-    (liftShrink shrinker precond trans m)
+    (evalStateT (generateProgram generator precondition transition 0) model)
+    (shrinkProgram shrinker precondition transition model)
 
--- | This function is like a `forAllShrink` for `ParallelProgram act`,
---   which is a concurrent program.
+-- | This function is like a 'forAllShrink' for parallel programs.
 forAllParallelProgram
   :: Show (Untyped act)
   => HFoldable act
   => Generator model act
   -> Shrinker act
   -> Precondition model act
-  -> Transition model act
+  -> Transition   model act
   -> InitialModel model
-  -> (ParallelProgram act -> Property)
+  -> (ParallelProgram act -> Property) -- ^ Predicate that should hold
+                                       --   for all parallel programs.
   -> Property
-forAllParallelProgram gen shrinker precond trans initial =
+forAllParallelProgram generator shrinker precondition transition model =
   forAllShrink
-    (liftGenParallelProgram gen precond trans initial)
-    (liftShrinkParallelProgram shrinker precond trans initial)
+    (generateParallelProgram generator precondition transition model)
+    (shrinkParallelProgram shrinker precondition transition model)
 
--- | Run a `Program act` sequentially and check if your model agrees
---   with your semantics.
+-- | Run a sequential program and check if your model agrees with your
+--   semantics.
 runSequentialProgram
   :: Monad m
   => HFunctor act
@@ -93,7 +94,7 @@ runSequentialProgram
   -> Postcondition model act
   -> InitialModel model
   -> Semantics act m
-  -> (m Property -> Property)
+  -> (m Property -> Property)  -- ^ Runner
   -> Program act
   -> Property
 runSequentialProgram precond trans postcond m sem runner =
@@ -110,14 +111,14 @@ runSequentialProgram'
   -> Postcondition model act
   -> InitialModel model
   -> Semantics act m
-  -> IO setup
+  -> IO setup                           -- ^ Setup a resource.
   -> (setup -> m Property -> Property)
-  -> (setup -> IO ())
+  -> (setup -> IO ())                   -- ^ Tear down the resource.
   -> Program act
   -> Property
 runSequentialProgram' precond trans postcond m sem setup runner cleanup acts =
-    monadic (ioProperty . runnerWithSetup)
-      (liftModel m m acts precond sem trans postcond)
+  monadic (ioProperty . runnerWithSetup)
+    (checkProgram precond trans postcond m m sem acts)
   where
   runnerWithSetup mp = do
     s <- setup
@@ -125,14 +126,14 @@ runSequentialProgram' precond trans postcond m sem setup runner cleanup acts =
     cleanup s
     return prop
 
--- | Run a parallel program `ParallelProgram act` which provides
---   a history.
+-- | Run a parallel program and collect the history of the execution.
 runParallelProgram
   :: Show (Untyped act)
   => HTraversable act
   => Semantics act IO
   -> ParallelProgram act
-  -> (History act -> Property)
+  -> (History act -> Property) -- ^ Predicate that should hold for the
+                               --   execution history.
   -> Property
 runParallelProgram sem = runParallelProgram' (return ()) (const sem) (const (return ()))
 
@@ -140,15 +141,15 @@ runParallelProgram sem = runParallelProgram' (return ()) (const sem) (const (ret
 runParallelProgram'
   :: Show (Untyped act)
   => HTraversable act
-  => IO setup
+  => IO setup                     -- ^ Setup a resource.
   -> (setup -> Semantics act IO)
-  -> (setup -> IO ())
+  -> (setup -> IO ())             -- ^ Tear down the resource.
   -> ParallelProgram act
   -> (History act -> Property)
   -> Property
 runParallelProgram' setup sem clean fork checkhistory = monadicIO $ do
   res <- run setup
   replicateM_ 10 $ do
-    hist <- run $ liftSemParallelProgram (sem res) fork
+    hist <- run (executeParallelProgram (sem res) fork)
     run (clean res)
-    liftProperty $ checkhistory hist
+    liftProperty (checkhistory hist)
