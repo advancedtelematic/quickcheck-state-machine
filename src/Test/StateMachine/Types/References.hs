@@ -21,18 +21,68 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Types.References
-  ( Opaque(..)
+  ( Reference(..)
+  , concrete
+  , opaque
+  , Opaque(..)
   , Symbolic(..)
   , Concrete(..)
   , Var(..)
   ) where
 
 import           Data.Functor.Classes
-                   (Eq1(..), Ord1(..), Show1(..), showsPrec1)
+                   (Eq1(..), Ord1(..), Show1(..), compare1, eq1,
+                   showsPrec1)
 import           Data.Typeable
                    (Typeable)
 import           Text.Read
                    (readPrec)
+
+import           Test.StateMachine.Types.HFunctor
+
+------------------------------------------------------------------------
+
+-- | References are the potential or actual result of executing an action. They
+--   are parameterised by either `Symbolic` or `Concrete` depending on the
+--   phase of the test.
+--
+--   `Symbolic` variables are the potential results of actions. These are used
+--   when generating the sequence of actions to execute. They allow actions
+--   which occur later in the sequence to make use of the result of an action
+--   which came earlier in the sequence.
+--
+--   `Concrete` variables are the actual results of actions. These are used
+--   during test execution. They provide access to the actual runtime value of
+--   a variable.
+--
+data Reference v a = Reference (v a)
+
+-- | Take the value from a concrete variable.
+--
+concrete :: Reference Concrete a -> a
+concrete (Reference (Concrete x)) = x
+
+-- | Take the value from an opaque concrete variable.
+--
+opaque :: Reference Concrete (Opaque a) -> a
+opaque (Reference (Concrete (Opaque x))) = x
+
+instance (Eq1 v, Eq a) => Eq (Reference v a) where
+  (==) (Reference x) (Reference y) = eq1 x y
+
+instance (Ord1 v, Ord a) => Ord (Reference v a) where
+  compare (Reference x) (Reference y) = compare1 x y
+
+instance (Show a, Show1 v) => Show (Reference v a) where
+  showsPrec p (Reference x) =
+    showParen (p >= 11) $
+      showsPrec1 11 x
+
+instance HTraversable Reference where
+  htraverse f (Reference v) = fmap Reference (f v)
+
+instance HFunctor  Reference
+instance HFoldable Reference
 
 ------------------------------------------------------------------------
 

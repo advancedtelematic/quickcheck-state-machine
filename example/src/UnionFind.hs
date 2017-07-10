@@ -21,7 +21,7 @@
 module UnionFind where
 
 import           Data.Functor.Classes
-                   (Eq1(..), Show1(..), showsPrec1)
+                   (Eq1(..), Show1(..))
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
 import           Data.Typeable
@@ -103,16 +103,7 @@ data Action a (v :: * -> *) :: * -> * where
 
 deriving instance (Show a, Show1 v) => Show (Action a v resp)
 
-newtype Ref a v = Ref (v (Opaque (Element a)))
-
-unRef :: Ref a Concrete -> Element a
-unRef (Ref (Concrete (Opaque ref))) = ref
-
-instance (Eq a, Eq1 v) => Eq (Ref a v) where
-  Ref v1 == Ref v2 = liftEq (==) v1 v2
-
-instance Show1 v => Show (Ref a v) where
-  show (Ref v) = showsPrec1 10 v ""
+type Ref a v = Reference v (Opaque (Element a))
 
 ------------------------------------------------------------------------
 
@@ -145,14 +136,14 @@ preconditions (Model m) act = case act of
 
 transitions :: Eq a => Transition (Model a) (Action a)
 transitions m act resp = case act of
-  New   _         -> m `extend` (Ref resp, Ref resp)
+  New   _         -> m `extend` (Reference resp, Reference resp)
   Find  _         -> m
   Union ref1 ref2 -> m `extend` (m ! ref1, m ! ref2)
 
 postconditions :: (Eq a, Show a) => Postcondition (Model a) (Action a)
 postconditions m act resp = case act of
   New   _         -> property True
-  Find  ref       -> unRef (m ! ref) === unOpaque resp .&&. m == m'
+  Find  ref       -> opaque (m ! ref) === unOpaque resp .&&. m == m'
     where
     m' = transitions m act (Concrete resp)
   Union ref1 ref2 ->
@@ -182,16 +173,15 @@ shrink1 _       = []
 
 semantics :: Action a Concrete resp -> IO resp
 semantics (New   x)         = Opaque <$> newElement x
-semantics (Find  ref)       = Opaque <$> findElement (unRef ref)
-semantics (Union ref1 ref2) = unionElements (unRef ref1) (unRef ref2)
+semantics (Find  ref)       = Opaque <$> findElement (opaque ref)
+semantics (Union ref1 ref2) = unionElements (opaque ref1) (opaque ref2)
 
 ------------------------------------------------------------------------
 
 instance HTraversable (Action a) where
-  htraverse _ (New   x)                     = pure (New x)
-  htraverse f (Find  (Ref ref))             = Find . Ref <$> f ref
-  htraverse f (Union (Ref ref1) (Ref ref2)) = Union <$> (Ref <$> f ref1)
-                                                    <*> (Ref <$> f ref2)
+  htraverse _ (New   x)         = pure (New x)
+  htraverse f (Find  ref)       = Find <$> htraverse f ref
+  htraverse f (Union ref1 ref2) = Union <$> htraverse f ref1 <*> htraverse f ref2
 
 instance HFunctor  (Action a)
 instance HFoldable (Action a)

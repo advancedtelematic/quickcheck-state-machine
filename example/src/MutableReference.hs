@@ -20,7 +20,7 @@
 module MutableReference
   ( Action(..)
   , Problem(..)
-  , Ref(..)
+  , Ref
   , precondition
   , transition
   , initModel
@@ -33,7 +33,7 @@ module MutableReference
 import           Control.Concurrent
                    (threadDelay)
 import           Data.Functor.Classes
-                   (Eq1(..), Show1(..), showsPrec1)
+                   (Eq1(..), Show1(..))
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -59,28 +59,19 @@ data Action (v :: * -> *) :: * -> * where
 deriving instance Eq1   v => Eq   (Action v resp)
 deriving instance Show1 v => Show (Action v resp)
 
-newtype Ref v = Ref (v (Opaque (IORef Int)))
-
-unRef :: Ref Concrete -> IORef Int
-unRef (Ref (Concrete (Opaque ref))) = ref
-
-instance Eq1 v => Eq (Ref v) where
-  Ref v1 == Ref v2 = liftEq (==) v1 v2
-
-instance Show1 v => Show (Ref v) where
-  show (Ref v) = showsPrec1 10 v ""
+type Ref v = Reference v (Opaque (IORef Int))
 
 instance Show (Untyped Action) where
   show (Untyped act) = show act
 
-instance HFunctor Action
-instance HFoldable Action
-
 instance HTraversable Action where
-  htraverse _ New                 = pure New
-  htraverse f (Read  (Ref ref))   = Read  . Ref <$> f ref
-  htraverse f (Write (Ref ref) i) = Write . Ref <$> f ref <*> pure i
-  htraverse f (Inc   (Ref ref))   = Inc   . Ref <$> f ref
+  htraverse _ New           = pure New
+  htraverse f (Read  ref)   = Read  <$> htraverse f ref
+  htraverse f (Write ref i) = Write <$> htraverse f ref <*> pure i
+  htraverse f (Inc   ref)   = Inc   <$> htraverse f ref
+
+instance HFunctor  Action
+instance HFoldable Action
 
 ------------------------------------------------------------------------
 
@@ -116,7 +107,7 @@ precondition (Model m) (Write ref _) = ref `elem` map fst m
 precondition (Model m) (Inc   ref)   = ref `elem` map fst m
 
 transition :: Transition Model Action
-transition (Model m) New           ref = Model (m ++ [(Ref ref, 0)])
+transition (Model m) New           ref = Model (m ++ [(Reference ref, 0)])
 transition m         (Read  _)     _   = m
 transition (Model m) (Write ref i) _   = Model ((ref, i) : filter ((/= ref) . fst) m)
 transition (Model m) (Inc   ref)   _   = Model ((ref, old + 1) : filter ((/= ref) . fst) m)
@@ -139,8 +130,8 @@ data Problem = None | Bug | RaceCondition
 
 semantics :: Problem -> Action Concrete resp -> IO resp
 semantics _   New           = Opaque <$> newIORef 0
-semantics _   (Read  ref)   = readIORef  (unRef ref)
-semantics prb (Write ref i) = writeIORef (unRef ref) i'
+semantics _   (Read  ref)   = readIORef  (opaque ref)
+semantics prb (Write ref i) = writeIORef (opaque ref) i'
   where
   -- One of the problems is a bug that writes a wrong value to the
   -- reference.
@@ -151,11 +142,11 @@ semantics prb (Inc   ref)   =
   -- when incrementing.
   if prb == RaceCondition
   then do
-    i <- readIORef (unRef ref)
+    i <- readIORef (opaque ref)
     threadDelay =<< randomRIO (0, 5000)
-    writeIORef (unRef ref) (i + 1)
+    writeIORef (opaque ref) (i + 1)
   else
-    atomicModifyIORef' (unRef ref) (\i -> (i + 1, ()))
+    atomicModifyIORef' (opaque ref) (\i -> (i + 1, ()))
 
 ------------------------------------------------------------------------
 
