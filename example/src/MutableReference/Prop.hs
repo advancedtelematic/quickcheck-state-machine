@@ -81,8 +81,8 @@ prop_genParallelSequence = forAll
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
   (Program [ Internal New                   sym0
-           , Internal (Write (Ref sym0)  5) (Symbolic (Var 1))
-           , Internal (Read  (Ref sym0))    (Symbolic (Var 2))
+           , Internal (Write (Reference sym0)  5) (Symbolic (Var 1))
+           , Internal (Read  (Reference sym0))    (Symbolic (Var 2))
            ])
   . read . (!! 1) . lines
   where
@@ -157,7 +157,7 @@ prop_shrinkParallelMinimal = shrinkPropertyHelper (prop_referencesParallel RaceC
 
     var0   = Var 0
     var1   = Var 1
-    ref0   = Ref (Symbolic var0)
+    ref0   = Reference (Symbolic var0)
 
     writes =
       [ Internal (Write ref0 0) (Symbolic var1)
@@ -165,7 +165,7 @@ prop_shrinkParallelMinimal = shrinkPropertyHelper (prop_referencesParallel RaceC
       ]
 
 instance Read (Ref Symbolic) where
-  readPrec     = Ref . Symbolic <$> readPrec
+  readPrec     = Reference . Symbolic <$> readPrec
   readListPrec = readListPrecDefault
 
 instance Read (Internal Action) where
