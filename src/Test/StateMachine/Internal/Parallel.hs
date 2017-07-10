@@ -80,9 +80,10 @@ generateParallelProgram
 generateParallelProgram generator precondition transition model = do
   let generate     =  generateProgram generator precondition transition
   (prefix, model') <- runStateT  (generate 0) model
-  let offset       =  length (unProgram prefix) + 1
+  let offset       =  length (unProgram prefix)
   left             <- evalStateT (generate offset) model'
-  right            <- evalStateT (generate offset) model'
+  let offset'      =  offset + length (unProgram left)
+  right            <- evalStateT (generate offset') model'
   return (ParallelProgram (Fork left prefix right))
 
 -- | Shrink a parallel program in a pre-condition and scope respecting

@@ -29,10 +29,12 @@ import           Data.Dynamic
                    (cast)
 import           Data.List
                    (isSubsequenceOf)
+import           Data.Monoid
+                   ((<>))
 import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Test.QuickCheck
-                   (Property, forAll)
+                   (Property, forAll, (===))
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
@@ -61,6 +63,20 @@ prop_genParallelScope :: Property
 prop_genParallelScope = forAll
   (generateParallelProgram generator precondition transition initModel)
   scopeCheckParallel
+
+prop_genParallelSequence :: Property
+prop_genParallelSequence = forAll
+  (generateParallelProgram generator precondition transition initModel)
+  go
+  where
+  go :: ParallelProgram Action -> Property
+  go (ParallelProgram (Fork l p r)) =
+    vars prog === [0 .. length (unProgram prog) - 1]
+    where
+    prog = p <> l <> r
+
+    vars :: Program Action -> [Int]
+    vars = map (\(Internal _ (Symbolic (Var i))) -> i) . unProgram
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq

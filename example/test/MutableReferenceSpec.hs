@@ -21,6 +21,9 @@ spec = do
     it "`prop_genParallelScope`: generate well-scoped parallel programs"
       prop_genParallelScope
 
+    it "`prop_genParallelSequence`: generate parallel programs where the symbolic references form a sequence"
+      prop_genParallelSequence
+
   describe "Sequential property" $ do
 
     it "`prop_references None`: pre- and post-conditions hold when there are no bugs" $
