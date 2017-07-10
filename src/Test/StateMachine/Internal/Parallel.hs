@@ -25,7 +25,7 @@ module Test.StateMachine.Internal.Parallel
   , shrinkParallelProgram
   , executeParallelProgram
   , checkParallelProgram
-  , History
+  , History(..)
   ) where
 
 import           Control.Concurrent
@@ -142,7 +142,7 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
         [ evalStateT (runMany hchan (Pid 1) (unProgram left))  env
         , evalStateT (runMany hchan (Pid 2) (unProgram right)) env
         ]
-    getChanContents hchan
+    History <$> getChanContents hchan
     where
     getChanContents :: forall a. TChan a -> IO [a]
     getChanContents chan = reverse <$> atomically (go [])
@@ -193,7 +193,12 @@ checkParallelProgram transition postcondition model prog history
 
 -- The code below is used by checkParallelProgram.
 
-type History act = [HistoryEvent (UntypedConcrete act)]
+-- | A history is a trace of invocations and responses from running a
+--   parallel program.
+newtype History act = History
+  { unHistory :: History' act }
+
+type History' act = [HistoryEvent (UntypedConcrete act)]
 
 data UntypedConcrete (act :: (* -> *) -> * -> *) where
   UntypedConcrete :: (Show resp, Typeable resp) =>
@@ -215,13 +220,13 @@ takeInvocations = takeWhile $ \h -> case h of
   InvocationEvent {} -> True
   _                  -> False
 
-findCorrespondingResp :: Pid -> History act -> [(Dynamic, History act)]
+findCorrespondingResp :: Pid -> History' act -> [(Dynamic, History' act)]
 findCorrespondingResp _   [] = []
 findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
-linearTree :: History act -> [Tree (Operation act)]
+linearTree :: History' act -> [Tree (Operation act)]
 linearTree [] = []
 linearTree es =
   [ Node (Operation act str (dynResp resp) pid) (linearTree es')
@@ -244,35 +249,42 @@ linearise
   :: forall model act
   .  Transition    model act
   -> Postcondition model act
-  -> (forall v. model v)
+  -> InitialModel model
   -> History act
   -> Property
-linearise _    _    _       [] = property True
-linearise next post initial es = anyP (step initial) . linearTree $ es
+linearise transition postcondition model0 = go . unHistory
   where
+  go :: History' act -> Property
+  go [] = property True
+  go es = anyP (step model0) (linearTree es)
+
   step :: model Concrete -> Tree (Operation act) -> Property
-  step m (Node (Operation act _ resp@(Concrete resp') _) roses) =
-    post m act resp' .&&.
-    anyP' (step (next m act resp)) roses
+  step model (Node (Operation act _ resp@(Concrete resp') _) roses) =
+    postcondition model act resp' .&&.
+    anyP' (step (transition model act resp)) roses
     where
     anyP' :: (a -> Property) -> [a] -> Property
     anyP' _ [] = property True
     anyP' p xs = anyP p xs
 
 toBoxDrawings :: Set Var -> History act -> Doc
-toBoxDrawings knownVars h = exec evT (fmap out <$> Fork l p r)
+toBoxDrawings knownVars (History h) = exec evT (fmap out <$> Fork l p r)
   where
     (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
     (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
 
     out :: HistoryEvent act -> String
-    out (InvocationEvent _ str var _) | var `S.member` knownVars = show var ++ " ← " ++ str
-                                      | otherwise = str
+    out (InvocationEvent _ str var _)
+      | var `S.member` knownVars = show var ++ " ← " ++ str
+      | otherwise = str
     out (ResponseEvent _ str _) = str
 
-    toEventType :: History cmd -> [(EventType, Pid)]
-    toEventType = map $ \e -> case e of
-      InvocationEvent _ _ _ (Pid pid) -> (Open, Pid pid)
-      ResponseEvent _ _ (Pid pid)     -> (Close, Pid pid)
+    toEventType :: [HistoryEvent act] -> [(EventType, Pid)]
+    toEventType = map go
+      where
+      go e = case e of
+        InvocationEvent _ _ _ pid -> (Open,  pid)
+        ResponseEvent   _ _   pid -> (Close, pid)
+
     evT :: [(EventType, Pid)]
     evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)

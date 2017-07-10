@@ -17,19 +17,23 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine
-  ( -- * ForAll combinator for program
-    forAllProgram
+
+  ( -- * Sequential property combinators
+    Program
+  , forAllProgram
+  , runAndCheckProgram
+  , runAndCheckProgram'
+
+    -- * Parallel property combinators
+  , ParallelProgram
   , forAllParallelProgram
-    -- * Run sequential program, and check model
-  , runSequentialProgram
-  , runSequentialProgram'
-    -- * Run parallel program
+  , History
   , runParallelProgram
   , runParallelProgram'
   , checkParallelProgram
+
+    -- * Types
   , module Test.StateMachine.Types
-  , Program
-  , ParallelProgram
   ) where
 
 import           Control.Monad.State
@@ -42,7 +46,6 @@ import           Test.QuickCheck.Property
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
-                   (ParallelProgram, Program)
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
                    (liftProperty)
@@ -67,6 +70,50 @@ forAllProgram generator shrinker precondition transition model =
     (evalStateT (generateProgram generator precondition transition 0) model)
     (shrinkProgram shrinker precondition transition model)
 
+-- | Run a sequential program and check if your model agrees with your
+--   semantics.
+runAndCheckProgram
+  :: Monad m
+  => HFunctor act
+  => Precondition model act
+  -> Transition model act
+  -> Postcondition model act
+  -> InitialModel model
+  -> Semantics act m
+  -> (m Property -> Property)  -- ^ Runner
+  -> Program act
+  -> Property
+runAndCheckProgram precond trans postcond m sem runner =
+  runAndCheckProgram' precond trans postcond m sem (return ()) (const runner) (const (return ()))
+
+-- | Same as above, except with the possibility to setup some resource
+--   for the runner to use. The resource could be a database connection
+--   for example.
+runAndCheckProgram'
+  :: Monad m
+  => HFunctor act
+  => Precondition model act
+  -> Transition model act
+  -> Postcondition model act
+  -> InitialModel model
+  -> Semantics act m
+  -> IO setup                           -- ^ Setup a resource.
+  -> (setup -> m Property -> Property)
+  -> (setup -> IO ())                   -- ^ Tear down the resource.
+  -> Program act
+  -> Property
+runAndCheckProgram' precond trans postcond m sem setup runner cleanup acts =
+  monadic (ioProperty . runnerWithSetup)
+    (checkProgram precond trans postcond m m sem acts)
+  where
+  runnerWithSetup mp = do
+    s <- setup
+    let prop = runner s (evalStateT mp emptyEnvironment)
+    cleanup s
+    return prop
+
+------------------------------------------------------------------------
+
 -- | This function is like a 'forAllShrink' for parallel programs.
 forAllParallelProgram
   :: Show (Untyped act)
@@ -83,48 +130,6 @@ forAllParallelProgram generator shrinker precondition transition model =
   forAllShrink
     (generateParallelProgram generator precondition transition model)
     (shrinkParallelProgram shrinker precondition transition model)
-
--- | Run a sequential program and check if your model agrees with your
---   semantics.
-runSequentialProgram
-  :: Monad m
-  => HFunctor act
-  => Precondition model act
-  -> Transition model act
-  -> Postcondition model act
-  -> InitialModel model
-  -> Semantics act m
-  -> (m Property -> Property)  -- ^ Runner
-  -> Program act
-  -> Property
-runSequentialProgram precond trans postcond m sem runner =
-  runSequentialProgram' precond trans postcond m sem (return ()) (const runner) (const (return ()))
-
--- | Same as above, except with the possibility to setup some resource
---   for the runner to use. The resource could be a database connection
---   for example.
-runSequentialProgram'
-  :: Monad m
-  => HFunctor act
-  => Precondition model act
-  -> Transition model act
-  -> Postcondition model act
-  -> InitialModel model
-  -> Semantics act m
-  -> IO setup                           -- ^ Setup a resource.
-  -> (setup -> m Property -> Property)
-  -> (setup -> IO ())                   -- ^ Tear down the resource.
-  -> Program act
-  -> Property
-runSequentialProgram' precond trans postcond m sem setup runner cleanup acts =
-  monadic (ioProperty . runnerWithSetup)
-    (checkProgram precond trans postcond m m sem acts)
-  where
-  runnerWithSetup mp = do
-    s <- setup
-    let prop = runner s (evalStateT mp emptyEnvironment)
-    cleanup s
-    return prop
 
 -- | Run a parallel program and collect the history of the execution.
 runParallelProgram

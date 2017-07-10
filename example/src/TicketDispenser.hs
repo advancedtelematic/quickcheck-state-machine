@@ -152,7 +152,7 @@ instance HFoldable Action
 
 prop_ticketDispenser :: Property
 prop_ticketDispenser = forAllProgram gen shrink1 preconditions transitions initModel $
-  runSequentialProgram preconditions transitions postconditions initModel sem ioProperty
+  runAndCheckProgram preconditions transitions postconditions initModel sem ioProperty
   where
   sem = semantics Shared (ticketDb, ticketLock)
   -- Predefined files are used for the database and the file lock.

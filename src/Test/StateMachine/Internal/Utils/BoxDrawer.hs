@@ -8,8 +8,8 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module contains functions for drawing the history for the
--- 'Test.StateMachine.parallelProperty'.
+-- This module contains functions for visualing a history of a parallel
+-- execution.
 --
 -----------------------------------------------------------------------------
 

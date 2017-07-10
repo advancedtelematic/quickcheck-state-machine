@@ -1,6 +1,6 @@
-{-# LANGUAGE GADTs          #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE Rank2Types     #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE Rank2Types           #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -19,18 +19,17 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Types
+  ( -- * Untyped actions
+    Untyped(..)
 
-  ( -- * The types of the main things the user needs to supply
-    Generator
+    -- * Type aliases
+  , Generator
   , Shrinker
   , Precondition
   , Transition
-  , Postcondition
   , Semantics
+  , Postcondition
   , InitialModel
-
-  -- * Untyped actions
-  , Untyped(..)
 
   -- * Higher-order functors, foldables and traversables
   , module Test.StateMachine.Types.HFunctor
@@ -52,32 +51,45 @@ import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 
--- | The type of the generating function of some actions.
+-- | An untyped action is an action where the response type is hidden
+--   away using an existential type.
+--
+--   We need to hide the response type when generating actions, because
+--   in general the actions we want to generate will have different
+--   response types; and thus we can only type the generating function
+--   if we hide the response type.
+data Untyped (act :: (* -> *) -> * -> *) where
+  Untyped :: (Show resp, Typeable resp) => act Symbolic resp -> Untyped act
+
+------------------------------------------------------------------------
+
+-- | When generating actions we have access to a model containing
+--   symbolic references.
 type Generator model act = model Symbolic -> Gen (Untyped act)
 
--- | The type of the shrink function of some actions.
+-- | Shrinking should preserve the response type of the action.
 type Shrinker act = forall (v :: * -> *) resp.
   act v resp -> [act v resp]
 
--- | The type of pre-conditions of some actions.
+-- | Pre-conditions are checked while generating, at this stage we do
+--   not yet have access to concrete references.
 type Precondition model act = forall resp.
   model Symbolic -> act Symbolic resp -> Bool
 
--- | The type of the transition functions of some actions.
+-- | The transition function must be polymorphic in the type of
+--   variables used, as it is used both while generating and executing.
 type Transition model act = forall resp v. Ord1 v =>
   model v -> act v resp -> v resp -> model v
 
--- | The type of the post-conditions of some actions.
+-- | When we execute our actions we have access to concrete references.
+type Semantics act m = forall resp. act Concrete resp -> m resp
+
+-- | Post-conditions are checked after the actions have been executed
+--   and we got a response.
 type Postcondition model act = forall resp.
   model Concrete -> act Concrete resp -> resp -> Property
 
--- | The type of the semantics of some actions.
-type Semantics act m = forall resp. act Concrete resp -> m resp
-
--- | The initial model
+-- | The initial model is polymorphic in the type of references it uses,
+--   so that it can be used both in the pre- and the post-condition
+--   check.
 type InitialModel m = forall (v :: * -> *). m v
-------------------------------------------------------------------------
-
--- | Untyped actions pack up the response type using an existential type.
-data Untyped (act :: (* -> *) -> * -> *) where
-  Untyped :: (Show resp, Typeable resp) => act Symbolic resp -> Untyped act

@@ -193,6 +193,6 @@ instance Show a => Show (Untyped (Action a)) where
 
 prop_unionFind :: Property
 prop_unionFind = forAllProgram gen shrink1 preconditions transitions model $
-  runSequentialProgram preconditions transitions postconditions model semantics ioProperty
+  runAndCheckProgram preconditions transitions postconditions model semantics ioProperty
   where
     model = initModel :: Model Int v

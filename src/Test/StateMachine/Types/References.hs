@@ -15,8 +15,8 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module contains reference related types. It's taken verbatim from the
--- Hedgehog <https://hackage.haskell.org/package/hedgehog library>.
+-- This module contains reference related types. It's taken almost verbatim from
+-- the Hedgehog <https://hackage.haskell.org/package/hedgehog library>.
 --
 -----------------------------------------------------------------------------
 
