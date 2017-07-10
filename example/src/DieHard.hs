@@ -157,7 +157,7 @@ instance HTraversable Action where
 
 prop_dieHard :: Property
 prop_dieHard = forAllProgram gen shrink1 preconditions transitions initModel $
-  runSequentialProgram preconditions transitions postconditions initModel semAction runIdentity
+  runAndCheckProgram preconditions transitions postconditions initModel semAction runIdentity
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --

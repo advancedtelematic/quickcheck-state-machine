@@ -162,7 +162,7 @@ semantics prb (Inc   ref)   =
 
 prop_references :: Problem -> Property
 prop_references prb = forAllProgram generator shrink1 precondition transition initModel $
-  runSequentialProgram precondition transition postcondition initModel (semantics prb) ioProperty
+  runAndCheckProgram precondition transition postcondition initModel (semantics prb) ioProperty
 
 prop_referencesParallel :: Problem -> Property
 prop_referencesParallel prb =
