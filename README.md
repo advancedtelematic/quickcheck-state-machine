@@ -20,8 +20,11 @@ functionality to Haskell's QuickCheck library.
 
 ### Example
 
-Let's implement and test programs using mutable references. Our mutable
-references can be created, read from, written to and incremented:
+As a first example, let's implement and test programs using mutable
+references. Our implementation will be using `IORef`s, but let's start with a
+representation of what actions are possible with program using mutable
+references. Our mutable references can be created, read from, written to and
+incremented:
 
 ```haskell
 data Action (v :: * -> *) :: * -> * where
@@ -31,14 +34,14 @@ data Action (v :: * -> *) :: * -> * where
   Inc   :: Reference v (Opaque (IORef Int)) -> Action v ()
 ```
 
-In order to be able to show counterexamples, we need a show instance for our
-actions. `IORef`s don't have a show instance, thats why we wrap them in
-`Opaque`; which gives a show instance to a type that doesn't have one.
-
 When we generate actions we won't be able to create arbitrary `IORef`s, that's
 why all uses of `IORefs` are wrapped in `Reference v`, where the parameter `v`
 will let us use symbolic references while generating (and concrete ones when
 executing).
+
+In order to be able to show counterexamples, we need a show instance for our
+actions. `IORef`s don't have a show instance, thats why we wrap them in
+`Opaque`; which gives a show instance to a type that doesn't have one.
 
 Next, we give the actual implementation of our mutable references. To make
 things more interesting, we parametrise the semantics by a possible problem.
@@ -141,7 +144,7 @@ shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
 shrinker _             = []
 ```
 
-We can now define a sequential and a parallel property as follows.
+We can now define a sequential property as follows.
 
 ```haskell
 prop_references :: Problem -> Property
@@ -159,7 +162,29 @@ prop_references prb = forAllProgram
       (semantics prb)
       ioProperty
       prog
+```
 
+If we run the sequential property without introducing any problems to the
+semantics function, i.e. `quickCheck (prop_references None)`, then the property
+passes. If we however introduce the bug problem, then it will fail with the
+minimal counterexample:
+
+```
+> quickCheck (prop_references Bug)
+*** Failed! Falsifiable (after 16 tests and 4 shrinks):
+[New (Var 0),Write (Var 0) 5 (Var 2),Read (Var 0) (Var 3)]
+Just 5 /= Just 6
+```
+
+Recall that the bug problem causes the write of values ``i `elem` [5..10]`` to
+actually write `i + 1`.
+
+Running the sequential property with the race condition problem will not uncover
+the race condition.
+
+If we however define a parallel property as follows.
+
+```haskell
 prop_referencesParallel :: Problem -> Property
 prop_referencesParallel prb = forAllParallelProgram
   generator
@@ -176,20 +201,8 @@ prop_referencesParallel prb = forAllParallelProgram
         hist
 ```
 
-If we run the sequential property without introducing any problems to the
-semantics function, i.e. `quickCheck (prop_references None)`, then the property
-passes. If we however introduce the bug problem, then it will fail with the
-minimal counterexample:
-
-```
-> quickCheck (prop_references Bug)
-*** Failed! Falsifiable (after 16 tests and 4 shrinks):
-[New (Var 0),Write (Var 0) 5 (Var 2),Read (Var 0) (Var 3)]
-Just 5 /= Just 6
-```
-
-Running the sequential property with the race condition problem will not uncover
-the race condition, but the parallel property will!
+And run it using the race condition problem, then we'll find the race
+condition:
 
 ```
 > quickCheck (prop_referencesParallel RaceCondition)
@@ -216,9 +229,16 @@ Couldn't linearise:
 Just 2 /= Just 1
 ```
 
-Clearly, if we increment a mutable reference in parallel we can end up with a
-race condition. We shall come back to this example below, but if your are
-impatient you can find the full source
+As we can see above, a mutable reference is first created, and then in
+parallel (concurrently) we do two increments of said reference, and finally we
+read the value `1` while the model expects `2`.
+
+Recall that incrementing is implemented by first reading the reference and
+then writing it, if two such actions are interleaved then one of the writes
+might end up overwriting the other ones -- creating the race condition.
+
+We shall come back to this example below, but if your are impatient you can
+find the full source
 code
 [here](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference.hs).
 
