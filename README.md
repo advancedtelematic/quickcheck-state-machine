@@ -109,7 +109,7 @@ transition m         (Read  _)     _   = m
 transition (Model m) (Write ref i) _   = Model (update ref i         m)
 transition (Model m) (Inc   ref)   _   = Model (update ref (old + 1) m)
   where
-  Just old       = lookup ref m
+  Just old = lookup ref m
 
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 update ref i m = (ref, i) : filter ((/= ref) . fst) m
