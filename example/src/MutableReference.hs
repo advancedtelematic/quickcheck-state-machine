@@ -20,12 +20,11 @@
 module MutableReference
   ( Action(..)
   , Problem(..)
-  , Ref
   , precondition
   , transition
   , initModel
   , generator
-  , shrink1
+  , shrinker
   , prop_references
   , prop_referencesParallel
   ) where
@@ -33,7 +32,7 @@ module MutableReference
 import           Control.Concurrent
                    (threadDelay)
 import           Data.Functor.Classes
-                   (Eq1(..), Show1(..))
+                   (Show1(..))
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -51,43 +50,10 @@ import           Test.StateMachine
 -- incremented.
 
 data Action (v :: * -> *) :: * -> * where
-  New   ::          Action v (Opaque (IORef Int))
-  Read  :: Ref v -> Action v Int
-  Write :: Ref v -> Int -> Action v ()
-  Inc   :: Ref v -> Action v ()
-
-deriving instance Eq1   v => Eq   (Action v resp)
-deriving instance Show1 v => Show (Action v resp)
-
-type Ref v = Reference v (Opaque (IORef Int))
-
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
-
-instance HTraversable Action where
-  htraverse _ New           = pure New
-  htraverse f (Read  ref)   = Read  <$> htraverse f ref
-  htraverse f (Write ref i) = Write <$> htraverse f ref <*> pure i
-  htraverse f (Inc   ref)   = Inc   <$> htraverse f ref
-
-instance HFunctor  Action
-instance HFoldable Action
-
-------------------------------------------------------------------------
-
-generator :: Generator Model Action
-generator (Model m)
-  | null m    = pure (Untyped New)
-  | otherwise = frequency
-      [ (1, pure (Untyped New))
-      , (8, Untyped .    Read  <$> elements (map fst m))
-      , (8, Untyped <$> (Write <$> elements (map fst m) <*> arbitrary))
-      , (8, Untyped .    Inc   <$> elements (map fst m))
-      ]
-
-shrink1 :: Action v resp -> [Action v resp]
-shrink1 (Write ref i) = [ Write ref i' | i' <- shrink i ]
-shrink1 _             = []
+  New   ::                                     Action v (Opaque (IORef Int))
+  Read  :: Reference v (Opaque (IORef Int)) -> Action v Int
+  Write :: Reference v (Opaque (IORef Int)) -> Int -> Action v ()
+  Inc   :: Reference v (Opaque (IORef Int)) -> Action v ()
 
 ------------------------------------------------------------------------
 
@@ -95,7 +61,7 @@ shrink1 _             = []
 -- can't actually use @Data.Map@ here, because we don't have an @Ord@
 -- instance on @IORef@s.)
 
-newtype Model v = Model [(Ref v, Int)]
+newtype Model v = Model [(Reference v (Opaque (IORef Int)), Int)]
 
 initModel :: Model v
 initModel = Model []
@@ -109,16 +75,35 @@ precondition (Model m) (Inc   ref)   = ref `elem` map fst m
 transition :: Transition Model Action
 transition (Model m) New           ref = Model (m ++ [(Reference ref, 0)])
 transition m         (Read  _)     _   = m
-transition (Model m) (Write ref i) _   = Model ((ref, i) : filter ((/= ref) . fst) m)
-transition (Model m) (Inc   ref)   _   = Model ((ref, old + 1) : filter ((/= ref) . fst) m)
+transition (Model m) (Write ref i) _   = Model (update ref i         m)
+transition (Model m) (Inc   ref)   _   = Model (update ref (old + 1) m)
   where
-  Just old = lookup ref m
+  Just old       = lookup ref m
+
+update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+update ref i m = (ref, i) : filter ((/= ref) . fst) m
 
 postcondition :: Postcondition Model Action
 postcondition _         New         _    = property True
 postcondition (Model m) (Read ref)  resp = lookup ref m === Just resp
 postcondition _         (Write _ _) _    = property True
 postcondition _         (Inc _)     _    = property True
+
+------------------------------------------------------------------------
+
+generator :: Generator Model Action
+generator (Model m)
+  | null m    = pure (Untyped New)
+  | otherwise = frequency
+      [ (1, pure (Untyped New))
+      , (8, Untyped .    Read  <$> elements (map fst m))
+      , (8, Untyped <$> (Write <$> elements (map fst m) <*> arbitrary))
+      , (8, Untyped .    Inc   <$> elements (map fst m))
+      ]
+
+shrinker :: Action v resp -> [Action v resp]
+shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrinker _             = []
 
 ------------------------------------------------------------------------
 
@@ -150,22 +135,38 @@ semantics prb (Inc   ref)   =
 
 ------------------------------------------------------------------------
 
+deriving instance Show1 v => Show (Action v resp)
+
+instance Show (Untyped Action) where
+  show (Untyped act) = show act
+
+instance HTraversable Action where
+  htraverse _ New           = pure New
+  htraverse f (Read  ref)   = Read  <$> htraverse f ref
+  htraverse f (Write ref i) = Write <$> htraverse f ref <*> pure i
+  htraverse f (Inc   ref)   = Inc   <$> htraverse f ref
+
+instance HFunctor  Action
+instance HFoldable Action
+
+------------------------------------------------------------------------
+
 -- If we run @quickCheck (prop_references None)@, then the property
 -- passes.
 --
 -- If we however run @quickCheck (prop_references Bug), it will fail
--- with the minimal counterexample: @New, Write $0 5, Read $0@.
+-- with the minimal counterexample: @New, Write (Var 0) 5, Read (Var 0)@.
 --
 -- Running @quickCheck (prop_references RaceCondition)@ will not uncover
 -- the race condition, but @quickCheck (prop_parallelReferences
 -- RaceCondition)@ will!
 
 prop_references :: Problem -> Property
-prop_references prb = forAllProgram generator shrink1 precondition transition initModel $
+prop_references prb = forAllProgram generator shrinker precondition transition initModel $
   runAndCheckProgram precondition transition postcondition initModel (semantics prb) ioProperty
 
 prop_referencesParallel :: Problem -> Property
 prop_referencesParallel prb =
-  forAllParallelProgram generator shrink1 precondition transition initModel $ \parallel ->
+  forAllParallelProgram generator shrinker precondition transition initModel $ \parallel ->
     runParallelProgram (semantics prb) parallel $
       checkParallelProgram transition postcondition initModel parallel
