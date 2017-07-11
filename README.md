@@ -24,7 +24,7 @@ Here's a sample output from when we look for race conditions in the mutable
 reference example:
 
 ```
-> quickCheck (MutableReference.prop_parallel RaceCondition)
+> quickCheck (prop_referencesParallel RaceCondition)
 *** Failed! (after 5 tests and 6 shrinks):
 
 Couldn't linearise:
@@ -238,6 +238,10 @@ we can improve it on the issue tracker!
       - Erlang QuickCheck, [eqc](http://quviq.com/documentation/eqc/), the first
         property based testing library to have support for state machines
         (closed source);
+
+      - The Erlang library [PropEr](https://github.com/manopapad/proper) is
+        *eqc*-inspired, open source, and has support for state
+        machine [testing](http://propertesting.com/);
 
       - The Haskell
         library [Hedgehog](https://github.com/hedgehogqa/haskell-hedgehog), also
