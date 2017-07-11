@@ -60,7 +60,7 @@ instance (Show (Untyped act), HFoldable act) => Show (Program act) where
     where
 
     go (Internal act (Symbolic var)) =
-      show (Untyped act) ++ " (" ++ show var ++ ")"
+      show (Untyped act) ++ " " ++ show var
 
     bracket s = "[" ++ s ++ "]"
 

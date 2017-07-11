@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -27,6 +28,10 @@ import           Data.Char
                    (isSpace)
 import           Data.Dynamic
                    (cast)
+import           Data.Functor.Classes
+                   (Eq1(..))
+import           Data.IORef
+                   (IORef)
 import           Data.List
                    (isSubsequenceOf)
 import           Data.Monoid
@@ -105,12 +110,12 @@ prop_shrinkParallelSubseq = forAll
            void (unProgram l') `isSubsequenceOf` void (unProgram l) &&
            void (unProgram p') `isSubsequenceOf` void (unProgram p) &&
            void (unProgram r') `isSubsequenceOf` void (unProgram r))
-        (shrinkParallelProgram shrink1 precondition transition initModel (cheat prog))
+        (shrinkParallelProgram shrinker precondition transition initModel (cheat prog))
 
 prop_shrinkParallelScope :: Property
 prop_shrinkParallelScope = forAll
   (generateParallelProgram generator precondition transition initModel) $ \p ->
-    all scopeCheckParallel (shrinkParallelProgram shrink1 precondition transition initModel p)
+    all scopeCheckParallel (shrinkParallelProgram shrinker precondition transition initModel p)
 
 ------------------------------------------------------------------------
 
@@ -123,12 +128,12 @@ prop_shrinkParallelMinimal = shrinkPropertyHelper (prop_referencesParallel RaceC
   hasMinimalShrink :: Fork (Program Action) -> Bool
   hasMinimalShrink
     = anyTree isMinimal
-    . unfoldTree (id &&& shrinker)
+    . unfoldTree (id &&& shrinker')
     where
-    shrinker :: Fork (Program Action) -> [Fork (Program Action)]
-    shrinker
+    shrinker' :: Fork (Program Action) -> [Fork (Program Action)]
+    shrinker'
       = map unParallelProgram
-      . shrinkParallelProgram shrink1 precondition transition initModel
+      . shrinkParallelProgram shrinker precondition transition initModel
       . ParallelProgram
 
     anyTree :: (a -> Bool) -> Tree a -> Bool
@@ -164,7 +169,7 @@ prop_shrinkParallelMinimal = shrinkPropertyHelper (prop_referencesParallel RaceC
       , Internal (Inc   ref0)   (Symbolic var1)
       ]
 
-instance Read (Ref Symbolic) where
+instance Read (Reference Symbolic (Opaque (IORef Int))) where
   readPrec     = Reference . Symbolic <$> readPrec
   readListPrec = readListPrecDefault
 
@@ -178,6 +183,8 @@ instance Read (Internal Action) where
     ]
 
   readListPrec = readListPrecDefault
+
+deriving instance Eq1 v => Eq   (Action v resp)
 
 instance Eq (Internal Action) where
   Internal act1 sym1 == Internal act2 sym2 =
