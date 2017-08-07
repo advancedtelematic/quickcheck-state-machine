@@ -432,8 +432,7 @@ we can improve it on the issue tracker!
 
       - The Haskell
         library [Hedgehog](https://github.com/hedgehogqa/haskell-hedgehog), also
-        has support for state machine based testing (no parallel property yet
-        though);
+        has support for state machine based testing;
 
       - [ScalaCheck](http://www.scalacheck.org/), likewise has support for state
         machine
