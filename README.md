@@ -329,7 +329,6 @@ Here are some more examples to get you started:
     [`Test.QuickCheck.Monadic`](https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck-Monadic.html) module
     is based on;
 
-
   * Mutable
     reference
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference.hs) --
@@ -350,7 +349,22 @@ Here are some more examples to get you started:
     Hard Stuff and Staying
     Sane*
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
-    [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)] papers.
+    [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)] papers;
+    
+  * CRUD webserver
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverFile.hs)
+    -- create, read, update and delete files on a webserver using an API written
+    using [Servant](https://github.com/haskell-servant/servant). The
+    specification uses two fixed file names for the tests, for an example where
+    the created resources might be unique ids see the next example;
+
+  * CRUD webserver where create returns a unique ids
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverDb.hs)
+    -- create, read, update and delete users in a sqlite database on a webserver
+    using an API written using
+    [Servant](https://github.com/haskell-servant/servant). Creating a user will
+    return a unique id, which subsequent reads, updates, and deletes need to
+    use.
 
 All examples have an associated `Spec` module located in
 the
