@@ -7,27 +7,46 @@ tested-with:         GHC == 8.0.2
 
 library
   hs-source-dirs:      src
-  exposed-modules:     DieHard
+  exposed-modules:     CrudWebserverDb
+                     , CrudWebserverFile
+                     , DieHard
                      , MutableReference
                      , MutableReference.Prop
                      , TicketDispenser
                      , UnionFind
-  build-depends:       base >= 4.7 && < 5
+  build-depends:       aeson
+                     , async
+                     , base >= 4.7 && < 5
                      , containers
                      , directory
                      , filelock
+                     , http-client
+                     , monad-logger
                      , mtl
+                     , persistent
+                     , persistent-template
+                     , persistent-sqlite
                      , QuickCheck
+                     , quickcheck-instances
                      , quickcheck-state-machine
                      , random
+                     , servant
+                     , servant-client
+                     , servant-server
                      , strict
+                     , string-conversions
+                     , text
+                     , wai
+                     , warp
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-example-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Main.hs
-  other-modules:       DieHardSpec
+  other-modules:       CrudWebserverDbSpec
+                     , CrudWebserverFileSpec
+                     , DieHardSpec
                      , MutableReferenceSpec
                      , Spec
                      , TicketDispenserSpec
