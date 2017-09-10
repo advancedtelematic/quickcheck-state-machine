@@ -30,8 +30,8 @@ module Test.StateMachine.Internal.Parallel
 
 import           Control.Concurrent
                    (threadDelay)
-import           Control.Concurrent.ParallelIO.Local
-                   (parallel_, withPool)
+import           Control.Concurrent.Async
+                   (concurrently_)
 import           Control.Concurrent.STM
                    (STM, atomically)
 import           Control.Concurrent.STM.TChan
@@ -39,8 +39,8 @@ import           Control.Concurrent.STM.TChan
 import           Control.Monad
                    (foldM)
 import           Control.Monad.State
-                   (StateT, runStateT, evalState, evalStateT, execStateT, get,
-                   lift, modify, runState)
+                   (StateT, evalState, evalStateT, execStateT, get,
+                   lift, modify, runState, runStateT)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.List
@@ -137,11 +137,9 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
   liftSemFork (Fork left prefix right) = do
     hchan <- newTChanIO
     env   <- execStateT (runMany hchan (Pid 0) (unProgram prefix)) emptyEnvironment
-    withPool 2 $ \pool ->
-      parallel_ pool
-        [ evalStateT (runMany hchan (Pid 1) (unProgram left))  env
-        , evalStateT (runMany hchan (Pid 2) (unProgram right)) env
-        ]
+    concurrently_
+      (evalStateT (runMany hchan (Pid 1) (unProgram left))  env)
+      (evalStateT (runMany hchan (Pid 2) (unProgram right)) env)
     History <$> getChanContents hchan
     where
     getChanContents :: forall a. TChan a -> IO [a]
