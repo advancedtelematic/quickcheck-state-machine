@@ -10,6 +10,7 @@ library
   exposed-modules:     CrudWebserverDb
                      , CrudWebserverFile
                      , DieHard
+                     , DistributedDb
                      , MutableReference
                      , MutableReference.Prop
                      , TicketDispenser
@@ -17,15 +18,20 @@ library
   build-depends:       aeson
                      , async
                      , base >= 4.7 && < 5
+                     , binary
                      , containers
                      , directory
+                     , distributed-process
+                     , distributed-process-simplelocalnet
+                     , distributed-static
                      , filelock
                      , http-client
                      , monad-logger
                      , mtl
+                     , network
                      , persistent
-                     , persistent-template
                      , persistent-sqlite
+                     , persistent-template
                      , QuickCheck
                      , quickcheck-instances
                      , quickcheck-state-machine
@@ -35,6 +41,7 @@ library
                      , servant-server
                      , strict
                      , string-conversions
+                     , template-haskell
                      , text
                      , wai
                      , warp
@@ -58,4 +65,16 @@ test-suite quickcheck-state-machine-example-test
                      , quickcheck-state-machine
                      , quickcheck-state-machine-example
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+executable ddb
+  build-depends:       base
+                     , binary
+                     , containers
+                     , distributed-process
+                     , distributed-process-simplelocalnet
+                     , distributed-static
+  main-is:             DistributedDb.hs
+  hs-source-dirs:      src
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -main-is DistributedDb
   default-language:    Haskell2010
