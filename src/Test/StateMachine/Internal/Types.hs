@@ -20,6 +20,7 @@
 
 module Test.StateMachine.Internal.Types
   ( Program(..)
+  , programLength
   , ParallelProgram(..)
   , Pid(..)
   , Fork(..)
@@ -67,6 +68,9 @@ instance (Show (Untyped act), HFoldable act) => Show (Program act) where
 instance Read (Internal act) => Read (Program act) where
   readPrec     = Program <$> readPrec
   readListPrec = readListPrecDefault
+
+programLength :: Program act -> Int
+programLength = length . unProgram
 
 ------------------------------------------------------------------------
 

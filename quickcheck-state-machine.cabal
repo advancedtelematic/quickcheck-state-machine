@@ -33,6 +33,9 @@ library
                      , async
                      , base (>=4.7 && <5)
                      , containers (>=0.5.7.1 && <0.6)
+                     , lifted-async
+                     , lifted-base
+                     , monad-control
                      , mtl (>=2.2.1 && <2.3)
                      , QuickCheck (>=2.9.2 && <2.10)
                      , random (==1.1.*)

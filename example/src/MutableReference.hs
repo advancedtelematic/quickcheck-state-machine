@@ -29,6 +29,7 @@ module MutableReference
   , prop_referencesParallel
   ) where
 
+import           Control.Monad (replicateM_)
 import           Control.Concurrent
                    (threadDelay)
 import           Data.Functor.Classes
@@ -39,8 +40,8 @@ import           Data.IORef
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Property, arbitrary, elements, frequency,
-                   ioProperty, property, shrink, (===))
+                   (Property, arbitrary, elements, frequency, property,
+                   shrink, (===))
 
 import           Test.StateMachine
 
@@ -161,12 +162,18 @@ instance HFoldable Action
 -- the race condition, but @quickCheck (prop_parallelReferences
 -- RaceCondition)@ will!
 
+sm :: Problem -> StateMachine Model Action IO
+sm prb = StateMachine
+  generator shrinker precondition transition
+  postcondition initModel (semantics prb) id
+
 prop_references :: Problem -> Property
-prop_references prb = forAllProgram generator shrinker precondition transition initModel $
-  runAndCheckProgram precondition transition postcondition initModel (semantics prb) ioProperty
+prop_references prb = monadicSequential (sm prb) $ \prog -> do
+  (hist, model, prop) <- runCommands (sm prb) prog
+  prettyCommands prog hist model $
+    checkCommandNames prog 4 prop
 
 prop_referencesParallel :: Problem -> Property
-prop_referencesParallel prb =
-  forAllParallelProgram generator shrinker precondition transition initModel $ \parallel ->
-    runParallelProgram (semantics prb) parallel $
-      checkParallelProgram transition postcondition initModel parallel
+prop_referencesParallel prb = monadicParallel (sm prb) $ \prog -> do
+  hps <- runParallelCommands' (sm prb) prog
+  prettyParallelCommands' prog hps

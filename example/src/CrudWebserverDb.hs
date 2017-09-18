@@ -41,14 +41,18 @@ module CrudWebserverDb where
 
 import           Control.Concurrent
                    (threadDelay)
-import           Control.Concurrent.Async
-                   (async)
+import           Control.Concurrent.Async.Lifted
+                   (Async, async, cancel)
+import           Control.Monad
+                   (replicateM_)
 import           Control.Monad.IO.Class
                    (MonadIO, liftIO)
 import           Control.Monad.Logger
                    (runNoLoggingT)
 import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
 import           Data.Aeson
                    (FromJSON, ToJSON, object, parseJSON, toJSON,
                    withObject, (.:), (.=))
@@ -62,7 +66,7 @@ import           Data.String.Conversions
                    (cs)
 import           Data.Text
                    (Text)
-import qualified Data.Text                 as T
+import qualified Data.Text                       as T
 import           Database.Persist.Sqlite
                    (ConnectionPool, Key, createSqlitePool, delete, get,
                    insert, runMigration, runSqlPersistMPool,
@@ -72,7 +76,7 @@ import           Database.Persist.TH
                    sqlSettings)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp  as Warp
+import qualified Network.Wai.Handler.Warp        as Warp
 import           Servant
                    ((:<|>)(..), (:>), Application, Capture, Get, JSON,
                    Post, ReqBody, Server, serve)
@@ -81,10 +85,12 @@ import           Servant.Client
                    client, runClientM)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
-                   frequency, ioProperty, listOf, property, shrink,
-                   suchThat, (===))
+                   frequency, listOf, property, shrink, suchThat,
+                   (===))
 import           Test.QuickCheck.Instances
                    ()
+import           Test.QuickCheck.Monadic
+                   (run)
 
 import           Test.StateMachine
 
@@ -342,41 +348,49 @@ instance HFoldable Action
 -- property that asserts that the semantics respect the model in a
 -- single-threaded and two-threaded context respectively.
 
+sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO)
+sm port = StateMachine
+  generator shrinker preconditions transitions
+  postconditions initModel semantics (runner port)
+
 prop_crudWebserverDb :: Property
-prop_crudWebserverDb =
-  forAllProgram generator shrinker preconditions transitions initModel $
-    runAndCheckProgram' preconditions transitions postconditions
-      initModel semantics (setup "sqlite.db" port) (runner port) cleanup
+prop_crudWebserverDb = monadicSequential (sm port) $ \prog -> do
+  pid                 <- run (setup "sqlite.db" port)
+  (hist, model, prop) <- runCommands (sm port) prog
+  run (cancel pid)
+  prettyCommands prog hist model $
+    checkCommandNames prog 4 prop
   where
-  port :: Warp.Port
   port = 8081
 
 prop_crudWebserverDbParallel :: Property
-prop_crudWebserverDbParallel =
-  forAllParallelProgram generator shrinker preconditions transitions initModel $
-    \parallel -> runParallelProgram' (setup "sqlite.parallel.db" port) sem cleanup parallel $
-      checkParallelProgram transitions postconditions initModel parallel
+prop_crudWebserverDbParallel = monadicParallel (sm port) $ \prog -> do
+  pid          <- run (setup "sqlite.parallel.db" port)
+  replicateM_ 10 $ do
+    (hist, prop) <- runParallelCommands (sm port) prog
+    prettyParallelCommands prog hist prop
+  run (cancel pid)
   where
-  port :: Warp.Port
-  port        = 8082
-  sem mgr act = runReaderT (semantics act) (ClientEnv mgr (burl port))
+  port = 8082
 
 -- Where the URL of the server, how to run the reader monad that the
--- semantics live in, and how to setup the webserver and clean up after
--- ourselves is defined as follows.
+-- semantics live in, and how to setup the webserver is defined as
+-- follows.
 
 burl :: Warp.Port -> BaseUrl
 burl port = BaseUrl Http "localhost" port ""
 
-runner :: Warp.Port -> Manager -> ReaderT ClientEnv IO Property -> Property
-runner port mgr = ioProperty . flip runReaderT (ClientEnv mgr (burl port))
-
-setup :: FilePath -> Warp.Port -> IO Manager
-setup sqliteFile port = do
+runner :: Warp.Port -> ReaderT ClientEnv IO Property -> IO Property
+runner port p = do
   mgr <- newManager defaultManagerSettings
-  _   <- async (runServer sqliteFile port)
+  runReaderT p (ClientEnv mgr (burl port))
+
+setup :: MonadBaseControl IO m => FilePath -> Warp.Port -> m (Async ())
+setup sqliteFile port = liftBaseWith $ \_ -> do
+  mgr <- newManager defaultManagerSettings
+  pid <- async (runServer sqliteFile port)
   healthy mgr 10
-  return mgr
+  return pid
   where
   healthy :: Manager -> Int -> IO ()
   healthy _   0     = error "healthy: server isn't healthy"
@@ -387,9 +401,6 @@ setup sqliteFile port = do
         threadDelay 1000000
         healthy mgr (tries - 1)
       Right () -> return ()
-
-cleanup :: Manager -> IO ()
-cleanup _ = return ()
 
 ------------------------------------------------------------------------
 

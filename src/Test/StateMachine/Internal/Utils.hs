@@ -16,6 +16,7 @@
 module Test.StateMachine.Internal.Utils
   ( anyP
   , liftProperty
+  , whenFailM
   , shrinkPropertyHelper
   , shrinkPropertyHelper'
   , shrinkPair
@@ -24,7 +25,8 @@ module Test.StateMachine.Internal.Utils
 
 import           Test.QuickCheck
                    (Property, Result(Failure), chatty, counterexample,
-                   output, property, quickCheckWithResult, stdArgs)
+                   output, property, quickCheckWithResult, stdArgs,
+                   whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property
@@ -39,6 +41,9 @@ anyP p = foldr (\x ih -> p x .||. ih) (property False)
 -- | Lifts a plain property into a monadic property.
 liftProperty :: Monad m => Property -> PropertyM m ()
 liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
+
+whenFailM :: Monad m => IO () -> Property -> PropertyM m ()
+whenFailM m prop = liftProperty (m `whenFail` prop)
 
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.
