@@ -51,6 +51,7 @@ module Test.StateMachine
   , module Test.StateMachine.Types
 
     -- * Rexport
+  , bracketP
   , Test.QuickCheck.quickCheck
   ) where
 
@@ -81,7 +82,7 @@ import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
-                   (liftProperty, whenFailM)
+                   (liftProperty, whenFailM, bracketP)
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
@@ -135,8 +136,6 @@ runCommands
   -> Program act
   -> PropertyM m (History act, model Concrete, Property)
 runCommands sm = run . runCommands' sm
-
-
 
 runCommands'
   :: forall m act model
