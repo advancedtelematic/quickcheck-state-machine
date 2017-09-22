@@ -29,7 +29,6 @@ module MutableReference
   , prop_referencesParallel
   ) where
 
-import           Control.Monad (replicateM_)
 import           Control.Concurrent
                    (threadDelay)
 import           Data.Functor.Classes
@@ -171,7 +170,9 @@ prop_references :: Problem -> Property
 prop_references prb = monadicSequential (sm prb) $ \prog -> do
   (hist, model, prop) <- runCommands (sm prb) prog
   prettyCommands prog hist model $
-    checkCommandNames prog 4 prop
+    checkCommandNames prog numberOfConstructors prop
+  where
+  numberOfConstructors = 4
 
 prop_referencesParallel :: Problem -> Property
 prop_referencesParallel prb = monadicParallel (sm prb) $ \prog -> do

@@ -46,16 +46,15 @@ import           Control.Concurrent.Async.Lifted
 import           Control.Monad
                    (replicateM_)
 import           Control.Monad.IO.Class
-                   (MonadIO, liftIO)
+                   (liftIO)
 import           Control.Monad.Logger
-                   (runNoLoggingT)
+                   (NoLoggingT, runNoLoggingT)
 import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
-import           Data.Aeson
-                   (FromJSON, ToJSON, object, parseJSON, toJSON,
-                   withObject, (.:), (.=))
+import           Control.Monad.Trans.Resource
+                   (ResourceT)
 import           Data.Char
                    (isPrint)
 import           Data.Functor.Classes
@@ -68,9 +67,9 @@ import           Data.Text
                    (Text)
 import qualified Data.Text                       as T
 import           Database.Persist.Sqlite
-                   (ConnectionPool, Key, createSqlitePool, delete, get,
-                   insert, runMigration, runSqlPersistMPool,
-                   runSqlPool, update, (+=.))
+                   (ConnectionPool, Key, SqlBackend, createSqlitePool,
+                   delete, get, insert, liftSqlPersistMPool,
+                   runMigration, runSqlPool, update, (+=.))
 import           Database.Persist.TH
                    (mkMigrate, mkPersist, persistLowerCase, share,
                    sqlSettings)
@@ -83,6 +82,8 @@ import           Servant
 import           Servant.Client
                    (BaseUrl(..), ClientEnv(..), ClientM, Scheme(Http),
                    client, runClientM)
+import           Servant.Server
+                   (Handler)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
                    frequency, listOf, property, shrink, suchThat,
@@ -98,27 +99,15 @@ import           Test.StateMachine
 
 -- Our webserver deals with users that have a name and an age. The
 -- following is the Persistent library's way of creating the datatype
--- and corresponding database table.
+-- and corresponding database table. The "json" keyword also makes it
+-- possible to (un)marshall the datatype into JSON.
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-User
+User json
   name Text
   age  Int
   deriving Eq Read Show
 |]
-
--- The webserver will also need to (un)marshall the datatype into JSON.
-
-instance FromJSON User where
-  parseJSON = withObject "User" $ \ v ->
-    User <$> v .: "name"
-         <*> v .: "age"
-
-instance ToJSON User where
-  toJSON (User name age) =
-    object [ "name" .= name
-           , "age"  .= age
-           ]
 
 -- For testing we will also need to generate arbitrary users.
 
@@ -158,32 +147,32 @@ server :: ConnectionPool -> Server Api
 server pool =
   userAdd :<|> userGet :<|> userBirthday :<|> userDelete :<|> health
   where
-  userAdd :: MonadIO io => User -> io (Key User)
-  userAdd newUser = liftIO $ runSqlPersistMPool (insert newUser) pool
+  userAdd :: User -> Handler (Key User)
+  userAdd newUser = sql (insert newUser)
 
-  userGet :: MonadIO io => Key User -> io (Maybe User)
-  userGet key = liftIO $ runSqlPersistMPool (get key) pool
+  userGet :: Key User -> Handler (Maybe User)
+  userGet key = sql (get key)
 
-  userBirthday :: MonadIO io => Key User -> io ()
-  userBirthday key = liftIO $
-    runSqlPersistMPool (update key [UserAge +=. 1]) pool
+  userBirthday :: Key User -> Handler ()
+  userBirthday key = sql (update key [UserAge +=. 1])
 
-  userDelete :: MonadIO io => Key User -> io ()
-  userDelete key = liftIO $ runSqlPersistMPool (delete key) pool
+  userDelete :: Key User -> Handler ()
+  userDelete key = sql (delete key)
 
-  health :: MonadIO io => io ()
+  health :: Handler ()
   health = return ()
 
+  sql :: ReaderT SqlBackend (NoLoggingT (ResourceT IO)) a -> Handler a
+  sql q = liftSqlPersistMPool q pool
+
 app :: ConnectionPool -> Application
-app pool = serve api $ server pool
+app pool = serve api (server pool)
 
 mkApp :: FilePath -> IO Application
 mkApp sqliteFile = do
-  pool <- runNoLoggingT $ do
-    createSqlitePool (cs sqliteFile) 1
-
+  pool <- runNoLoggingT (createSqlitePool (cs sqliteFile) 1)
   runSqlPool (runMigration migrateAll) pool
-  return $ app pool
+  return (app pool)
 
 runServer :: FilePath -> Warp.Port -> IO ()
 runServer sqliteFile port = Warp.run port =<< mkApp sqliteFile
@@ -257,7 +246,7 @@ transitions (Model m) (PostUser   user) key = Model (m ++ [(Reference key, user)
 transitions m         (GetUser    _)    _   = m
 transitions (Model m) (IncAgeUser key)  _   = case lookup key m of
   Nothing              -> Model m
-  Just (User user age) -> Model (updateL key (User user (age + 1)) m)
+  Just (User user age) -> Model (updateL key (User user (age + 2)) m)
   where
   updateL :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
   updateL x y xys = (x, y) : filter ((/= x) . fst) xys
@@ -354,22 +343,22 @@ sm port = StateMachine
   postconditions initModel semantics (runner port)
 
 prop_crudWebserverDb :: Property
-prop_crudWebserverDb = monadicSequential (sm port) $ \prog -> do
-  pid                 <- run (setup "sqlite.db" port)
-  (hist, model, prop) <- runCommands (sm port) prog
-  run (cancel pid)
-  prettyCommands prog hist model $
-    checkCommandNames prog 4 prop
+prop_crudWebserverDb =
+  bracketP (setup "sqlite.db" port) cancel $ \_ ->
+    monadicSequential (sm port) $ \prog -> do
+      (hist, model, prop) <- runCommands (sm port) prog
+      prettyCommands prog hist model $
+        checkCommandNames prog 4 prop
   where
   port = 8081
 
 prop_crudWebserverDbParallel :: Property
-prop_crudWebserverDbParallel = monadicParallel (sm port) $ \prog -> do
-  pid          <- run (setup "sqlite.parallel.db" port)
-  replicateM_ 10 $ do
-    (hist, prop) <- runParallelCommands (sm port) prog
-    prettyParallelCommands prog hist prop
-  run (cancel pid)
+prop_crudWebserverDbParallel =
+  bracketP (setup "sqlite-parallel.db" port) cancel $ \_ ->
+    monadicParallel (sm port) $ \prog -> do
+      replicateM_ 10 $ do
+        (hist, prop) <- runParallelCommands (sm port) prog
+        prettyParallelCommands prog hist prop
   where
   port = 8082
 
