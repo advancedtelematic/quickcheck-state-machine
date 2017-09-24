@@ -90,8 +90,6 @@ import           Test.QuickCheck
                    (===))
 import           Test.QuickCheck.Instances
                    ()
-import           Test.QuickCheck.Monadic
-                   (run)
 
 import           Test.StateMachine
 

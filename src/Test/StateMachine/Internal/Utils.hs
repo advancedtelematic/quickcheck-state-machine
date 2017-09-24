@@ -52,6 +52,14 @@ bracketP :: IO a -> (a -> IO b) -> (a -> Property) -> Property
 bracketP up down prop = ioProperty $
   bracketOnError up down (return . prop)
 
+-- | A property that tests @prop@ repeatedly @n@ times, failing as soon as any
+--   of the tests of @prop@ fails.
+alwaysP :: Int -> Property -> Property
+alwaysP n prop
+  | n <= 0    = error "alwaysP: expected positive integer."
+  | n == 1    = prop
+  | otherwise = prop .&&. alwaysP (n - 1) prop
+
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.
 shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
