@@ -414,10 +414,41 @@ we can improve it on the issue tracker!
   * The use of state machines to model and verify properties about programs is
     quite well-established, as witnessed by several books on the subject:
 
-      - [Specifying Systems](https://www.microsoft.com/en-us/research/publication/specifying-systems-the-tla-language-and-tools-for-hardware-and-software-engineers/):
-        The TLA+ Language and Tools for Hardware and Software Engineers;
-      - [Modeling in Event-B](http://www.event-b.org/abook.html): System and
-        Software Engineering;
+      - [Specifying
+        Systems](https://www.microsoft.com/en-us/research/publication/specifying-systems-the-tla-language-and-tools-for-hardware-and-software-engineers/):
+        The TLA+ Language and Tools for Hardware and Software Engineers.
+        Parts of this book are also presented by the author, Leslie
+        Lamport, in the following video
+        [course](https://lamport.azurewebsites.net/video/videos.html);
+
+      - [Modeling in Event-B](http://www.event-b.org/abook.html): System
+        and Software Engineering. Parts of this book are covered in the
+        following (video) course given at Microsoft Research by the
+        author, Jean-Raymond Abrial, himself:
+
+          + [Lecture 1](https://www.youtube.com/watch?v=2GP1pJINVT4):
+            introduction to modeling and Event-B (chapter 1 of the
+            book) and start of "controlling cars on bridge" example
+            (chapter 2);
+
+          + [Lecture 2](https://www.youtube.com/watch?v=M8nvVaZ74wA):
+            refining the "controlling cars on a bridge" example
+            (sections 2.6 and 2.7);
+
+          + [Lecture 3](https://www.youtube.com/watch?v=Y5OUtq8cdV8):
+            design patterns and the "mechanical press controller"
+            example (chapter 3);
+
+          + [Lecture 4](https://www.youtube.com/watch?v=ku-lfjxM4WI):
+            sorting algorithm example (chapter 15);
+
+          + [Lecture 5](https://www.youtube.com/watch?v=C0tpgPOKAyg):
+            designing sequential programs (chapter 15);
+
+          + [Lecture 6](https://www.youtube.com/watch?v=i-GKHZAWWjU):
+            status report of the hypervisor that Microsoft Research are
+            developing using Event-B.
+
       - [Abstract State Machines](http://www.di.unipi.it/~boerger/AsmBook/): A
         Method for High-Level System Design and Analysis.
 
