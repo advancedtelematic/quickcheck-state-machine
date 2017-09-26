@@ -34,6 +34,7 @@ library
                      , Test.StateMachine.Types.HFunctor.TH
                      , Test.StateMachine.Types.History
                      , Test.StateMachine.Types.References
+                     , Test.StateMachine.Z
   other-modules:       Test.StateMachine.Utils
   build-depends:       ansi-wl-pprint (>=0.6.7.3 && <0.7)
                      , async
