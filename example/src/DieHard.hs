@@ -26,8 +26,6 @@ module DieHard
   , prop_dieHard
   ) where
 
-import           Control.Monad.Identity
-                   (Identity, runIdentity)
 import           Data.Functor.Classes
                    (Show1)
 import           Test.QuickCheck
@@ -107,8 +105,8 @@ postconditions s c r = property (bigJug (transitions s c (Concrete r)) /= 4)
 -- The generator of actions is simple, with equal distribution pick an
 -- action.
 
-gen :: Generator Model Action
-gen _ = elements
+generator :: Generator Model Action
+generator _ = elements
   [ Untyped FillBig
   , Untyped FillSmall
   , Untyped EmptyBig
@@ -119,21 +117,21 @@ gen _ = elements
 
 -- There's nothing to shrink.
 
-shrink1 :: Action v resp -> [Action v resp ]
-shrink1 _ = []
+shrinker :: Action v resp -> [Action v resp ]
+shrinker _ = []
 
 ------------------------------------------------------------------------
 
 -- We are not modeling an actual program here, so there's no semantics
 -- for our actions. We are merely doing model-checking here.
 
-semAction :: Action v resp -> Identity resp
-semAction FillBig      = return ()
-semAction FillSmall    = return ()
-semAction EmptyBig     = return ()
-semAction EmptySmall   = return ()
-semAction SmallIntoBig = return ()
-semAction BigIntoSmall = return ()
+semantics :: Action v resp -> IO resp
+semantics FillBig      = return ()
+semantics FillSmall    = return ()
+semantics EmptyBig     = return ()
+semantics EmptySmall   = return ()
+semantics SmallIntoBig = return ()
+semantics BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
@@ -155,9 +153,20 @@ instance HTraversable Action where
 
 -- Finally we have all the pieces needed to get the sequential property!
 
+-- To make the code fit on a line, we first group all things related to
+-- generation and execution of programs respectively.
+
+gen :: Generation Model Action IO
+gen = Generation generator shrinker preconditions transitions initModel id
+
+exec :: Execution Model Action IO
+exec = Execution preconditions transitions postconditions initModel semantics
+
 prop_dieHard :: Property
-prop_dieHard = forAllProgram gen shrink1 preconditions transitions initModel $
-  runAndCheckProgram preconditions transitions postconditions initModel semAction runIdentity
+prop_dieHard = monadicSequential' gen $ \prog -> do
+  (hist, model, prop) <- runProgram exec prog
+  prettyCommands prog hist model $
+    checkCommandNames prog 4 prop
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --

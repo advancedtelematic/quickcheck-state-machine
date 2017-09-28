@@ -1,3 +1,4 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
@@ -25,11 +26,13 @@ module Test.StateMachine
     Program
   , programLength
   , forAllProgram
-  , runAndCheckProgram
-  , runAndCheckProgram'
   , StateMachine(..)
+  , Generation(..)
+  , Execution(..)
   , monadicSequential
+  , monadicSequential'
   , runCommands
+  , runProgram
   , prettyCommands
   , commandNames
   , checkCommandNames
@@ -38,9 +41,6 @@ module Test.StateMachine
   , ParallelProgram
   , forAllParallelProgram
   , History
-  , runParallelProgram
-  , runParallelProgram'
-  , checkParallelProgram
   , monadicParallel
   , runParallelCommands
   , runParallelCommands'
@@ -53,6 +53,9 @@ module Test.StateMachine
     -- * Rexport
   , bracketP
   , Test.QuickCheck.quickCheck
+
+    -- * Deprecated functions to be removed in future release.
+  , module Test.StateMachine.Deprecated
   ) where
 
 import           Control.Monad
@@ -60,7 +63,7 @@ import           Control.Monad
 import           Control.Monad.IO.Class
                    (MonadIO)
 import           Control.Monad.State
-                   (evalStateT, replicateM, replicateM_)
+                   (evalStateT, replicateM)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl)
 import           Data.Dynamic
@@ -72,17 +75,18 @@ import           Data.Monoid
                    ((<>))
 import qualified Test.QuickCheck                              as Test.QuickCheck
 import           Test.QuickCheck.Monadic
-                   (PropertyM, monadic, monadicIO, run)
+                   (PropertyM, monadic, run)
 import           Test.QuickCheck.Property
                    (Property, collect, counterexample, cover,
                    forAllShrink, ioProperty, property, (.&&.))
 
+import           Test.StateMachine.Deprecated
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
-                   (liftProperty, whenFailM, bracketP)
+                   (bracketP, whenFailM)
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
@@ -112,7 +116,24 @@ data StateMachine model act m = StateMachine
   , postcondition' :: Postcondition model act
   , model'         :: InitialModel model
   , semantics'     :: Semantics act m
-  , runner'        :: m Property -> IO Property
+  , runner'        :: Runner m
+  }
+
+data Generation model act m = Generation
+  { generator'    :: Generator    model act
+  , shrinker'     :: Shrinker           act
+  , precondition' :: Precondition model act
+  , transition'   :: Transition   model act
+  , model'        :: InitialModel model
+  , runner'       :: Runner       m
+  }
+
+data Execution model act m = Execution
+  { precondition'  :: Precondition  model act
+  , transition'    :: Transition    model act
+  , postcondition' :: Postcondition model act
+  , model'         :: InitialModel  model
+  , semantics'     :: Semantics           act m
   }
 
 monadicSequential
@@ -123,6 +144,18 @@ monadicSequential
   -> (Program act -> PropertyM m a)
   -> Property
 monadicSequential StateMachine {..} predicate
+  = forAllProgram generator' shrinker' precondition' transition' model'
+  $ monadic (ioProperty . runner')
+  . predicate
+
+monadicSequential'
+  :: Monad m
+  => Show (Untyped act)
+  => HFoldable act
+  => Generation model act m
+  -> (Program act -> PropertyM m a)
+  -> Property
+monadicSequential' Generation{..} predicate
   = forAllProgram generator' shrinker' precondition' transition' model'
   $ monadic (ioProperty . runner')
   . predicate
@@ -146,6 +179,61 @@ runCommands'
   -> Program act
   -> m (History act, model Concrete, Property)
 runCommands' StateMachine {..}
+  = fmap (\(hist, _, cmodel, _, prop) -> (hist, cmodel, prop))
+  . foldM go (mempty, model', model', emptyEnvironment, property True)
+  . unProgram
+  where
+  go :: (History act, model Symbolic, model Concrete, Environment, Property)
+     -> Internal act
+     -> m (History act, model Symbolic, model Concrete, Environment, Property)
+  go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) = do
+    if not (precondition' smodel act)
+    then
+      return ( hist
+             , smodel
+             , cmodel
+             , env
+             , counterexample ("precondition failed for: " ++ show (Untyped act)) prop
+             )
+    else do
+      let cact = hfmap (fromSymbolic env) act
+      resp <- semantics' cact
+      let cresp = Concrete resp
+          hist' = History
+            [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
+            , ResponseEvent (toDyn cresp) (show resp) (Pid 0)
+            ]
+      return ( hist <> hist'
+             , transition' smodel act sym
+             , transition' cmodel cact cresp
+             , insertConcrete sym cresp env
+             , prop .&&. postcondition' cmodel cact resp
+             )
+    where
+    fromSymbolic :: Environment -> Symbolic v ->  Concrete v
+    fromSymbolic env' sym' = case reifyEnvironment env' sym' of
+      Left  err -> error (show err)
+      Right con -> con
+
+runProgram
+  :: forall m act model
+  .  Monad m
+  => Show (Untyped act)
+  => HFunctor act
+  => Execution model act m
+  -> Program act
+  -> PropertyM m (History act, model Concrete, Property)
+runProgram exec = run . runProgram' exec
+
+runProgram'
+  :: forall m act model
+  .  Monad m
+  => Show (Untyped act)
+  => HFunctor act
+  => Execution model act m
+  -> Program act
+  -> m (History act, model Concrete, Property)
+runProgram' Execution{..}
   = fmap (\(hist, _, cmodel, _, prop) -> (hist, cmodel, prop))
   . foldM go (mempty, model', model', emptyEnvironment, property True)
   . unProgram
@@ -206,48 +294,6 @@ checkCommandNames prog numOfConstructors
   where
   names = commandNames prog
 
--- | Run a sequential program and check if your model agrees with your
---   semantics.
-runAndCheckProgram
-  :: Monad m
-  => HFunctor act
-  => Precondition model act
-  -> Transition model act
-  -> Postcondition model act
-  -> InitialModel model
-  -> Semantics act m
-  -> (m Property -> Property)  -- ^ Runner
-  -> Program act
-  -> Property
-runAndCheckProgram precond trans postcond m sem runner =
-  runAndCheckProgram' precond trans postcond m sem (return ()) (const runner) (const (return ()))
-
--- | Same as above, except with the possibility to setup some resource
---   for the runner to use. The resource could be a database connection
---   for example.
-runAndCheckProgram'
-  :: Monad m
-  => HFunctor act
-  => Precondition model act
-  -> Transition model act
-  -> Postcondition model act
-  -> InitialModel model
-  -> Semantics act m
-  -> IO setup                           -- ^ Setup a resource.
-  -> (setup -> m Property -> Property)
-  -> (setup -> IO ())                   -- ^ Tear down the resource.
-  -> Program act
-  -> Property
-runAndCheckProgram' precond trans postcond m sem setup runner cleanup acts =
-  monadic (ioProperty . runnerWithSetup)
-    (checkProgram precond trans postcond m m sem acts)
-  where
-  runnerWithSetup mp = do
-    s <- setup
-    let prop = runner s (evalStateT mp emptyEnvironment)
-    cleanup s
-    return prop
-
 ------------------------------------------------------------------------
 
 -- | This function is like a 'forAllShrink' for parallel programs.
@@ -287,7 +333,7 @@ runParallelCommands
   -> ParallelProgram act
   -> PropertyM m (History act, Property)
 runParallelCommands StateMachine {..} prog = do
-  hist <- run (executeParallelProgram' semantics' prog)
+  hist <- run (executeParallelProgram semantics' prog)
   return (hist, linearise transition' postcondition' model' hist)
 
 runParallelCommands'
@@ -299,7 +345,7 @@ runParallelCommands'
   -> PropertyM m [(History act, Property)]
 runParallelCommands' StateMachine {..} prog =
   replicateM 10 $ do
-    hist <- run (executeParallelProgram' semantics' prog)
+    hist <- run (executeParallelProgram semantics' prog)
     return (hist, linearise transition' postcondition' model' hist)
 
 prettyParallelCommands
@@ -317,30 +363,3 @@ prettyParallelCommands' prog
   = mapM_ (\(hist, prop) ->
               print (toBoxDrawings' prog hist) `whenFailM` prop)
 
--- | Run a parallel program and collect the history of the execution.
-runParallelProgram
-  :: Show (Untyped act)
-  => HTraversable act
-  => Semantics act IO
-  -> ParallelProgram act
-  -> (History act -> Property) -- ^ Predicate that should hold for the
-                               --   execution history.
-  -> Property
-runParallelProgram sem = runParallelProgram' (return ()) (const sem) (const (return ()))
-
--- | Same as above, but with the possibility of setting up some resource.
-runParallelProgram'
-  :: Show (Untyped act)
-  => HTraversable act
-  => IO setup                     -- ^ Setup a resource.
-  -> (setup -> Semantics act IO)
-  -> (setup -> IO ())             -- ^ Tear down the resource.
-  -> ParallelProgram act
-  -> (History act -> Property)
-  -> Property
-runParallelProgram' setup sem clean fork checkhistory = monadicIO $ do
-  res <- run setup
-  replicateM_ 10 $ do
-    hist <- run (executeParallelProgram (sem res) fork)
-    run (clean res)
-    liftProperty (checkhistory hist)

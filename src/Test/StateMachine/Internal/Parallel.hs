@@ -26,8 +26,6 @@ module Test.StateMachine.Internal.Parallel
   ( generateParallelProgram
   , shrinkParallelProgram
   , executeParallelProgram
-  , executeParallelProgram'
-  , checkParallelProgram
   , linearise
   , History(..)
   , HistoryEvent(..)
@@ -37,8 +35,6 @@ module Test.StateMachine.Internal.Parallel
   , ppHistory
   ) where
 
-import           Control.Concurrent.Async
-                   (concurrently_)
 import           Control.Concurrent.Async.Lifted
                    (concurrently)
 import           Control.Concurrent.Lifted
@@ -65,11 +61,8 @@ import           Data.Tree
                    (Tree(Node))
 import           Data.Typeable
                    (Typeable)
-import           System.Random
-                   (randomRIO)
 import           Test.QuickCheck
-                   (Gen, Property, counterexample, property,
-                   shrinkList, (.&&.))
+                   (Gen, Property, property, shrinkList, (.&&.))
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 
@@ -131,7 +124,10 @@ shrinkParallelProgram shrinker precondition transition model
       r'                    = evalState (filterProgram r) (model', scope)
     in Fork l' p' r'
 
-executeParallelProgram'
+-- | Run a parallel program, by first executing the prefix sequentially
+--   and then the suffixes in parallel, and return the history (or
+--   trace) of the execution.
+executeParallelProgram
   :: forall m act
   .  MonadBaseControl IO m
   => HTraversable act
@@ -139,7 +135,7 @@ executeParallelProgram'
   => Semantics act m
   -> ParallelProgram act
   -> m (History act)
-executeParallelProgram' semantics = liftSemFork . unParallelProgram
+executeParallelProgram semantics = liftSemFork . unParallelProgram
   where
   liftSemFork
     :: HTraversable act
@@ -181,75 +177,6 @@ executeParallelProgram' semantics = liftSemFork . unParallelProgram
     threadDelay 10
     liftBaseWith $ const $ atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
 
--- | Run a parallel program, by first executing the prefix sequentially
---   and then the suffixes in parallel, and return the history (or
---   trace) of the execution.
-executeParallelProgram
-  :: forall act. HTraversable act
-  => Show (Untyped act)
-  => Semantics act IO
-  -> ParallelProgram act
-  -> IO (History act)
-executeParallelProgram semantics = liftSemFork . unParallelProgram
-  where
-  liftSemFork
-    :: HTraversable act
-    => Show (Untyped act)
-    => Fork (Program act)
-    -> IO (History act)
-  liftSemFork (Fork left prefix right) = do
-    hchan <- newTChanIO
-    env   <- execStateT (runMany hchan (Pid 0) (unProgram prefix)) emptyEnvironment
-    concurrently_
-      (evalStateT (runMany hchan (Pid 1) (unProgram left))  env)
-      (evalStateT (runMany hchan (Pid 2) (unProgram right)) env)
-    History <$> getChanContents hchan
-    where
-    getChanContents :: forall a. TChan a -> IO [a]
-    getChanContents chan = reverse <$> atomically (go [])
-      where
-      go :: [a] -> STM [a]
-      go acc = do
-        mx <- tryReadTChan chan
-        case mx of
-          Just x  -> go $ x : acc
-          Nothing -> return acc
-
-  runMany
-    :: HTraversable act
-    => Show (Untyped act)
-    => TChan (HistoryEvent (UntypedConcrete act))
-    -> Pid
-    -> [Internal act]
-    -> StateT Environment IO ()
-  runMany hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
-    env <- get
-    let cact = either (error . show) id (reify env act)
-    lift $ atomically $ writeTChan hchan $
-      InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
-    resp <- lift (semantics cact)
-    modify (insertConcrete sym (Concrete resp))
-    lift $ do
-      threadDelay =<< randomRIO (0, 20)
-      atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
-
--- | Check if a history from a parallel execution can be linearised.
-checkParallelProgram
-  :: HFoldable act
-  => Transition    model act
-  -> Postcondition model act
-  -> InitialModel model
-  -> ParallelProgram act
-  -> History act             -- ^ History to be checked.
-  -> Property
-checkParallelProgram transition postcondition model prog history
-  = counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars history))
-  $ linearise transition postcondition model history
-  where
-  vars xs    = [ getUsedVars x | Internal x _ <- xs]
-  Fork l p r = fmap (S.unions . vars . unProgram) $ unParallelProgram prog
-  allVars    = S.unions [l, p, r]
-
 ------------------------------------------------------------------------
 
 -- The code below is used by checkParallelProgram.
@@ -264,8 +191,8 @@ ppHistory :: History act -> String
 ppHistory = foldr go "" . unHistory
   where
   go :: HistoryEvent (UntypedConcrete act) -> String -> String
-  go (InvocationEvent _ str _ _) ih = "> " ++ str ++ "\n" ++ ih
-  go (ResponseEvent   _ str   _) ih = "< " ++ str ++ "\n" ++ ih
+  go (InvocationEvent _ str _ _) ih = " " ++ str ++ " ==> " ++ ih
+  go (ResponseEvent   _ str   _) ih =        str ++ "\n"    ++ ih
 
 type History' act = [HistoryEvent (UntypedConcrete act)]
 

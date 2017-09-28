@@ -27,9 +27,10 @@ module Test.StateMachine.Types
   , Shrinker
   , Precondition
   , Transition
-  , Semantics
   , Postcondition
   , InitialModel
+  , Semantics
+  , Runner
 
   -- * Higher-order functors, foldables and traversables
   , module Test.StateMachine.Types.HFunctor
@@ -81,9 +82,6 @@ type Precondition model act = forall resp.
 type Transition model act = forall resp v. Ord1 v =>
   model v -> act v resp -> v resp -> model v
 
--- | When we execute our actions we have access to concrete references.
-type Semantics act m = forall resp. act Concrete resp -> m resp
-
 -- | Post-conditions are checked after the actions have been executed
 --   and we got a response.
 type Postcondition model act = forall resp.
@@ -93,3 +91,9 @@ type Postcondition model act = forall resp.
 --   so that it can be used both in the pre- and the post-condition
 --   check.
 type InitialModel m = forall (v :: * -> *). m v
+
+-- | When we execute our actions we have access to concrete references.
+type Semantics act m = forall resp. act Concrete resp -> m resp
+
+-- | How to run the monad used by the semantics.
+type Runner m = m Property -> IO Property

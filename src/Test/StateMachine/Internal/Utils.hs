@@ -18,6 +18,7 @@ module Test.StateMachine.Internal.Utils
   , liftProperty
   , whenFailM
   , bracketP
+  , alwaysP
   , shrinkPropertyHelper
   , shrinkPropertyHelper'
   , shrinkPair

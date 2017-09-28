@@ -1,10 +1,12 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE TypeOperators         #-}
 
 ------------------------------------------------------------------------
 -- |
@@ -36,22 +38,24 @@ module CrudWebserverFile
   ) where
 
 import           Control.Concurrent.Async
-                   (async, poll)
+                   (Async, async, cancel, poll)
 import           Control.Monad.IO.Class
                    (liftIO)
 import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
 import           Data.Functor.Classes
                    (Show1)
 import           Data.Map
                    (Map)
-import qualified Data.Map                  as Map
+import qualified Data.Map                    as Map
 import           Data.Text
                    (Text)
-import qualified Data.Text.IO              as Text
+import qualified Data.Text.IO                as Text
 import           Network.HTTP.Client
-                   (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp  as Warp
+                   (defaultManagerSettings, newManager)
+import qualified Network.Wai.Handler.Warp    as Warp
 import           Servant
                    ((:>), Capture, Delete, Get, JSON, Put, ReqBody)
 import           Servant
@@ -61,10 +65,10 @@ import           Servant.Client
                    client, runClientM)
 import           Servant.Server
                    (Server, serve)
-import qualified System.Directory          as Directory
+import qualified System.Directory            as Directory
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
-                   ioProperty, shrink, (===))
+                   shrink, (===))
 import           Test.QuickCheck.Instances
                    ()
 
@@ -170,8 +174,8 @@ postconditions (Model m) act resp =
 genFilePath :: Gen FilePath
 genFilePath = elements ["apa.txt", "bepa.txt"]
 
-gen :: Generator Model Action
-gen (Model m)
+generator :: Generator Model Action
+generator (Model m)
   | Map.null m = Untyped <$> (PutFile <$> genFilePath <*> arbitrary)
   | otherwise  = frequency
     [ (3, Untyped <$> (PutFile <$> genFilePath <*> arbitrary))
@@ -179,10 +183,10 @@ gen (Model m)
     , (1, Untyped . DeleteFile <$> elements (Map.keys m))
     ]
 
-shrink1 :: Action v resp -> [Action v resp]
-shrink1 (PutFile file contents) =
+shrinker :: Action v resp -> [Action v resp]
+shrinker (PutFile file contents) =
   [ PutFile file contents' | contents' <- shrink contents ]
-shrink1 _                       = []
+shrinker _                       = []
 
 ------------------------------------------------------------------------
 
@@ -212,38 +216,41 @@ instance Show (Untyped Action) where
 
 ------------------------------------------------------------------------
 
-prop_crudWebserverFile :: Property
-prop_crudWebserverFile =
-  forAllProgram gen shrink1 preconditions transitions initModel $
-    runAndCheckProgram' preconditions transitions postconditions
-                        initModel semantics setup runner cleanup
-
-prop_crudWebserverFileParallel :: Property
-prop_crudWebserverFileParallel =
-  forAllParallelProgram gen shrink1 preconditions transitions initModel $
-    \parallel -> runParallelProgram' setup sem cleanup parallel $
-      checkParallelProgram transitions postconditions initModel parallel
-  where
-  sem mgr act = runReaderT (semantics act) (ClientEnv mgr burl)
-
-------------------------------------------------------------------------
-
 burl :: BaseUrl
 burl = BaseUrl Http "localhost" 8080 ""
 
-runner :: Manager -> ReaderT ClientEnv IO Property -> Property
-runner mgr = ioProperty . flip runReaderT (ClientEnv mgr burl)
-
-setup :: IO Manager
-setup = do
-  mgr <- newManager defaultManagerSettings
-  a   <- async runServer
-  res <- poll a
+setup :: MonadBaseControl IO m => m (Async ())
+setup = liftBaseWith $ \_ -> do
+  pid <- async runServer
+  res <- poll pid
   case res of
     Nothing         -> return ()
     Just (Left err) -> error (show err)
     Just (Right _)  -> error "setup: impossible, server shouldn't return."
-  return mgr
+  return pid
 
-cleanup :: Manager -> IO ()
-cleanup _ = return ()
+runner :: ReaderT ClientEnv IO Property -> IO Property
+runner p = do
+  mgr <- newManager defaultManagerSettings
+  runReaderT p (ClientEnv mgr burl)
+
+------------------------------------------------------------------------
+
+sm :: StateMachine Model Action (ReaderT ClientEnv IO)
+sm = StateMachine
+  generator shrinker preconditions transitions
+  postconditions initModel semantics runner
+
+prop_crudWebserverFile :: Property
+prop_crudWebserverFile =
+  bracketP setup cancel $ \_ ->
+    monadicSequential sm $ \prog -> do
+      (hist, model, prop) <- runCommands sm prog
+      prettyCommands prog hist model $
+        checkCommandNames prog 3 prop
+
+prop_crudWebserverFileParallel :: Property
+prop_crudWebserverFileParallel =
+  bracketP setup cancel $ \_ ->
+    monadicParallel sm $ \prog ->
+      prettyParallelCommands' prog =<< runParallelCommands' sm prog

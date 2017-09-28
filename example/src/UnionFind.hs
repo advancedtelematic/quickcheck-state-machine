@@ -28,8 +28,7 @@ import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
-                   frequency, ioProperty, property, shrink, (.&&.),
-                   (.||.), (===))
+                   frequency, property, shrink, (.&&.), (.||.), (===))
 
 import           Test.StateMachine
 
@@ -154,8 +153,8 @@ postconditions m act resp = case act of
 
 ------------------------------------------------------------------------
 
-gen :: (Arbitrary a, Typeable a) => Generator (Model a) (Action a)
-gen (Model m)
+generator :: (Arbitrary a, Typeable a) => Generator (Model a) (Action a)
+generator (Model m)
   | null m    = Untyped . New <$> arbitrary
   | otherwise = frequency
       [ (1, Untyped . New <$> arbitrary)
@@ -165,9 +164,9 @@ gen (Model m)
     where
     ref = elements . map fst
 
-shrink1 :: Arbitrary a => Action a v resp -> [Action a v resp]
-shrink1 (New x) = [ New x' | x' <- shrink x ]
-shrink1 _       = []
+shrinker :: Arbitrary a => Action a v resp -> [Action a v resp]
+shrinker (New x) = [ New x' | x' <- shrink x ]
+shrinker _       = []
 
 ------------------------------------------------------------------------
 
@@ -191,8 +190,14 @@ instance Show a => Show (Untyped (Action a)) where
 
 ------------------------------------------------------------------------
 
+gen :: Generation (Model Int) (Action Int) IO
+gen = Generation generator shrinker preconditions transitions initModel id
+
+exec :: Execution (Model Int) (Action Int) IO
+exec = Execution preconditions transitions postconditions initModel semantics
+
 prop_unionFind :: Property
-prop_unionFind = forAllProgram gen shrink1 preconditions transitions model $
-  runAndCheckProgram preconditions transitions postconditions model semantics ioProperty
-  where
-    model = initModel :: Model Int v
+prop_unionFind = monadicSequential' gen $ \prog -> do
+  (hist, model, prop) <- runProgram exec prog
+  prettyCommands prog hist model $
+    checkCommandNames prog 4 prop
