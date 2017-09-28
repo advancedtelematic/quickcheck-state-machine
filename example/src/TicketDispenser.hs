@@ -183,7 +183,7 @@ prop_ticketDispenserParallel :: SharedExclusive -> Property
 prop_ticketDispenserParallel se =
   bracketP setup cleanup $ \files ->
     monadicParallel (sm se files) $ \prog ->
-      prettyParallelProgram prog =<< runParallelProgram' 2000 (sm se files) prog
+      prettyParallelProgram prog =<< runParallelProgram' 200 (sm se files) prog
   where
 
   -- In the parallel case we create a temporary files for the database and

@@ -199,4 +199,4 @@ prop_unionFind :: Property
 prop_unionFind = monadicSequential sm $ \prog -> do
   (hist, model, prop) <- runProgram sm prog
   prettyProgram prog hist model $
-    checkActionNames prog 4 prop
+    checkActionNames prog 3 prop

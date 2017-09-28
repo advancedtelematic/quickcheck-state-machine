@@ -18,7 +18,8 @@ spec = do
 
   describe "Parallel property" $ do
 
-    modifyMaxSuccess (const 10) $
+    modifyMaxSuccess (const 10) $ do
+
       it "`prop_ticketDispenserParallelOK`: works with exclusive file locks"
         prop_ticketDispenserParallelOK
 

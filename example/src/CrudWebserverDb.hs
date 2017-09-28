@@ -242,7 +242,7 @@ transitions (Model m) (PostUser   user) key = Model (m ++ [(Reference key, user)
 transitions m         (GetUser    _)    _   = m
 transitions (Model m) (IncAgeUser key)  _   = case lookup key m of
   Nothing              -> Model m
-  Just (User user age) -> Model (updateL key (User user (age + 2)) m)
+  Just (User user age) -> Model (updateL key (User user (age + 1)) m)
   where
   updateL :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
   updateL x y xys = (x, y) : filter ((/= x) . fst) xys
