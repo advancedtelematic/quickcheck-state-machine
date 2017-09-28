@@ -1,4 +1,3 @@
-{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -27,12 +26,8 @@ module Test.StateMachine.Internal.Parallel
   , shrinkParallelProgram
   , executeParallelProgram
   , linearise
-  , History(..)
-  , HistoryEvent(..)
-  , UntypedConcrete(..)
   , toBoxDrawings
   , toBoxDrawings'
-  , ppHistory
   ) where
 
 import           Control.Concurrent.Async.Lifted
@@ -51,7 +46,7 @@ import           Control.Monad.State
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Dynamic
-                   (Dynamic, toDyn)
+                   (toDyn)
 import           Data.List
                    (partition)
 import           Data.Set
@@ -59,8 +54,6 @@ import           Data.Set
 import qualified Data.Set                                     as S
 import           Data.Tree
                    (Tree(Node))
-import           Data.Typeable
-                   (Typeable)
 import           Test.QuickCheck
                    (Gen, Property, property, shrinkList, (.&&.))
 import           Text.PrettyPrint.ANSI.Leijen
@@ -71,7 +64,9 @@ import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Utils.BoxDrawer
-import           Test.StateMachine.Types
+import           Test.StateMachine.Types                      hiding
+                   (StateMachine(..))
+import           Test.StateMachine.Types.History
 
 ------------------------------------------------------------------------
 
@@ -179,49 +174,6 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
 
 ------------------------------------------------------------------------
 
--- The code below is used by checkParallelProgram.
-
--- | A history is a trace of invocations and responses from running a
---   parallel program.
-newtype History act = History
-  { unHistory :: History' act }
-  deriving Monoid
-
-ppHistory :: History act -> String
-ppHistory = foldr go "" . unHistory
-  where
-  go :: HistoryEvent (UntypedConcrete act) -> String -> String
-  go (InvocationEvent _ str _ _) ih = " " ++ str ++ " ==> " ++ ih
-  go (ResponseEvent   _ str   _) ih =        str ++ "\n"    ++ ih
-
-type History' act = [HistoryEvent (UntypedConcrete act)]
-
-data UntypedConcrete (act :: (* -> *) -> * -> *) where
-  UntypedConcrete :: (Show resp, Typeable resp) =>
-    act Concrete resp -> UntypedConcrete act
-
-data HistoryEvent act
-  = InvocationEvent act     String Var Pid
-  | ResponseEvent   Dynamic String     Pid
-
-getProcessIdEvent :: HistoryEvent act -> Pid
-getProcessIdEvent (InvocationEvent _ _ _ pid) = pid
-getProcessIdEvent (ResponseEvent   _ _ pid)   = pid
-
-data Operation act = forall resp. Typeable resp =>
-  Operation (act Concrete resp) String (Concrete resp) Pid
-
-takeInvocations :: [HistoryEvent a] -> [HistoryEvent a]
-takeInvocations = takeWhile $ \h -> case h of
-  InvocationEvent {} -> True
-  _                  -> False
-
-findCorrespondingResp :: Pid -> History' act -> [(Dynamic, History' act)]
-findCorrespondingResp _   [] = []
-findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
-findCorrespondingResp pid (e : es) =
-  [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
-
 linearTree :: History' act -> [Tree (Operation act)]
 linearTree [] = []
 linearTree es =
@@ -263,15 +215,17 @@ linearise transition postcondition model0 = go . unHistory
     anyP' _ [] = property True
     anyP' p xs = anyP p xs
 
-toBoxDrawings' :: HFoldable act => ParallelProgram act -> History act -> Doc
-toBoxDrawings' prog = toBoxDrawings allVars
+------------------------------------------------------------------------
+
+toBoxDrawings :: HFoldable act => ParallelProgram act -> History act -> Doc
+toBoxDrawings prog = toBoxDrawings' allVars
   where
   allVars    = S.unions [l, p, r]
   Fork l p r = fmap (S.unions . vars . unProgram) (unParallelProgram prog)
   vars xs    = [ getUsedVars x | Internal x _ <- xs]
 
-toBoxDrawings :: Set Var -> History act -> Doc
-toBoxDrawings knownVars (History h) = exec evT (fmap out <$> Fork l p r)
+toBoxDrawings' :: Set Var -> History act -> Doc
+toBoxDrawings' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
   where
     (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
     (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'

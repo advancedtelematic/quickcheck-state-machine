@@ -190,14 +190,13 @@ instance Show a => Show (Untyped (Action a)) where
 
 ------------------------------------------------------------------------
 
-gen :: Generation (Model Int) (Action Int) IO
-gen = Generation generator shrinker preconditions transitions initModel id
-
-exec :: Execution (Model Int) (Action Int) IO
-exec = Execution preconditions transitions postconditions initModel semantics
+sm :: StateMachine (Model Int) (Action Int) IO
+sm = StateMachine
+  generator shrinker preconditions transitions
+  postconditions initModel semantics id
 
 prop_unionFind :: Property
-prop_unionFind = monadicSequential' gen $ \prog -> do
-  (hist, model, prop) <- runProgram exec prog
-  prettyCommands prog hist model $
-    checkCommandNames prog 4 prop
+prop_unionFind = monadicSequential sm $ \prog -> do
+  (hist, model, prop) <- runProgram sm prog
+  prettyProgram prog hist model $
+    checkActionNames prog 4 prop

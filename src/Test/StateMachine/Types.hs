@@ -23,6 +23,7 @@ module Test.StateMachine.Types
     Untyped(..)
 
     -- * Type aliases
+  , StateMachine(..)
   , Generator
   , Shrinker
   , Precondition
@@ -63,6 +64,17 @@ data Untyped (act :: (* -> *) -> * -> *) where
   Untyped :: (Show resp, Typeable resp) => act Symbolic resp -> Untyped act
 
 ------------------------------------------------------------------------
+
+data StateMachine model act m = StateMachine
+  { generator'     :: Generator model act
+  , shrinker'      :: Shrinker  act
+  , precondition'  :: Precondition model act
+  , transition'    :: Transition   model act
+  , postcondition' :: Postcondition model act
+  , model'         :: InitialModel model
+  , semantics'     :: Semantics act m
+  , runner'        :: Runner m
+  }
 
 -- | When generating actions we have access to a model containing
 --   symbolic references.

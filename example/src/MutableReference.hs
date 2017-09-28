@@ -168,13 +168,12 @@ sm prb = StateMachine
 
 prop_references :: Problem -> Property
 prop_references prb = monadicSequential (sm prb) $ \prog -> do
-  (hist, model, prop) <- runCommands (sm prb) prog
-  prettyCommands prog hist model $
-    checkCommandNames prog numberOfConstructors prop
+  (hist, model, prop) <- runProgram (sm prb) prog
+  prettyProgram prog hist model $
+    checkActionNames prog numberOfConstructors prop
   where
   numberOfConstructors = 4
 
 prop_referencesParallel :: Problem -> Property
 prop_referencesParallel prb = monadicParallel (sm prb) $ \prog -> do
-  hps <- runParallelCommands' (sm prb) prog
-  prettyParallelCommands' prog hps
+  prettyParallelProgram prog =<< runParallelProgram (sm prb) prog

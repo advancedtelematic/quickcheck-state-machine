@@ -156,17 +156,16 @@ instance HTraversable Action where
 -- To make the code fit on a line, we first group all things related to
 -- generation and execution of programs respectively.
 
-gen :: Generation Model Action IO
-gen = Generation generator shrinker preconditions transitions initModel id
-
-exec :: Execution Model Action IO
-exec = Execution preconditions transitions postconditions initModel semantics
+sm :: StateMachine Model Action IO
+sm = StateMachine
+  generator shrinker preconditions transitions
+  postconditions initModel semantics id
 
 prop_dieHard :: Property
-prop_dieHard = monadicSequential' gen $ \prog -> do
-  (hist, model, prop) <- runProgram exec prog
-  prettyCommands prog hist model $
-    checkCommandNames prog 4 prop
+prop_dieHard = monadicSequential sm $ \prog -> do
+  (hist, model, prop) <- runProgram sm prog
+  prettyProgram prog hist model $
+    checkActionNames prog 4 prop
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --

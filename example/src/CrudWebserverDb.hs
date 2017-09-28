@@ -43,8 +43,6 @@ import           Control.Concurrent
                    (threadDelay)
 import           Control.Concurrent.Async.Lifted
                    (Async, async, cancel)
-import           Control.Monad
-                   (replicateM_)
 import           Control.Monad.IO.Class
                    (liftIO)
 import           Control.Monad.Logger
@@ -344,19 +342,17 @@ prop_crudWebserverDb :: Property
 prop_crudWebserverDb =
   bracketP (setup "sqlite.db" port) cancel $ \_ ->
     monadicSequential (sm port) $ \prog -> do
-      (hist, model, prop) <- runCommands (sm port) prog
-      prettyCommands prog hist model $
-        checkCommandNames prog 4 prop
+      (hist, model, prop) <- runProgram (sm port) prog
+      prettyProgram prog hist model $
+        checkActionNames prog 4 prop
   where
   port = 8081
 
 prop_crudWebserverDbParallel :: Property
 prop_crudWebserverDbParallel =
   bracketP (setup "sqlite-parallel.db" port) cancel $ \_ ->
-    monadicParallel (sm port) $ \prog -> do
-      replicateM_ 10 $ do
-        (hist, prop) <- runParallelCommands (sm port) prog
-        prettyParallelCommands prog hist prop
+    monadicParallel (sm port) $ \prog ->
+      prettyParallelProgram prog =<< runParallelProgram (sm port) prog
   where
   port = 8082
 

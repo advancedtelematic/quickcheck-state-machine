@@ -245,12 +245,12 @@ prop_crudWebserverFile :: Property
 prop_crudWebserverFile =
   bracketP setup cancel $ \_ ->
     monadicSequential sm $ \prog -> do
-      (hist, model, prop) <- runCommands sm prog
-      prettyCommands prog hist model $
-        checkCommandNames prog 3 prop
+      (hist, model, prop) <- runProgram sm prog
+      prettyProgram prog hist model $
+        checkActionNames prog 3 prop
 
 prop_crudWebserverFileParallel :: Property
 prop_crudWebserverFileParallel =
   bracketP setup cancel $ \_ ->
     monadicParallel sm $ \prog ->
-      prettyParallelCommands' prog =<< runParallelCommands' sm prog
+      prettyParallelProgram prog =<< runParallelProgram sm prog

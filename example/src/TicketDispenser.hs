@@ -24,8 +24,6 @@ module TicketDispenser
   , prop_ticketDispenserParallelBad
   ) where
 
-import           Control.Monad
-                   (replicateM_)
 import           Data.Char
                    (isSpace)
 import           Data.Dynamic
@@ -170,9 +168,9 @@ sm se files = StateMachine
 
 prop_ticketDispenser :: Property
 prop_ticketDispenser = monadicSequential sm' $ \prog -> do
-  (hist, model, prop) <- runCommands sm' prog
-  prettyCommands prog hist model $
-    checkCommandNames prog 2 prop
+  (hist, model, prop) <- runProgram sm' prog
+  prettyProgram prog hist model $
+    checkActionNames prog 2 prop
   where
   sm' = sm Shared (ticketDb, ticketLock)
     where
@@ -184,10 +182,8 @@ prop_ticketDispenser = monadicSequential sm' $ \prog -> do
 prop_ticketDispenserParallel :: SharedExclusive -> Property
 prop_ticketDispenserParallel se =
   bracketP setup cleanup $ \files ->
-    monadicParallel (sm se files) $ \prog -> do
-      replicateM_ 2000 $ do
-        (hist, prop) <- runParallelCommands (sm se files) prog
-        prettyParallelCommands prog hist prop
+    monadicParallel (sm se files) $ \prog ->
+      prettyParallelProgram prog =<< runParallelProgram' 2000 (sm se files) prog
   where
 
   -- In the parallel case we create a temporary files for the database and
