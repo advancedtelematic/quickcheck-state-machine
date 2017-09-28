@@ -66,7 +66,7 @@ adjust n Top = "┌" ++ replicate (n - 4) '─' ++ "┐"
 adjust n (Start l) = "│ " ++ l ++ replicate (n - length l - 6) ' ' ++ " │"
 adjust n Active = "│" ++ replicate (n - 4) ' ' ++ "│"
 adjust n Deactive = replicate (n - 2) ' '
-adjust n (Ret l) = "│ " ++ replicate (n - 8 - length l) ' ' ++ "⟶ " ++ l ++ " │"
+adjust n (Ret l) = "│ " ++ replicate (n - 8 - length l) ' ' ++ "→ " ++ l ++ " │"
 adjust n Bottom = "└" ++ replicate (n - 4) '─' ++ "┘"
 
 next :: ([Cmd], [Cmd]) -> [String]

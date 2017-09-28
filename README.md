@@ -22,7 +22,7 @@ functionality to Haskell's QuickCheck library.
 
 As a first example, let's implement and test programs using mutable
 references. Our implementation will be using `IORef`s, but let's start with a
-representation of what actions are possible with program using mutable
+representation of what actions are possible with programs using mutable
 references. Our mutable references can be created, read from, written to and
 incremented:
 
@@ -71,7 +71,7 @@ semantics prb (Inc   ref)   =
     atomicModifyIORef' (opaque ref) (\i -> (i + 1, ()))
 ```
 
-Note that above `v` is instatiated to `Concrete`, which is essentially the
+Note that above `v` is instantiated to `Concrete`, which is essentially the
 identity type, so while writing the semantics we have access to real `IORef`s.
 
 We now have an implementation, the next step is to define a model for the
@@ -86,7 +86,7 @@ initModel = Model []
 ```
 
 The pre-condition of an action specifies in what context the action is
-well-defined. For example, we can always create a new mutuable reference, but
+well-defined. For example, we can always create a new mutable reference, but
 we can only read from references that already have been created. The
 pre-conditions are used while generating programs (lists of actions).
 
@@ -212,19 +212,19 @@ Couldn't linearise:
 
 ┌────────────────────────────────┐
 │ Var 0 ← New                    │
-│                       ⟶ Opaque │
+│                       → Opaque │
 └────────────────────────────────┘
 ┌─────────────┐ │
 │ Inc (Var 0) │ │
 │             │ │ ┌──────────────┐
 │             │ │ │ Inc (Var 0)  │
-│        ⟶ () │ │ │              │
+│        → () │ │ │              │
 └─────────────┘ │ │              │
-                │ │         ⟶ () │
+                │ │         → () │
                 │ └──────────────┘
                 │ ┌──────────────┐
                 │ │ Read (Var 0) │
-                │ │          ⟶ 1 │
+                │ │          → 1 │
                 │ └──────────────┘
 Just 2 /= Just 1
 ```
@@ -235,7 +235,7 @@ read the value `1` while the model expects `2`.
 
 Recall that incrementing is implemented by first reading the reference and
 then writing it, if two such actions are interleaved then one of the writes
-might end up overwriting the other ones -- creating the race condition.
+might end up overwriting the other one -- creating the race condition.
 
 We shall come back to this example below, but if your are impatient you can
 find the full source
@@ -244,12 +244,12 @@ code
 
 ### How it works
 
-The rought idea is that the user of the library is asked to provide:
+The rough idea is that the user of the library is asked to provide:
 
   * a datatype of actions;
   * a datatype model;
   * pre- and post-conditions of the actions on the model;
-  * a state transition function that given a model and a action advances the
+  * a state transition function that given a model and an action advances the
     model to its next state;
   * a way to generate and shrink actions;
   * semantics for executing the actions.
@@ -272,7 +272,7 @@ semantics. The way this is done is:
        4. advance the model using the transition function.
 
   3. If something goes wrong, shrink the initial list of actions and present a
-     minimal counter example.
+     minimal counterexample.
 
 #### Parallel property
 
@@ -307,7 +307,7 @@ Here are some more examples to get you started:
     simple
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/DieHard.hs) of
     a specification where we use the sequential property to find a solution
-    (counter example) to a puzzle from an action movie. Note that this example
+    (counterexample) to a puzzle from an action movie. Note that this example
     has no meaningful semantics, we merely model-check. It might be helpful to
     compare the solution to the
     Hedgehog
@@ -324,8 +324,7 @@ Here are some more examples to get you started:
     to compare the solution to the one that appears in the paper *Testing
     Monadic Code with
     QuickCheck* [[PS](http://www.cse.chalmers.se/~rjmh/Papers/QuickCheckST.ps)],
-    which is
-    the
+    which the
     [`Test.QuickCheck.Monadic`](https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck-Monadic.html) module
     is based on;
 
@@ -334,7 +333,7 @@ Here are some more examples to get you started:
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference.hs) --
     this is a bigger example that shows both how the sequential property can
     find normal bugs, and how the parallel property can find race conditions.
-    Several metaproperties, that for example check if the counter examples are
+    Several metaproperties, that for example check if the counterexamples are
     minimal, are specified in a
     separate
     [module](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference/Prop.hs);
@@ -350,15 +349,15 @@ Here are some more examples to get you started:
     Sane*
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
     [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)] papers;
-    
+
   * CRUD webserver
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverFile.hs)
     -- create, read, update and delete files on a webserver using an API written
     using [Servant](https://github.com/haskell-servant/servant). The
     specification uses two fixed file names for the tests, for an example where
-    the created resources might be unique ids see the next example;
+    the created resources might be unique ids, see the next example;
 
-  * CRUD webserver where create returns a unique ids
+  * CRUD webserver where create returns unique ids
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverDb.hs)
     -- create, read, update and delete users in a sqlite database on a webserver
     using an API written using
