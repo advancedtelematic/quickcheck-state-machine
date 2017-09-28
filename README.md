@@ -144,24 +144,26 @@ shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
 shrinker _             = []
 ```
 
+To be able to fit the code on a line we pack up all of them above into a
+record.
+
+```haskell
+sm :: Problem -> StateMachine Model Action IO
+sm prb = StateMachine
+  generator shrinker precondition transition
+  postcondition initModel (semantics prb) id
+```
+
 We can now define a sequential property as follows.
 
 ```haskell
 prop_references :: Problem -> Property
-prop_references prb = forAllProgram
-  generator
-  shrinker
-  precondition
-  transition
-  initModel $ \prog ->
-    runAndCheckProgram
-      precondition
-      transition
-      postcondition
-      initModel
-      (semantics prb)
-      ioProperty
-      prog
+prop_references prb = monadicSequential (sm prb) $ \prog -> do
+  (hist, model, prop) <- runProgram (sm prb) prog
+  prettyProgram prog hist model $
+    checkActionNames prog numberOfConstructors prop
+  where
+  numberOfConstructors = 4
 ```
 
 If we run the sequential property without introducing any problems to the
@@ -186,19 +188,8 @@ If we however define a parallel property as follows.
 
 ```haskell
 prop_referencesParallel :: Problem -> Property
-prop_referencesParallel prb = forAllParallelProgram
-  generator
-  shrinker
-  precondition
-  transition
-  initModel $ \parallel ->
-    runParallelProgram (semantics prb) parallel $ \hist ->
-      checkParallelProgram
-        transition
-        postcondition
-        initModel
-        parallel
-        hist
+prop_referencesParallel prb = monadicParallel (sm prb) $ \prog ->
+  prettyParallelProgram prog =<< runParallelProgram (sm prb) prog
 ```
 
 And run it using the race condition problem, then we'll find the race
