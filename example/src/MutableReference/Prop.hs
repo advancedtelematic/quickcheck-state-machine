@@ -184,7 +184,7 @@ instance Read (Internal Action) where
 
   readListPrec = readListPrecDefault
 
-deriving instance Eq1 v => Eq   (Action v resp)
+deriving instance Eq1 v => Eq (Action v resp)
 
 instance Eq (Internal Action) where
   Internal act1 sym1 == Internal act2 sym2 =

@@ -1,7 +1,7 @@
 module TicketDispenserSpec (spec) where
 
 import           Test.Hspec
-                   (Spec, describe, it, xit)
+                   (Spec, describe, it)
 import           Test.Hspec.QuickCheck
                    (modifyMaxSuccess)
 
@@ -22,5 +22,5 @@ spec = do
       it "`prop_ticketDispenserParallelOK`: works with exclusive file locks"
         prop_ticketDispenserParallelOK
 
-    xit "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared"
-      prop_ticketDispenserParallelBad
+      it "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared"
+        prop_ticketDispenserParallelBad
