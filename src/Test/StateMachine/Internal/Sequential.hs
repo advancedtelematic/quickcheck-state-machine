@@ -29,7 +29,7 @@ module Test.StateMachine.Internal.Sequential
   where
 
 import           Control.Monad
-                   (filterM, foldM_, when)
+                   (filterM, foldM, when)
 import           Control.Monad.State
                    (State, StateT, evalState, get, lift, put)
 import           Data.Dynamic
