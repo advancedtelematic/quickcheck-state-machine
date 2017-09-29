@@ -39,8 +39,8 @@ import           Data.IORef
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Property, arbitrary, elements, frequency,
-                   ioProperty, property, shrink, (===))
+                   (Property, arbitrary, elements, frequency, property,
+                   shrink, (===))
 
 import           Test.StateMachine
 
@@ -161,12 +161,19 @@ instance HFoldable Action
 -- the race condition, but @quickCheck (prop_parallelReferences
 -- RaceCondition)@ will!
 
+sm :: Problem -> StateMachine Model Action IO
+sm prb = StateMachine
+  generator shrinker precondition transition
+  postcondition initModel (semantics prb) id
+
 prop_references :: Problem -> Property
-prop_references prb = forAllProgram generator shrinker precondition transition initModel $
-  runAndCheckProgram precondition transition postcondition initModel (semantics prb) ioProperty
+prop_references prb = monadicSequential (sm prb) $ \prog -> do
+  (hist, model, prop) <- runProgram (sm prb) prog
+  prettyProgram prog hist model $
+    checkActionNames prog numberOfConstructors prop
+  where
+  numberOfConstructors = 4
 
 prop_referencesParallel :: Problem -> Property
-prop_referencesParallel prb =
-  forAllParallelProgram generator shrinker precondition transition initModel $ \parallel ->
-    runParallelProgram (semantics prb) parallel $
-      checkParallelProgram transition postcondition initModel parallel
+prop_referencesParallel prb = monadicParallel (sm prb) $ \prog -> do
+  prettyParallelProgram prog =<< runParallelProgram (sm prb) prog

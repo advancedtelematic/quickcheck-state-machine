@@ -12,14 +12,14 @@ import           CrudWebserverDb
 spec :: Spec
 spec = do
 
-  modifyMaxSuccess (const 30) $
+  modifyMaxSuccess (const 10) $
 
     describe "Sequential property" $
 
-    it "`prop_crudWebserverDb`: sequential property holds" $
-      prop_crudWebserverDb
+      it "`prop_crudWebserverDb`: sequential property holds" $
+        prop_crudWebserverDb
 
-  modifyMaxSuccess (const 20) $
+  modifyMaxSuccess (const 3) $
 
     describe "Parallel property" $
 

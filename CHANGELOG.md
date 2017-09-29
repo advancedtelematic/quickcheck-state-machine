@@ -1,8 +1,9 @@
 #### ???
 
-  * The parallel-io library dependency was replaced by async;
-
   * Two examples of how to test CRUD web applications were added.
+
+  * New and more flexible combinators for building sequential and parallel
+    properties replaced the old clunky ones.
 
 #### 0.1.0
 

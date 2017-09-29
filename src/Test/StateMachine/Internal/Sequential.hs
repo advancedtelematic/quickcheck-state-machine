@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE Rank2Types          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
@@ -23,26 +24,29 @@ module Test.StateMachine.Internal.Sequential
   , getUsedVars
   , liftShrinkInternal
   , shrinkProgram
-  , checkProgram
+  , executeProgram
   )
   where
 
 import           Control.Monad
-                   (filterM, foldM_, when)
+                   (filterM, foldM, when)
 import           Control.Monad.State
-                   (State, StateT, get, lift, modify, put, evalState)
+                   (State, StateT, evalState, get, lift, put)
+import           Data.Dynamic
+                   (toDyn)
+import           Data.Monoid
+                   ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
 import           Test.QuickCheck
-                   (Gen, shrinkList, sized, choose, suchThat)
-import           Test.QuickCheck.Monadic
-                   (PropertyM, pre, run)
+                   (Gen, Property, choose, counterexample, property,
+                   shrinkList, sized, suchThat, (.&&.))
 
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
-import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Types
+import           Test.StateMachine.Types.History
 
 ------------------------------------------------------------------------
 
@@ -117,36 +121,47 @@ shrinkProgram shrinker precondition transition model
   . shrinkList (liftShrinkInternal shrinker)
   . unProgram
 
--- | For each action in a program, check that if the pre-condition holds
---   for the action, then so does the post-condition.
-checkProgram
-  :: Monad m
+executeProgram
+  :: forall m act model
+  .  Monad m
+  => Show (Untyped act)
   => HFunctor act
-  => Precondition  model act
-  -> Transition    model act
-  -> Postcondition model act
-  -> model Symbolic  -- ^ The model with symbolic references is used to
-                     -- check pre-conditions against.
-  -> model Concrete  -- ^ While the one with concrete referenes is used
-                     -- for checking post-conditions.
-  -> Semantics act m
-  -> Program   act
-  -> PropertyM (StateT Environment m) ()
-checkProgram precondition transition postcondition smodel0 cmodel0 semantics
-  = foldM_ go (smodel0, cmodel0)
+  => StateMachine  model act m
+  -> Program act
+  -> m (History act, model Concrete, Property)
+executeProgram StateMachine {..}
+  = fmap (\(hist, _, cmodel, _, prop) -> (hist, cmodel, prop))
+  . foldM go (mempty, model', model', emptyEnvironment, property True)
   . unProgram
   where
-  go (smodel, cmodel) (Internal act sym) = do
-    pre (precondition smodel act)
-    env <- run get
-    let cact = hfmap (fromSymbolic env) act
-    resp <- run (lift (semantics cact))
-    liftProperty (postcondition cmodel cact resp)
-    let cresp = Concrete resp
-    run (modify (insertConcrete sym cresp))
-    return (transition smodel act sym, transition cmodel cact cresp)
+  go :: (History act, model Symbolic, model Concrete, Environment, Property)
+     -> Internal act
+     -> m (History act, model Symbolic, model Concrete, Environment, Property)
+  go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) = do
+    if not (precondition' smodel act)
+    then
+      return ( hist
+             , smodel
+             , cmodel
+             , env
+             , counterexample ("precondition failed for: " ++ show (Untyped act)) prop
+             )
+    else do
+      let cact = hfmap (fromSymbolic env) act
+      resp <- semantics' cact
+      let cresp = Concrete resp
+          hist' = History
+            [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
+            , ResponseEvent (toDyn cresp) (show resp) (Pid 0)
+            ]
+      return ( hist <> hist'
+             , transition' smodel act sym
+             , transition' cmodel cact cresp
+             , insertConcrete sym cresp env
+             , prop .&&. postcondition' cmodel cact resp
+             )
     where
     fromSymbolic :: Environment -> Symbolic v ->  Concrete v
-    fromSymbolic env sym' = case reifyEnvironment env sym' of
+    fromSymbolic env' sym' = case reifyEnvironment env' sym' of
       Left  err -> error (show err)
       Right con -> con

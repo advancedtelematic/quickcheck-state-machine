@@ -41,17 +41,18 @@ module CrudWebserverDb where
 
 import           Control.Concurrent
                    (threadDelay)
-import           Control.Concurrent.Async
-                   (async)
+import           Control.Concurrent.Async.Lifted
+                   (Async, async, cancel)
 import           Control.Monad.IO.Class
-                   (MonadIO, liftIO)
+                   (liftIO)
 import           Control.Monad.Logger
-                   (runNoLoggingT)
+                   (NoLoggingT, runNoLoggingT)
 import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
-import           Data.Aeson
-                   (FromJSON, ToJSON, object, parseJSON, toJSON,
-                   withObject, (.:), (.=))
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
+import           Control.Monad.Trans.Resource
+                   (ResourceT)
 import           Data.Char
                    (isPrint)
 import           Data.Functor.Classes
@@ -62,27 +63,29 @@ import           Data.String.Conversions
                    (cs)
 import           Data.Text
                    (Text)
-import qualified Data.Text                 as T
+import qualified Data.Text                       as T
 import           Database.Persist.Sqlite
-                   (ConnectionPool, Key, createSqlitePool, delete, get,
-                   insert, runMigration, runSqlPersistMPool,
-                   runSqlPool, update, (+=.))
+                   (ConnectionPool, Key, SqlBackend, createSqlitePool,
+                   delete, get, insert, liftSqlPersistMPool,
+                   runMigration, runSqlPool, update, (+=.))
 import           Database.Persist.TH
                    (mkMigrate, mkPersist, persistLowerCase, share,
                    sqlSettings)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp  as Warp
+import qualified Network.Wai.Handler.Warp        as Warp
 import           Servant
                    ((:<|>)(..), (:>), Application, Capture, Get, JSON,
                    Post, ReqBody, Server, serve)
 import           Servant.Client
                    (BaseUrl(..), ClientEnv(..), ClientM, Scheme(Http),
                    client, runClientM)
+import           Servant.Server
+                   (Handler)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
-                   frequency, ioProperty, listOf, property, shrink,
-                   suchThat, (===))
+                   frequency, listOf, property, shrink, suchThat,
+                   (===))
 import           Test.QuickCheck.Instances
                    ()
 
@@ -92,27 +95,15 @@ import           Test.StateMachine
 
 -- Our webserver deals with users that have a name and an age. The
 -- following is the Persistent library's way of creating the datatype
--- and corresponding database table.
+-- and corresponding database table. The "json" keyword also makes it
+-- possible to (un)marshall the datatype into JSON.
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-User
+User json
   name Text
   age  Int
   deriving Eq Read Show
 |]
-
--- The webserver will also need to (un)marshall the datatype into JSON.
-
-instance FromJSON User where
-  parseJSON = withObject "User" $ \ v ->
-    User <$> v .: "name"
-         <*> v .: "age"
-
-instance ToJSON User where
-  toJSON (User name age) =
-    object [ "name" .= name
-           , "age"  .= age
-           ]
 
 -- For testing we will also need to generate arbitrary users.
 
@@ -152,32 +143,32 @@ server :: ConnectionPool -> Server Api
 server pool =
   userAdd :<|> userGet :<|> userBirthday :<|> userDelete :<|> health
   where
-  userAdd :: MonadIO io => User -> io (Key User)
-  userAdd newUser = liftIO $ runSqlPersistMPool (insert newUser) pool
+  userAdd :: User -> Handler (Key User)
+  userAdd newUser = sql (insert newUser)
 
-  userGet :: MonadIO io => Key User -> io (Maybe User)
-  userGet key = liftIO $ runSqlPersistMPool (get key) pool
+  userGet :: Key User -> Handler (Maybe User)
+  userGet key = sql (get key)
 
-  userBirthday :: MonadIO io => Key User -> io ()
-  userBirthday key = liftIO $
-    runSqlPersistMPool (update key [UserAge +=. 1]) pool
+  userBirthday :: Key User -> Handler ()
+  userBirthday key = sql (update key [UserAge +=. 1])
 
-  userDelete :: MonadIO io => Key User -> io ()
-  userDelete key = liftIO $ runSqlPersistMPool (delete key) pool
+  userDelete :: Key User -> Handler ()
+  userDelete key = sql (delete key)
 
-  health :: MonadIO io => io ()
+  health :: Handler ()
   health = return ()
 
+  sql :: ReaderT SqlBackend (NoLoggingT (ResourceT IO)) a -> Handler a
+  sql q = liftSqlPersistMPool q pool
+
 app :: ConnectionPool -> Application
-app pool = serve api $ server pool
+app pool = serve api (server pool)
 
 mkApp :: FilePath -> IO Application
 mkApp sqliteFile = do
-  pool <- runNoLoggingT $ do
-    createSqlitePool (cs sqliteFile) 1
-
+  pool <- runNoLoggingT (createSqlitePool (cs sqliteFile) 1)
   runSqlPool (runMigration migrateAll) pool
-  return $ app pool
+  return (app pool)
 
 runServer :: FilePath -> Warp.Port -> IO ()
 runServer sqliteFile port = Warp.run port =<< mkApp sqliteFile
@@ -342,41 +333,47 @@ instance HFoldable Action
 -- property that asserts that the semantics respect the model in a
 -- single-threaded and two-threaded context respectively.
 
+sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO)
+sm port = StateMachine
+  generator shrinker preconditions transitions
+  postconditions initModel semantics (runner port)
+
 prop_crudWebserverDb :: Property
 prop_crudWebserverDb =
-  forAllProgram generator shrinker preconditions transitions initModel $
-    runAndCheckProgram' preconditions transitions postconditions
-      initModel semantics (setup "sqlite.db" port) (runner port) cleanup
+  bracketP (setup "sqlite.db" port) cancel $ \_ ->
+    monadicSequential (sm port) $ \prog -> do
+      (hist, model, prop) <- runProgram (sm port) prog
+      prettyProgram prog hist model $
+        checkActionNames prog 4 prop
   where
-  port :: Warp.Port
   port = 8081
 
 prop_crudWebserverDbParallel :: Property
 prop_crudWebserverDbParallel =
-  forAllParallelProgram generator shrinker preconditions transitions initModel $
-    \parallel -> runParallelProgram' (setup "sqlite.parallel.db" port) sem cleanup parallel $
-      checkParallelProgram transitions postconditions initModel parallel
+  bracketP (setup "sqlite-parallel.db" port) cancel $ \_ ->
+    monadicParallel (sm port) $ \prog ->
+      prettyParallelProgram prog =<< runParallelProgram (sm port) prog
   where
-  port :: Warp.Port
-  port        = 8082
-  sem mgr act = runReaderT (semantics act) (ClientEnv mgr (burl port))
+  port = 8082
 
 -- Where the URL of the server, how to run the reader monad that the
--- semantics live in, and how to setup the webserver and clean up after
--- ourselves is defined as follows.
+-- semantics live in, and how to setup the webserver is defined as
+-- follows.
 
 burl :: Warp.Port -> BaseUrl
 burl port = BaseUrl Http "localhost" port ""
 
-runner :: Warp.Port -> Manager -> ReaderT ClientEnv IO Property -> Property
-runner port mgr = ioProperty . flip runReaderT (ClientEnv mgr (burl port))
-
-setup :: FilePath -> Warp.Port -> IO Manager
-setup sqliteFile port = do
+runner :: Warp.Port -> ReaderT ClientEnv IO Property -> IO Property
+runner port p = do
   mgr <- newManager defaultManagerSettings
-  _   <- async (runServer sqliteFile port)
+  runReaderT p (ClientEnv mgr (burl port))
+
+setup :: MonadBaseControl IO m => FilePath -> Warp.Port -> m (Async ())
+setup sqliteFile port = liftBaseWith $ \_ -> do
+  mgr <- newManager defaultManagerSettings
+  pid <- async (runServer sqliteFile port)
   healthy mgr 10
-  return mgr
+  return pid
   where
   healthy :: Manager -> Int -> IO ()
   healthy _   0     = error "healthy: server isn't healthy"
@@ -387,9 +384,6 @@ setup sqliteFile port = do
         threadDelay 1000000
         healthy mgr (tries - 1)
       Right () -> return ()
-
-cleanup :: Manager -> IO ()
-cleanup _ = return ()
 
 ------------------------------------------------------------------------
 

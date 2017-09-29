@@ -16,15 +16,21 @@
 module Test.StateMachine.Internal.Utils
   ( anyP
   , liftProperty
+  , whenFailM
+  , bracketP
+  , alwaysP
   , shrinkPropertyHelper
   , shrinkPropertyHelper'
   , shrinkPair
   , shrinkPair'
   ) where
 
+import           Control.Exception
+                   (bracketOnError)
 import           Test.QuickCheck
                    (Property, Result(Failure), chatty, counterexample,
-                   output, property, quickCheckWithResult, stdArgs)
+                   ioProperty, output, property, quickCheckWithResult,
+                   stdArgs, whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property
@@ -39,6 +45,21 @@ anyP p = foldr (\x ih -> p x .||. ih) (property False)
 -- | Lifts a plain property into a monadic property.
 liftProperty :: Monad m => Property -> PropertyM m ()
 liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
+
+whenFailM :: Monad m => IO () -> Property -> PropertyM m ()
+whenFailM m prop = liftProperty (m `whenFail` prop)
+
+bracketP :: IO a -> (a -> IO b) -> (a -> Property) -> Property
+bracketP up down prop = ioProperty $
+  bracketOnError up down (return . prop)
+
+-- | A property that tests @prop@ repeatedly @n@ times, failing as soon as any
+--   of the tests of @prop@ fails.
+alwaysP :: Int -> Property -> Property
+alwaysP n prop
+  | n <= 0    = error "alwaysP: expected positive integer."
+  | n == 1    = prop
+  | otherwise = prop .&&. alwaysP (n - 1) prop
 
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.

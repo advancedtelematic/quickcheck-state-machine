@@ -1,9 +1,10 @@
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE KindSignatures            #-}
-{-# LANGUAGE Rank2Types                #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -24,14 +25,15 @@ module Test.StateMachine.Internal.Parallel
   ( generateParallelProgram
   , shrinkParallelProgram
   , executeParallelProgram
-  , checkParallelProgram
-  , History(..)
+  , linearise
+  , toBoxDrawings
+  , toBoxDrawings'
   ) where
 
-import           Control.Concurrent
+import           Control.Concurrent.Async.Lifted
+                   (concurrently)
+import           Control.Concurrent.Lifted
                    (threadDelay)
-import           Control.Concurrent.Async
-                   (concurrently_)
 import           Control.Concurrent.STM
                    (STM, atomically)
 import           Control.Concurrent.STM.TChan
@@ -41,8 +43,10 @@ import           Control.Monad
 import           Control.Monad.State
                    (StateT, evalState, evalStateT, execStateT, get,
                    lift, modify, runState, runStateT)
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
 import           Data.Dynamic
-                   (Dynamic, toDyn)
+                   (toDyn)
 import           Data.List
                    (partition)
 import           Data.Set
@@ -50,13 +54,8 @@ import           Data.Set
 import qualified Data.Set                                     as S
 import           Data.Tree
                    (Tree(Node))
-import           Data.Typeable
-                   (Typeable)
-import           System.Random
-                   (randomRIO)
 import           Test.QuickCheck
-                   (Gen, Property, counterexample, property,
-                   shrinkList, (.&&.))
+                   (Gen, Property, property, shrinkList, (.&&.))
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 
@@ -65,7 +64,9 @@ import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Utils.BoxDrawer
-import           Test.StateMachine.Types
+import           Test.StateMachine.Types                      hiding
+                   (StateMachine(..))
+import           Test.StateMachine.Types.History
 
 ------------------------------------------------------------------------
 
@@ -122,25 +123,27 @@ shrinkParallelProgram shrinker precondition transition model
 --   and then the suffixes in parallel, and return the history (or
 --   trace) of the execution.
 executeParallelProgram
-  :: forall act. HTraversable act
+  :: forall m act
+  .  MonadBaseControl IO m
+  => HTraversable act
   => Show (Untyped act)
-  => Semantics act IO
+  => Semantics act m
   -> ParallelProgram act
-  -> IO (History act)
+  -> m (History act)
 executeParallelProgram semantics = liftSemFork . unParallelProgram
   where
   liftSemFork
     :: HTraversable act
     => Show (Untyped act)
     => Fork (Program act)
-    -> IO (History act)
+    -> m (History act)
   liftSemFork (Fork left prefix right) = do
-    hchan <- newTChanIO
+    hchan <- liftBaseWith (const newTChanIO)
     env   <- execStateT (runMany hchan (Pid 0) (unProgram prefix)) emptyEnvironment
-    concurrently_
+    _     <- concurrently
       (evalStateT (runMany hchan (Pid 1) (unProgram left))  env)
       (evalStateT (runMany hchan (Pid 2) (unProgram right)) env)
-    History <$> getChanContents hchan
+    History <$> liftBaseWith (const (getChanContents hchan))
     where
     getChanContents :: forall a. TChan a -> IO [a]
     getChanContents chan = reverse <$> atomically (go [])
@@ -158,71 +161,18 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
     => TChan (HistoryEvent (UntypedConcrete act))
     -> Pid
     -> [Internal act]
-    -> StateT Environment IO ()
+    -> StateT Environment m ()
   runMany hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
     env <- get
     let cact = either (error . show) id (reify env act)
-    lift $ atomically $ writeTChan hchan $
+    liftBaseWith $ const $ atomically $ writeTChan hchan $
       InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
     resp <- lift (semantics cact)
     modify (insertConcrete sym (Concrete resp))
-    lift $ do
-      threadDelay =<< randomRIO (0, 20)
-      atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
-
--- | Check if a history from a parallel execution can be linearised.
-checkParallelProgram
-  :: HFoldable act
-  => Transition    model act
-  -> Postcondition model act
-  -> InitialModel model
-  -> ParallelProgram act
-  -> History act             -- ^ History to be checked.
-  -> Property
-checkParallelProgram transition postcondition model prog history
-  = counterexample ("Couldn't linearise:\n\n" ++ show (toBoxDrawings allVars history))
-  $ linearise transition postcondition model history
-  where
-  vars xs    = [ getUsedVars x | Internal x _ <- xs]
-  Fork l p r = fmap (S.unions . vars . unProgram) $ unParallelProgram prog
-  allVars    = S.unions [l, p, r]
+    threadDelay 10
+    liftBaseWith $ const $ atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
 
 ------------------------------------------------------------------------
-
--- The code below is used by checkParallelProgram.
-
--- | A history is a trace of invocations and responses from running a
---   parallel program.
-newtype History act = History
-  { unHistory :: History' act }
-
-type History' act = [HistoryEvent (UntypedConcrete act)]
-
-data UntypedConcrete (act :: (* -> *) -> * -> *) where
-  UntypedConcrete :: (Show resp, Typeable resp) =>
-    act Concrete resp -> UntypedConcrete act
-
-data HistoryEvent act
-  = InvocationEvent act     String Var Pid
-  | ResponseEvent   Dynamic String     Pid
-
-getProcessIdEvent :: HistoryEvent act -> Pid
-getProcessIdEvent (InvocationEvent _ _ _ pid) = pid
-getProcessIdEvent (ResponseEvent   _ _ pid)   = pid
-
-data Operation act = forall resp. Typeable resp =>
-  Operation (act Concrete resp) String (Concrete resp) Pid
-
-takeInvocations :: [HistoryEvent a] -> [HistoryEvent a]
-takeInvocations = takeWhile $ \h -> case h of
-  InvocationEvent {} -> True
-  _                  -> False
-
-findCorrespondingResp :: Pid -> History' act -> [(Dynamic, History' act)]
-findCorrespondingResp _   [] = []
-findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
-findCorrespondingResp pid (e : es) =
-  [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
 linearTree :: History' act -> [Tree (Operation act)]
 linearTree [] = []
@@ -265,8 +215,17 @@ linearise transition postcondition model0 = go . unHistory
     anyP' _ [] = property True
     anyP' p xs = anyP p xs
 
-toBoxDrawings :: Set Var -> History act -> Doc
-toBoxDrawings knownVars (History h) = exec evT (fmap out <$> Fork l p r)
+------------------------------------------------------------------------
+
+toBoxDrawings :: HFoldable act => ParallelProgram act -> History act -> Doc
+toBoxDrawings prog = toBoxDrawings' allVars
+  where
+  allVars    = S.unions [l, p, r]
+  Fork l p r = fmap (S.unions . vars . unProgram) (unParallelProgram prog)
+  vars xs    = [ getUsedVars x | Internal x _ <- xs]
+
+toBoxDrawings' :: Set Var -> History act -> Doc
+toBoxDrawings' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
   where
     (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
     (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'

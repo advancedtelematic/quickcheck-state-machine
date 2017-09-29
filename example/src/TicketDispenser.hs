@@ -26,9 +26,13 @@ module TicketDispenser
 
 import           Data.Char
                    (isSpace)
+import           Data.Dynamic
+                   (cast)
+import           Data.Functor.Classes
+                   (Eq1(..))
 import           Data.Functor.Classes
                    (Show1)
-import           Prelude                          hiding
+import           Prelude                                  hiding
                    (readFile)
 import           System.Directory
                    (removePathForcibly)
@@ -39,9 +43,16 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Property, frequency, ioProperty, property, (===))
+                   (Property, frequency, property, (===))
+import           Text.ParserCombinators.ReadP
+                   (string)
+import           Text.Read
+                   (choice, lift, readListPrec, readListPrecDefault,
+                   readPrec)
 
 import           Test.StateMachine
+import           Test.StateMachine.Internal.AlphaEquality
+import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
                    (shrinkPropertyHelper)
 
@@ -91,15 +102,15 @@ postconditions (Model m) cmd resp = case cmd of
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-gen :: Generator Model Action
-gen (Model Nothing)  = pure (Untyped Reset)
-gen (Model (Just _)) = frequency
+generator :: Generator Model Action
+generator (Model Nothing)  = pure (Untyped Reset)
+generator (Model (Just _)) = frequency
   [ (1, pure (Untyped Reset))
   , (8, pure (Untyped TakeTicket))
   ]
 
-shrink1 :: Action v resp -> [Action v resp]
-shrink1 _ = []
+shrinker :: Action v resp -> [Action v resp]
+shrinker _ = []
 
 ------------------------------------------------------------------------
 
@@ -147,24 +158,32 @@ instance HFoldable Action
 
 ------------------------------------------------------------------------
 
+sm :: SharedExclusive -> (FilePath, FilePath) -> StateMachine Model Action IO
+sm se files = StateMachine
+  generator shrinker preconditions transitions
+  postconditions initModel (semantics se files) id
+
 -- Sequentially the model is consistant (even though the lock is
 -- shared).
 
 prop_ticketDispenser :: Property
-prop_ticketDispenser = forAllProgram gen shrink1 preconditions transitions initModel $
-  runAndCheckProgram preconditions transitions postconditions initModel sem ioProperty
+prop_ticketDispenser = monadicSequential sm' $ \prog -> do
+  (hist, model, prop) <- runProgram sm' prog
+  prettyProgram prog hist model $
+    checkActionNames prog 2 prop
   where
-  sem = semantics Shared (ticketDb, ticketLock)
-  -- Predefined files are used for the database and the file lock.
-  ticketDb, ticketLock :: FilePath
-  ticketDb   = "/tmp/ticket-dispenser.db"
-  ticketLock = "/tmp/ticket-dispenser.lock"
+  sm' = sm Shared (ticketDb, ticketLock)
+    where
+    -- Predefined files are used for the database and the file lock.
+    ticketDb, ticketLock :: FilePath
+    ticketDb   = "/tmp/ticket-dispenser.db"
+    ticketLock = "/tmp/ticket-dispenser.lock"
 
 prop_ticketDispenserParallel :: SharedExclusive -> Property
 prop_ticketDispenserParallel se =
-  forAllParallelProgram gen shrink1 preconditions transitions initModel $ \parallel ->
-    runParallelProgram' setup (semantics se) cleanup parallel $
-    checkParallelProgram transitions postconditions initModel parallel
+  bracketP setup cleanup $ \files ->
+    monadicParallel (sm se files) $ \prog ->
+      prettyParallelProgram prog =<< runParallelProgram' 100 (sm se files) prog
   where
 
   -- In the parallel case we create a temporary files for the database and
@@ -192,10 +211,32 @@ prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 prop_ticketDispenserParallelBad :: Property
 prop_ticketDispenserParallelBad =
   shrinkPropertyHelper (prop_ticketDispenserParallel Shared) $ \output ->
-    let counterExample = dropWhile isSpace (lines output !! 1) in
-    counterExample `elem`
-      [ "Fork [Reset] [] [Reset]"
-      , "Fork [TakeTicket] [Reset] [TakeTicket]"
-      , "Fork [TakeTicket] [Reset] [Reset]"
-      , "Fork [Reset] [Reset] [TakeTicket]"
+    let counterExample = read (dropWhile isSpace (lines output !! 1)) in
+    any (alphaEqFork counterExample)
+      [ fork [iact Reset 0]      []             [iact Reset 1]
+      , fork [iact TakeTicket 0] [iact Reset 1] [iact TakeTicket 2]
+      , fork [iact Reset 0]      [iact Reset 1] [iact TakeTicket 2]
+      , fork [iact TakeTicket 0] [iact Reset 1] [iact Reset 2]
       ]
+    where
+    fork l p r = Fork (Program l) (Program p) (Program r)
+    iact act n = Internal act (Symbolic (Var n))
+
+------------------------------------------------------------------------
+
+-- Instances needed for the last property.
+
+instance Read (Internal Action) where
+
+  readPrec = choice
+    [ Internal <$> (Reset      <$ lift (string "Reset"))      <*> readPrec
+    , Internal <$> (TakeTicket <$ lift (string "TakeTicket")) <*> readPrec
+    ]
+
+  readListPrec = readListPrecDefault
+
+deriving instance Eq1 v => Eq (Action v resp)
+
+instance Eq (Internal Action) where
+  Internal act1 sym1 == Internal act2 sym2 =
+    cast act1 == Just act2 && cast sym1 == Just sym2

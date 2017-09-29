@@ -30,8 +30,7 @@ import           Data.Vector.Unboxed.Mutable
 import qualified Data.Vector.Unboxed.Mutable as V
 import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
-                   frequency, ioProperty, oneof, property, shrink,
-                   (===))
+                   frequency, oneof, property, shrink, (===))
 import           Test.StateMachine
 
 ------------------------------------------------------------------------
@@ -236,11 +235,20 @@ semantics bugs (Len buffer)   = lenBuffer bugs (opaque buffer)
 
 ------------------------------------------------------------------------
 
+sm :: Version -> Bugs -> StateMachine Model Action IO
+sm version bugs = StateMachine
+  (generator version) shrinker (precondition bugs) transition
+  postcondition initModel (semantics bugs) id
+
 -- | Property parameterized by spec version and bugs.
 prepropcircularBuffer :: Version -> Bugs -> Property
 prepropcircularBuffer version bugs =
-  forAllProgram (generator version) shrinker (precondition bugs) transition initModel $
-    runAndCheckProgram (precondition bugs) transition postcondition initModel (semantics bugs) ioProperty
+  monadicSequential sm' $ \prog -> do
+    (hist, model, prop) <- runProgram sm' prog
+    prettyProgram prog hist model $
+      checkActionNames prog 4 prop
+  where
+  sm' = sm version bugs
 
 -- Adapted from John Hughes'
 -- /Experiences with QuickCheck: Testing the hard stuff and staying sane/,

@@ -22,15 +22,18 @@ library
                      , directory
                      , filelock
                      , http-client
+                     , lifted-async
+                     , monad-control
                      , monad-logger
                      , mtl
                      , persistent
-                     , persistent-template
                      , persistent-sqlite
+                     , persistent-template
                      , QuickCheck
                      , quickcheck-instances
                      , quickcheck-state-machine
                      , random
+                     , resourcet
                      , servant
                      , servant-client
                      , servant-server
