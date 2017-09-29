@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE Rank2Types           #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -42,7 +43,7 @@ module Test.StateMachine.Types
   where
 
 import           Data.Functor.Classes
-                   (Ord1)
+                   (Ord1, Show1, showsPrec1)
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck

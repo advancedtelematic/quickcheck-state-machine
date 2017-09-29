@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------------------------
@@ -30,9 +31,12 @@ module Test.StateMachine.Internal.Types
 import           Data.List
                    (intercalate)
 import           Data.Typeable
-                   (Typeable)
+                   (Typeable, cast)
 import           Text.Read
-                   (readListPrec, readListPrecDefault, readPrec)
+                   (Lexeme(Ident), lexP, lift, parens, prec, readPrec,
+                   step)
+import           Text.Show
+                   (showList)
 
 import           Test.StateMachine.Types
                    (Untyped(Untyped))
@@ -56,18 +60,8 @@ instance Monoid (Program act) where
   mempty                                = Program []
   Program acts1 `mappend` Program acts2 = Program (acts1 ++ acts2)
 
-instance (Show (Untyped act), HFoldable act) => Show (Program act) where
-  show (Program iacts) = bracket . intercalate "," . map go $ iacts
-    where
-
-    go (Internal act (Symbolic var)) =
-      show (Untyped act) ++ " " ++ show var
-
-    bracket s = "[" ++ s ++ "]"
-
-instance Read (Internal act) => Read (Program act) where
-  readPrec     = Program <$> readPrec
-  readListPrec = readListPrecDefault
+deriving instance Show (Untyped act) => Show (Program act)
+deriving instance Read (Untyped act) => Read (Program act)
 
 programLength :: Program act -> Int
 programLength = length . unProgram
@@ -83,8 +77,8 @@ programLength = length . unProgram
 newtype ParallelProgram act = ParallelProgram
   { unParallelProgram :: Fork (Program act) }
 
-instance (Show (Untyped act), HFoldable act) => Show (ParallelProgram act) where
-  show = show . unParallelProgram
+deriving instance Show (Untyped act) => Show (ParallelProgram act)
+deriving instance Read (Untyped act) => Read (ParallelProgram act)
 
 -- | Forks are used to represent parallel programs.
 data Fork a = Fork a a a
@@ -97,6 +91,28 @@ data Fork a = Fork a a a
 data Internal (act :: (* -> *) -> * -> *) where
   Internal :: (Show resp, Typeable resp) =>
     act Symbolic resp -> Symbolic resp -> Internal act
+
+instance Eq (Untyped act) => Eq (Internal act) where
+  Internal a1 _ == Internal a2 _ = Untyped a1 == Untyped a2
+
+instance Show (Untyped act) => Show (Internal act) where
+  showsPrec p (Internal action v) = showParen (p > appPrec) $
+    showString "Internal " .
+    showsPrec (appPrec + 1) (Untyped action) .
+    showString " " .
+    showsPrec (appPrec + 1) v
+    where
+      appPrec = 10
+
+instance Read (Untyped act) => Read (Internal act) where
+  readPrec = parens $
+    prec appPrec $ do
+      Ident "Internal" <- lexP
+      Untyped action <- step readPrec
+      v <- step readPrec
+      return (Internal action v)
+    where
+      appPrec = 10
 
 ------------------------------------------------------------------------
 

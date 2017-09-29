@@ -55,7 +55,7 @@ import           Test.StateMachine.Types.HFunctor
 --   during test execution. They provide access to the actual runtime value of
 --   a variable.
 --
-data Reference v a = Reference (v a)
+newtype Reference v a = Reference (v a)
 
 -- | Take the value from a concrete variable.
 --
@@ -73,10 +73,14 @@ instance (Eq1 v, Eq a) => Eq (Reference v a) where
 instance (Ord1 v, Ord a) => Ord (Reference v a) where
   compare (Reference x) (Reference y) = compare1 x y
 
-instance (Show a, Show1 v) => Show (Reference v a) where
-  showsPrec p (Reference x) =
-    showParen (p >= 11) $
-      showsPrec1 11 x
+instance (Show1 v, Show a) => Show (Reference v a) where
+  showsPrec p (Reference v) = showParen (p > appPrec) $
+      showString "Reference " .
+      showsPrec1 p v
+    where
+      appPrec = 10
+
+deriving instance Read (v a) => Read (Reference v a)
 
 instance HTraversable Reference where
   htraverse f (Reference v) = fmap Reference (f v)
@@ -110,15 +114,9 @@ data Symbolic a where
 
 deriving instance Eq  (Symbolic a)
 deriving instance Ord (Symbolic a)
-
-instance Show (Symbolic a) where
-  showsPrec p (Symbolic x) = showsPrec p x
-
-instance Show1 Symbolic where
-  liftShowsPrec _ _ p (Symbolic x) = showsPrec p x
-
-instance Typeable a => Read (Symbolic a) where
-  readPrec = Symbolic <$> readPrec
+deriving instance Show (Symbolic a)
+deriving instance Typeable a => Read (Symbolic a)
+deriving instance Foldable Symbolic
 
 instance Eq1 Symbolic where
   liftEq _ (Symbolic x) (Symbolic y) = x == y
@@ -126,20 +124,30 @@ instance Eq1 Symbolic where
 instance Ord1 Symbolic where
   liftCompare _ (Symbolic x) (Symbolic y) = compare x y
 
+instance Show1 Symbolic where
+  liftShowsPrec _ _ p (Symbolic x) =
+    showParen (p > appPrec) $
+      showString "Symbolic " .
+      showsPrec (appPrec + 1) x
+    where
+      appPrec = 10
+
 -- | Concrete values.
 --
 newtype Concrete a where
   Concrete :: a -> Concrete a
-  deriving (Eq, Ord, Functor, Foldable, Traversable)
-
-instance Show a => Show (Concrete a) where
-  showsPrec = showsPrec1
-
-instance Show1 Concrete where
-  liftShowsPrec sp _ p (Concrete x) = sp p x
+  deriving (Eq, Ord, Show, Read, Functor, Foldable, Traversable)
 
 instance Eq1 Concrete where
   liftEq eq (Concrete x) (Concrete y) = eq x y
 
 instance Ord1 Concrete where
   liftCompare comp (Concrete x) (Concrete y) = comp x y
+
+instance Show1 Concrete where
+  liftShowsPrec sp _ p (Concrete x) =
+    showParen (p > appPrec) $
+      showString "Concrete " .
+      sp (appPrec + 1) x
+    where
+      appPrec = 10
