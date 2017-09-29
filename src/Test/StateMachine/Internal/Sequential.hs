@@ -28,7 +28,7 @@ module Test.StateMachine.Internal.Sequential
   where
 
 import           Control.Monad
-                   (filterM, foldM_)
+                   (filterM, foldM_, when)
 import           Control.Monad.State
                    (State, StateT, get, lift, modify, put, evalState)
 import           Data.Set
@@ -86,8 +86,9 @@ filterInvalid precondition transition
   where
   go (Internal act sym@(Symbolic var)) = do
     (model, scope) <- get
-    put (transition model act sym, S.insert var scope)
-    return (precondition model act && getUsedVars act `S.isSubsetOf` scope)
+    let valid = precondition model act && getUsedVars act `S.isSubsetOf` scope
+    when valid (put (transition model act sym, S.insert var scope))
+    return valid
 
 -- | Returns the set of references an action uses.
 getUsedVars :: HFoldable act => act Symbolic a -> Set Var
