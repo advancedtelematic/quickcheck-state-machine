@@ -1,9 +1,11 @@
 #### ???
 
-  * Two examples of how to test CRUD web applications were added.
+  * New and more flexible combinators for building sequential and
+    parallel properties replaced the old clunky ones;
 
-  * New and more flexible combinators for building sequential and parallel
-    properties replaced the old clunky ones.
+  * Circular buffer example was added;
+
+  * Two examples of how to test CRUD web applications were added.
 
 #### 0.1.0
 

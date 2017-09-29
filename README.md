@@ -329,6 +329,14 @@ Here are some more examples to get you started:
     separate
     [module](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference/Prop.hs);
 
+  * Circular buffer
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CircularBuffer.hs)
+    -- another example that shows how the sequential property can find help find
+    different kind of bugs. This exampel is borrowed from the paper *Testing the
+    Hard Stuff and Staying Sane*
+    [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
+    [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)];
+
   * Ticket
     dispenser
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/TicketDispenser.hs) --
