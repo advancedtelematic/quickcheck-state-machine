@@ -7,7 +7,8 @@ tested-with:         GHC == 8.0.2
 
 library
   hs-source-dirs:      src
-  exposed-modules:     CrudWebserverDb
+  exposed-modules:     CircularBuffer
+                     , CrudWebserverDb
                      , CrudWebserverFile
                      , DieHard
                      , MutableReference
@@ -36,6 +37,7 @@ library
                      , strict
                      , string-conversions
                      , text
+                     , vector
                      , wai
                      , warp
   default-language:    Haskell2010
@@ -44,7 +46,8 @@ test-suite quickcheck-state-machine-example-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Main.hs
-  other-modules:       CrudWebserverDbSpec
+  other-modules:       CircularBuffer
+                     , CrudWebserverDbSpec
                      , CrudWebserverFileSpec
                      , DieHardSpec
                      , MutableReferenceSpec
