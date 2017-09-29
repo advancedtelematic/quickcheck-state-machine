@@ -18,6 +18,7 @@ tested-with:         GHC == 8.0.2
 library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
+                     , Test.StateMachine.Compose
                      , Test.StateMachine.Internal.AlphaEquality
                      , Test.StateMachine.Internal.Parallel
                      , Test.StateMachine.Internal.ScopeCheck
@@ -33,6 +34,7 @@ library
                      , async
                      , base (>=4.7 && <5)
                      , containers (>=0.5.7.1 && <0.6)
+                     , lens
                      , mtl (>=2.2.1 && <2.3)
                      , QuickCheck (>=2.9.2 && <2.10)
                      , random (==1.1.*)
