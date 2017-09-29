@@ -160,7 +160,7 @@ generator _ (Model m) | null m = genNew
 generator version (Model m) = frequency
   [ (1, genNew)
   , (4, do
-      (buffer, specBuffer) <- elements m
+      (buffer, _specBuffer) <- elements m
       oneof $
         [ Untyped <$> (Put <$> arbitrary <*> pure buffer)
         , return (Untyped (Get buffer))
