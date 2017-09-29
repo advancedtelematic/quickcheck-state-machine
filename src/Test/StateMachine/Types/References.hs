@@ -55,7 +55,7 @@ import           Test.StateMachine.Types.HFunctor
 --   during test execution. They provide access to the actual runtime value of
 --   a variable.
 --
-data Reference v a = Reference (v a)
+newtype Reference v a = Reference (v a)
 
 -- | Take the value from a concrete variable.
 --
@@ -74,9 +74,7 @@ instance (Ord1 v, Ord a) => Ord (Reference v a) where
   compare (Reference x) (Reference y) = compare1 x y
 
 instance (Show a, Show1 v) => Show (Reference v a) where
-  showsPrec p (Reference x) =
-    showParen (p >= 11) $
-      showsPrec1 11 x
+  showsPrec p (Reference x) = showsPrec1 p x
 
 instance HTraversable Reference where
   htraverse f (Reference v) = fmap Reference (f v)
