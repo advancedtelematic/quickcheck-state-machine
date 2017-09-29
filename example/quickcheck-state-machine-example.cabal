@@ -46,7 +46,8 @@ test-suite quickcheck-state-machine-example-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Main.hs
-  other-modules:       CrudWebserverDbSpec
+  other-modules:       CircularBufferSpec
+                     , CrudWebserverDbSpec
                      , CrudWebserverFileSpec
                      , DieHardSpec
                      , MutableReferenceSpec
