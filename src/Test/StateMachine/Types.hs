@@ -34,7 +34,7 @@ module Test.StateMachine.Types
   -- * Higher-order functors, foldables and traversables
   , module Test.StateMachine.Types.HFunctor
 
-  -- * Referenses
+  -- * References
   , module Test.StateMachine.Types.References
   )
   where
