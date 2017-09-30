@@ -5,6 +5,8 @@ import           Test.Hspec
 import           Test.Hspec.QuickCheck
                    (modifyMaxSuccess)
 
+import           HspecInstance
+                   ()
 import           MutableReference
 import           MutableReference.Prop
 
