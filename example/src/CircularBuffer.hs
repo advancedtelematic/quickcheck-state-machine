@@ -79,6 +79,14 @@ instance HTraversable Action where
   htraverse f (Get buffer)   = Get <$> htraverse f buffer
   htraverse f (Len buffer)   = Len <$> htraverse f buffer
 
+instance Constructors Action where
+  constructor x = Constructor $ case x of
+    New{} -> "New"
+    Put{} -> "Put"
+    Get{} -> "Get"
+    Len{} -> "Len"
+  nConstructors _ = 4
+
 ------------------------------------------------------------------------
 
 -- | A simple, persistent, inefficient buffer.
@@ -246,7 +254,7 @@ prepropcircularBuffer version bugs =
   monadicSequential sm' $ \prog -> do
     (hist, model, prop) <- runProgram sm' prog
     prettyProgram prog hist model $
-      checkActionNames prog 4 prop
+      checkActionNames prog prop
   where
   sm' = sm version bugs
 

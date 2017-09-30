@@ -29,7 +29,9 @@ module DieHard
 import           Data.Functor.Classes
                    (Show1)
 import           Test.QuickCheck
-                   (Property, elements, property)
+                   (elements, property)
+import           Test.QuickCheck.Counterexamples
+                   (PropertyOf)
 
 import           Test.StateMachine
 
@@ -149,6 +151,16 @@ instance HTraversable Action where
   htraverse _ SmallIntoBig = pure SmallIntoBig
   htraverse _ BigIntoSmall = pure BigIntoSmall
 
+instance Constructors Action where
+  constructor x = Constructor $ case x of
+    FillBig      -> "FillBig"
+    FillSmall    -> "FillSmall"
+    EmptyBig     -> "EmptyBig"
+    EmptySmall   -> "EmptySmall"
+    SmallIntoBig -> "SmallIntoBig"
+    BigIntoSmall -> "BigIntoSmall"
+  nConstructors _ = 6
+
 ------------------------------------------------------------------------
 
 -- Finally we have all the pieces needed to get the sequential property!
@@ -161,11 +173,11 @@ sm = StateMachine
   generator shrinker preconditions transitions
   postconditions initModel semantics id
 
-prop_dieHard :: Property
-prop_dieHard = monadicSequential sm $ \prog -> do
+prop_dieHard :: PropertyOf (Program Action)
+prop_dieHard = monadicSequentialC sm $ \prog -> do
   (hist, model, prop) <- runProgram sm prog
   prettyProgram prog hist model $
-    checkActionNames prog 4 prop
+    checkActionNames prog prop
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --

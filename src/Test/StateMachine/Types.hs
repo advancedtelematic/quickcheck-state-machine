@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE Rank2Types           #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------------------------
 -- |

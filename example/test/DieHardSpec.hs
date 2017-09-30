@@ -1,27 +1,25 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module DieHardSpec (spec) where
 
 import           Data.List
                    (find)
+import           Data.Typeable
+                   (cast)
 import           Test.Hspec
                    (Spec, describe, it, shouldBe)
 import           Test.QuickCheck
                    (Property, label, property)
-import           Text.ParserCombinators.ReadP
-                   (string)
-import           Text.Read
-                   (choice, lift, readListPrec, readListPrecDefault,
-                   readPrec)
 
 import           DieHard
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Internal.Utils
 
 ------------------------------------------------------------------------
 
@@ -73,11 +71,8 @@ testValidSolutions = all ((/= 4) . bigJug . run) validSolutions
   run = foldr (\c s -> transitions s c (Concrete ())) initModel
 
 prop_bigJug4 :: Property
-prop_bigJug4 = shrinkPropertyHelper' prop_dieHard $ \output ->
-  let counterExample :: Program Action
-      counterExample = read $ lines output !! 1
-  in
-  case find (alphaEq counterExample)
+prop_bigJug4 = shrinkPropertyHelperC' prop_dieHard $ \prog ->
+  case find (alphaEq prog)
          (map (Program . map (flip Internal (Symbolic (Var 0)))) validSolutions) of
     Nothing -> property False
     Just ex -> label (show ex) (property True)
@@ -97,24 +92,7 @@ spec =
 
 ------------------------------------------------------------------------
 
-instance Read (Internal Action) where
+deriving instance Eq (Action v a)
 
-  readPrec = choice
-    [ Internal <$> (FillBig      <$ lift (string "FillBig"))      <*> readPrec
-    , Internal <$> (FillSmall    <$ lift (string "FillSmall"))    <*> readPrec
-    , Internal <$> (EmptyBig     <$ lift (string "EmptyBig"))     <*> readPrec
-    , Internal <$> (EmptySmall   <$ lift (string "EmptySmall"))   <*> readPrec
-    , Internal <$> (SmallIntoBig <$ lift (string "SmallIntoBig")) <*> readPrec
-    , Internal <$> (BigIntoSmall <$ lift (string "BigIntoSmall")) <*> readPrec
-    ]
-
-  readListPrec = readListPrecDefault
-
-instance Eq (Internal Action) where
-  Internal FillBig      _ == Internal FillBig      _ = True
-  Internal FillSmall    _ == Internal FillSmall    _ = True
-  Internal EmptyBig     _ == Internal EmptyBig     _ = True
-  Internal EmptySmall   _ == Internal EmptySmall   _ = True
-  Internal SmallIntoBig _ == Internal SmallIntoBig _ = True
-  Internal BigIntoSmall _ == Internal BigIntoSmall _ = True
-  _                       == _                       = False
+instance Eq (Untyped Action) where
+  a == b = cast a == Just b

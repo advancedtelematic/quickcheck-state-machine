@@ -214,6 +214,13 @@ instance HFoldable Action
 instance Show (Untyped Action) where
   show (Untyped act) = show act
 
+instance Constructors Action where
+  constructor x = Constructor $ case x of
+    PutFile{}    -> "PutFile"
+    GetFile{}    -> "GetFile"
+    DeleteFile{} -> "DeleteFile"
+  nConstructors _ = 3
+
 ------------------------------------------------------------------------
 
 burl :: BaseUrl
@@ -247,7 +254,7 @@ prop_crudWebserverFile =
     monadicSequential sm $ \prog -> do
       (hist, model, prop) <- runProgram sm prog
       prettyProgram prog hist model $
-        checkActionNames prog 3 prop
+        checkActionNames prog prop
 
 prop_crudWebserverFileParallel :: Property
 prop_crudWebserverFileParallel =

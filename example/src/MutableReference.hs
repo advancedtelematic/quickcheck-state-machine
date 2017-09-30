@@ -39,8 +39,10 @@ import           Data.IORef
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Property, arbitrary, elements, frequency, property,
-                   shrink, (===))
+                   (arbitrary, elements, frequency, property, shrink,
+                   (===))
+import           Test.QuickCheck.Counterexamples
+                   (PropertyOf)
 
 import           Test.StateMachine
 
@@ -149,6 +151,14 @@ instance HTraversable Action where
 instance HFunctor  Action
 instance HFoldable Action
 
+instance Constructors Action where
+  constructor x = Constructor $ case x of
+    New     -> "New"
+    Read{}  -> "Read"
+    Write{} -> "Write"
+    Inc{}   -> "Inc"
+  nConstructors _ = 4
+
 ------------------------------------------------------------------------
 
 -- If we run @quickCheck (prop_references None)@, then the property
@@ -166,14 +176,12 @@ sm prb = StateMachine
   generator shrinker precondition transition
   postcondition initModel (semantics prb) id
 
-prop_references :: Problem -> Property
-prop_references prb = monadicSequential (sm prb) $ \prog -> do
+prop_references :: Problem -> PropertyOf (Program Action)
+prop_references prb = monadicSequentialC (sm prb) $ \prog -> do
   (hist, model, prop) <- runProgram (sm prb) prog
   prettyProgram prog hist model $
-    checkActionNames prog numberOfConstructors prop
-  where
-  numberOfConstructors = 4
+    checkActionNames prog prop
 
-prop_referencesParallel :: Problem -> Property
-prop_referencesParallel prb = monadicParallel (sm prb) $ \prog -> do
+prop_referencesParallel :: Problem -> PropertyOf (ParallelProgram Action)
+prop_referencesParallel prb = monadicParallelC (sm prb) $ \prog -> do
   prettyParallelProgram prog =<< runParallelProgram (sm prb) prog

@@ -24,14 +24,10 @@ import           Control.Monad
                    (void)
 import           Control.Monad.State
                    (evalStateT)
-import           Data.Char
-                   (isSpace)
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
                    (Eq1(..))
-import           Data.IORef
-                   (IORef)
 import           Data.List
                    (isSubsequenceOf)
 import           Data.Monoid
@@ -40,11 +36,6 @@ import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Test.QuickCheck
                    (Property, forAll, (===))
-import           Text.ParserCombinators.ReadP
-                   (string)
-import           Text.Read
-                   (choice, lift, readListPrec, readListPrecDefault,
-                   readPrec)
 
 import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality
@@ -84,14 +75,16 @@ prop_genParallelSequence = forAll
     vars = map (\(Internal _ (Symbolic (Var i))) -> i) . unProgram
 
 prop_sequentialShrink :: Property
-prop_sequentialShrink = shrinkPropertyHelper (prop_references Bug) $ alphaEq
-  (Program [ Internal New                   sym0
-           , Internal (Write (Reference sym0)  5) (Symbolic (Var 1))
-           , Internal (Read  (Reference sym0))    (Symbolic (Var 2))
-           ])
-  . read . (!! 1) . lines
+prop_sequentialShrink =
+  shrinkPropertyHelperC (prop_references Bug) $ \prog ->
+    alphaEq prog0 prog
   where
-  sym0 = Symbolic (Var 0)
+    sym0 = Symbolic (Var 0)
+    prog0 = Program
+      [ Internal New                   sym0
+      , Internal (Write (Reference sym0)  5) (Symbolic (Var 1))
+      , Internal (Read  (Reference sym0))    (Symbolic (Var 2))
+      ]
 
 cheat :: ParallelProgram Action -> ParallelProgram Action
 cheat = ParallelProgram . fmap go . unParallelProgram
@@ -120,10 +113,12 @@ prop_shrinkParallelScope = forAll
 ------------------------------------------------------------------------
 
 prop_shrinkParallelMinimal :: Property
-prop_shrinkParallelMinimal = shrinkPropertyHelper (prop_referencesParallel RaceCondition) $ \out ->
-  let f :: Fork (Program Action)
-      f = read $ dropWhile isSpace (lines out !! 1)
-  in hasMinimalShrink f || isMinimal f
+prop_shrinkParallelMinimal =
+  shrinkPropertyHelperC (prop_referencesParallel RaceCondition) checkParallelProgram
+
+checkParallelProgram :: ParallelProgram Action -> Bool
+checkParallelProgram (ParallelProgram prog) =
+  hasMinimalShrink prog || isMinimal prog
   where
   hasMinimalShrink :: Fork (Program Action) -> Bool
   hasMinimalShrink
@@ -169,23 +164,9 @@ prop_shrinkParallelMinimal = shrinkPropertyHelper (prop_referencesParallel RaceC
       , Internal (Inc   ref0)   (Symbolic var1)
       ]
 
-instance Read (Reference Symbolic (Opaque (IORef Int))) where
-  readPrec     = Reference . Symbolic <$> readPrec
-  readListPrec = readListPrecDefault
-
-instance Read (Internal Action) where
-
-  readPrec = choice
-    [ Internal <$> (New   <$ lift (string "New"))  <*> readPrec
-    , Internal <$> (Read  <$ lift (string "Read")  <*> readPrec) <*> readPrec
-    , Internal <$> (Write <$ lift (string "Write") <*> readPrec <*> readPrec) <*> readPrec
-    , Internal <$> (Inc   <$ lift (string "Inc")   <*> readPrec) <*> readPrec
-    ]
-
-  readListPrec = readListPrecDefault
+------------------------------------------------------------------------
 
 deriving instance Eq1 v => Eq (Action v resp)
 
-instance Eq (Internal Action) where
-  Internal act1 sym1 == Internal act2 sym2 =
-    cast act1 == Just act2 && cast sym1 == Just sym2
+instance Eq (Untyped Action) where
+  Untyped act1 == Untyped act2 = cast act1 == Just act2

@@ -327,6 +327,14 @@ instance HTraversable Action where
 instance HFunctor  Action
 instance HFoldable Action
 
+instance Constructors Action where
+  constructor x = Constructor $ case x of
+    PostUser{}   -> "PostUser"
+    GetUser{}    -> "GetUser"
+    IncAgeUser{} -> "IncAgeUser"
+    DeleteUser{} -> "DeleteUser"
+  nConstructors _ = 4
+
 ------------------------------------------------------------------------
 
 -- Finally we got all pieces needed to write a sequential and a parallel
@@ -344,7 +352,7 @@ prop_crudWebserverDb =
     monadicSequential (sm port) $ \prog -> do
       (hist, model, prop) <- runProgram (sm port) prog
       prettyProgram prog hist model $
-        checkActionNames prog 4 prop
+        checkActionNames prog prop
   where
   port = 8081
 
