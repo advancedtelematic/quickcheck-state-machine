@@ -66,6 +66,8 @@ import           Servant.Client
 import           Servant.Server
                    (Server, serve)
 import qualified System.Directory            as Directory
+import           System.FilePath
+                   ((</>))
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
                    shrink, (===))
@@ -102,26 +104,29 @@ type API =   PutFile
 ------------------------------------------------------------------------
 
 -- | Handler for the `PutFile` endpoint
-putFile :: Server PutFile
-putFile file contents = liftIO (Text.writeFile file contents)
+putFile :: FilePath -> Server PutFile
+putFile dir file contents = liftIO (Text.writeFile (dir </> file) contents)
 
 -- | Handler for the `GetFile` endpoint
-getFile :: Server GetFile
-getFile file = liftIO (Text.readFile file)
+getFile :: FilePath -> Server GetFile
+getFile dir file = liftIO (Text.readFile (dir </> file))
 
 -- | Handler for the `DeleteFile` endpoint
-deleteFile :: Server DeleteFile
-deleteFile file = liftIO (Directory.removeFile file)
+deleteFile :: FilePath -> Server DeleteFile
+deleteFile dir file = liftIO (Directory.removeFile (dir </> file))
 
 -- | Handler for the entire REST `API`
-server :: Server API
-server = putFile
-    :<|> getFile
-    :<|> deleteFile
+server :: FilePath -> Server API
+server dir
+  =    putFile dir
+  :<|> getFile dir
+  :<|> deleteFile dir
 
 -- | Serve the `API` on port 8080
 runServer :: IO ()
-runServer = Warp.run 8080 (serve (Proxy :: Proxy API) server)
+runServer = do
+  dir <- Directory.getTemporaryDirectory
+  Warp.run 8080 (serve (Proxy :: Proxy API) (server dir))
 
 ------------------------------------------------------------------------
 
