@@ -84,6 +84,10 @@ import           Servant.Client
                    client, runClientM)
 import           Servant.Server
                    (Handler)
+import           System.Directory
+                   (getTemporaryDirectory)
+import           System.FilePath
+                   ((</>))
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
                    frequency, listOf, property, shrink, suchThat,
@@ -380,8 +384,9 @@ runner port p = do
 
 setup :: MonadBaseControl IO m => FilePath -> Warp.Port -> m (Async ())
 setup sqliteFile port = liftBaseWith $ \_ -> do
+  tmp <- getTemporaryDirectory
   mgr <- newManager defaultManagerSettings
-  pid <- async (runServer sqliteFile port)
+  pid <- async (runServer (tmp </> sqliteFile) port)
   healthy mgr 10
   return pid
   where
