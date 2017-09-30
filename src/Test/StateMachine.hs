@@ -3,6 +3,7 @@
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeOperators         #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -25,7 +26,9 @@ module Test.StateMachine
     Program
   , programLength
   , forAllProgram
+  , forAllProgramC
   , monadicSequential
+  , monadicSequentialC
   , runProgram
   , prettyProgram
   , actionNames
@@ -34,17 +37,21 @@ module Test.StateMachine
     -- * Parallel property combinators
   , ParallelProgram
   , forAllParallelProgram
+  , forAllParallelProgramC
   , History
   , monadicParallel
+  , monadicParallelC
   , runParallelProgram
   , runParallelProgram'
   , prettyParallelProgram
 
     -- * Types
+  , module Test.StateMachine.Generics
   , module Test.StateMachine.Types
 
-    -- * Rexport
+    -- * Reexport
   , bracketP
+  , bracketPC
   , Test.QuickCheck.quickCheck
   ) where
 
@@ -56,18 +63,22 @@ import           Control.Monad.Trans.Control
                    (MonadBaseControl)
 import           Data.Map
                    (Map)
-import qualified Data.Map                                     as M
-import qualified Test.QuickCheck                              as Test.QuickCheck
+import qualified Data.Map                              as M
+import           Test.QuickCheck
+                   (Property, collect, cover, ioProperty, property)
+import qualified Test.QuickCheck
+import           Test.QuickCheck.Counterexamples
+                   ((:&:)(..), PropertyOf, forAllShrink)
+import qualified Test.QuickCheck.Counterexamples       as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM, monadic, run)
-import           Test.QuickCheck.Property
-                   (Property, collect, cover, forAllShrink, ioProperty)
 
+import           Test.StateMachine.Generics
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (bracketP, whenFailM)
+                   (bracketP, bracketPC, whenFailM)
 import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
@@ -86,6 +97,22 @@ forAllProgram
                                 --   programs.
   -> Property
 forAllProgram generator shrinker precondition transition model =
+  property
+  . forAllProgramC generator shrinker precondition transition model
+  . \prop p -> CE.property (prop p)
+
+forAllProgramC
+  :: Show (Untyped act)
+  => HFoldable act
+  => Generator model act
+  -> Shrinker act
+  -> Precondition model act
+  -> Transition   model act
+  -> InitialModel model
+  -> (Program act -> PropertyOf a)  -- ^ Predicate that should hold for all
+                                    --   programs.
+  -> PropertyOf (Program act :&: a)
+forAllProgramC generator shrinker precondition transition model =
   forAllShrink
     (evalStateT (generateProgram generator precondition transition 0) model)
     (shrinkProgram shrinker precondition transition model)
@@ -97,9 +124,20 @@ monadicSequential
   => StateMachine model act m
   -> (Program act -> PropertyM m a)
   -> Property
-monadicSequential StateMachine {..} predicate
-  = forAllProgram generator' shrinker' precondition' transition' model'
-  $ monadic (ioProperty . runner')
+monadicSequential sm = property . monadicSequentialC sm
+
+monadicSequentialC
+  :: Monad m
+  => Show (Untyped act)
+  => HFoldable act
+  => StateMachine model act m
+  -> (Program act -> PropertyM m a)
+  -> PropertyOf (Program act)
+monadicSequentialC StateMachine {..} predicate
+  = fmap (\(prog :&: ()) -> prog)
+  . forAllProgramC generator' shrinker' precondition' transition' model'
+  $ CE.property
+  . monadic (ioProperty . runner')
   . predicate
 
 runProgram
@@ -117,24 +155,21 @@ prettyProgram
   => Program act -> History act -> model Concrete -> Property -> PropertyM m ()
 prettyProgram _ hist _ prop = putStrLn (ppHistory hist) `whenFailM` prop
 
-actionNames :: forall act. Show (Untyped act) => Program act -> [(String, Int)]
+actionNames :: forall act. Constructors act => Program act -> [(Constructor, Int)]
 actionNames = M.toList . foldl go M.empty . unProgram
   where
-  go :: Map String Int -> Internal act -> Map String Int
-  go ih (Internal act _) = M.insertWith (+) (name act) 1 ih
-    where
-    -- XXX: This will fail for infix constructors, we need template Haskell to
-    -- do this properly...
-    name = takeWhile (/= ' ') . show . Untyped
+  go :: Map Constructor Int -> Internal act -> Map Constructor Int
+  go ih (Internal act _) = M.insertWith (+) (constructor act) 1 ih
 
 -- | Print distribution of actions and fail if some actions have not been
 --   executed.
-checkActionNames :: Show (Untyped act) => Program act -> Int -> Property -> Property
-checkActionNames prog numOfConstructors
+checkActionNames :: Constructors act => Program act -> Property -> Property
+checkActionNames prog
   = collect names
   . cover (length names == numOfConstructors) 1 "coverage"
   where
-  names = actionNames prog
+    names = actionNames prog
+    numOfConstructors = nConstructors prog
 
 ------------------------------------------------------------------------
 
@@ -151,6 +186,22 @@ forAllParallelProgram
                                        --   for all parallel programs.
   -> Property
 forAllParallelProgram generator shrinker precondition transition model =
+  property
+  . forAllParallelProgramC generator shrinker precondition transition model
+  . \prop p -> CE.property (prop p)
+
+forAllParallelProgramC
+  :: Show (Untyped act)
+  => HFoldable act
+  => Generator model act
+  -> Shrinker act
+  -> Precondition model act
+  -> Transition   model act
+  -> InitialModel model
+  -> (ParallelProgram act -> PropertyOf a) -- ^ Predicate that should hold
+                                           --   for all parallel programs.
+  -> PropertyOf (ParallelProgram act :&: a)
+forAllParallelProgramC generator shrinker precondition transition model =
   forAllShrink
     (generateParallelProgram generator precondition transition model)
     (shrinkParallelProgram shrinker precondition transition model)
@@ -162,9 +213,20 @@ monadicParallel
   => StateMachine model act m
   -> (ParallelProgram act -> PropertyM m ())
   -> Property
-monadicParallel StateMachine {..} predicate
-  = forAllParallelProgram generator' shrinker' precondition' transition' model'
-  $ monadic (ioProperty . runner')
+monadicParallel sm = property . monadicParallelC sm
+
+monadicParallelC
+  :: MonadBaseControl IO m
+  => Show (Untyped act)
+  => HFoldable act
+  => StateMachine model act m
+  -> (ParallelProgram act -> PropertyM m ())
+  -> PropertyOf (ParallelProgram act)
+monadicParallelC StateMachine {..} predicate
+  = fmap (\(prog :&: ()) -> prog)
+  . forAllParallelProgramC generator' shrinker' precondition' transition' model'
+  $ CE.property
+  . monadic (ioProperty . runner')
   . predicate
 
 runParallelProgram
@@ -184,7 +246,7 @@ runParallelProgram'
   -> StateMachine model act m
   -> ParallelProgram act
   -> PropertyM m [(History act, Property)]
-runParallelProgram' n StateMachine {..} prog = do
+runParallelProgram' n StateMachine {..} prog =
   replicateM n $ do
     hist <- run (executeParallelProgram semantics' prog)
     return (hist, linearise transition' postcondition' model' hist)

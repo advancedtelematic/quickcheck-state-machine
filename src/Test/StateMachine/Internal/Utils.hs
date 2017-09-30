@@ -18,9 +18,12 @@ module Test.StateMachine.Internal.Utils
   , liftProperty
   , whenFailM
   , bracketP
+  , bracketPC
   , alwaysP
   , shrinkPropertyHelper
   , shrinkPropertyHelper'
+  , shrinkPropertyHelperC
+  , shrinkPropertyHelperC'
   , shrinkPair
   , shrinkPair'
   ) where
@@ -31,6 +34,9 @@ import           Test.QuickCheck
                    (Property, Result(Failure), chatty, counterexample,
                    ioProperty, output, property, quickCheckWithResult,
                    stdArgs, whenFail)
+import           Test.QuickCheck.Counterexamples
+                   (PropertyOf)
+import qualified Test.QuickCheck.Counterexamples as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property
@@ -51,6 +57,10 @@ whenFailM m prop = liftProperty (m `whenFail` prop)
 
 bracketP :: IO a -> (a -> IO b) -> (a -> Property) -> Property
 bracketP up down prop = ioProperty $
+  bracketOnError up down (return . prop)
+
+bracketPC :: IO a -> (a -> IO b) -> (a -> PropertyOf c) -> PropertyOf c
+bracketPC up down prop = CE.ioProperty $
   bracketOnError up down (return . prop)
 
 -- | A property that tests @prop@ repeatedly @n@ times, failing as soon as any
@@ -74,6 +84,17 @@ shrinkPropertyHelper' prop p = monadicIO $ do
     Failure { output = outputLines } -> liftProperty $
       counterexample ("failed: " ++ outputLines) $ p outputLines
     _                                -> return ()
+
+shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
+shrinkPropertyHelperC prop p = shrinkPropertyHelperC' prop (property . p)
+
+shrinkPropertyHelperC' :: Show a => PropertyOf a -> (a -> Property) -> Property
+shrinkPropertyHelperC' prop p = monadicIO $ do
+  ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
+  case ce_ of
+    Nothing -> return ()
+    Just ce -> liftProperty $
+      counterexample ("failed: " ++ show ce) $ p ce
 
 -- | Given shrinkers for the components of a pair we can shrink the pair.
 shrinkPair' :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])

@@ -18,6 +18,7 @@ tested-with:         GHC == 8.0.2
 library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
+                     , Test.StateMachine.Generics
                      , Test.StateMachine.Internal.AlphaEquality
                      , Test.StateMachine.Internal.Parallel
                      , Test.StateMachine.Internal.ScopeCheck
@@ -39,6 +40,7 @@ library
                      , monad-control
                      , mtl (>=2.2.1 && <2.3)
                      , QuickCheck (>=2.9.2 && <2.10)
+                     , quickcheck-with-counterexamples (< 2.0)
                      , random (==1.1.*)
                      , stm (>=2.4.4.1 && <2.5)
   default-language:    Haskell2010
