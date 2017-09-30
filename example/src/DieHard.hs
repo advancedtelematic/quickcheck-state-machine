@@ -30,6 +30,8 @@ import           Data.Functor.Classes
                    (Show1)
 import           Test.QuickCheck
                    (Property, elements, property)
+import           Test.QuickCheck.Counterexamples
+                   (PropertyOf)
 
 import           Test.StateMachine
 
@@ -171,8 +173,8 @@ sm = StateMachine
   generator shrinker preconditions transitions
   postconditions initModel semantics id
 
-prop_dieHard :: Property
-prop_dieHard = monadicSequential sm $ \prog -> do
+prop_dieHard :: PropertyOf (Program Action)
+prop_dieHard = monadicSequentialC sm $ \prog -> do
   (hist, model, prop) <- runProgram sm prog
   prettyProgram prog hist model $
     checkActionNames prog prop

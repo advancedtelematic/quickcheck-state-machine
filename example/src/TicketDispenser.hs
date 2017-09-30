@@ -29,9 +29,7 @@ import           Data.Char
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
-                   (Eq1(..))
-import           Data.Functor.Classes
-                   (Show1)
+                   (Eq1(..), Show1)
 import           Prelude                                  hiding
                    (readFile)
 import           System.Directory
@@ -44,6 +42,8 @@ import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
                    (Property, frequency, property, (===))
+import           Test.QuickCheck.Counterexamples
+                   (PropertyOf)
 import           Text.ParserCombinators.ReadP
                    (string)
 import           Text.Read
@@ -54,7 +54,7 @@ import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (shrinkPropertyHelper)
+                   (shrinkPropertyHelper, shrinkPropertyHelperC)
 
 ------------------------------------------------------------------------
 
@@ -185,10 +185,10 @@ prop_ticketDispenser = monadicSequential sm' $ \prog -> do
     ticketDb   = "/tmp/ticket-dispenser.db"
     ticketLock = "/tmp/ticket-dispenser.lock"
 
-prop_ticketDispenserParallel :: SharedExclusive -> Property
+prop_ticketDispenserParallel :: SharedExclusive -> PropertyOf (ParallelProgram Action)
 prop_ticketDispenserParallel se =
-  bracketP setup cleanup $ \files ->
-    monadicParallel (sm se files) $ \prog ->
+  bracketPC setup cleanup $ \files ->
+    monadicParallelC (sm se files) $ \prog ->
       prettyParallelProgram prog =<< runParallelProgram' 100 (sm se files) prog
   where
 
@@ -208,7 +208,7 @@ prop_ticketDispenserParallel se =
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.
-prop_ticketDispenserParallelOK :: Property
+prop_ticketDispenserParallelOK :: PropertyOf (ParallelProgram Action)
 prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 
 -- If we allow file locks to be shared, then we get race conditions as
@@ -216,9 +216,8 @@ prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 -- counterexamples are found.
 prop_ticketDispenserParallelBad :: Property
 prop_ticketDispenserParallelBad =
-  shrinkPropertyHelper (prop_ticketDispenserParallel Shared) $ \output ->
-    let counterExample = read (dropWhile isSpace (lines output !! 1)) in
-    any (alphaEqFork counterExample)
+  shrinkPropertyHelperC (prop_ticketDispenserParallel Shared) $ \(ParallelProgram f) ->
+    any (alphaEqFork f)
       [ fork [iact Reset 0]      []             [iact Reset 1]
       , fork [iact TakeTicket 0] [iact Reset 1] [iact TakeTicket 2]
       , fork [iact Reset 0]      [iact Reset 1] [iact TakeTicket 2]
@@ -232,17 +231,7 @@ prop_ticketDispenserParallelBad =
 
 -- Instances needed for the last property.
 
-instance Read (Internal Action) where
-
-  readPrec = choice
-    [ Internal <$> (Reset      <$ lift (string "Reset"))      <*> readPrec
-    , Internal <$> (TakeTicket <$ lift (string "TakeTicket")) <*> readPrec
-    ]
-
-  readListPrec = readListPrecDefault
-
 deriving instance Eq1 v => Eq (Action v resp)
 
-instance Eq (Internal Action) where
-  Internal act1 sym1 == Internal act2 sym2 =
-    cast act1 == Just act2 && cast sym1 == Just sym2
+instance Eq (Untyped Action) where
+  Untyped act1 == Untyped act2 = cast act1 == Just act2

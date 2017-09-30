@@ -31,6 +31,7 @@ library
                      , persistent-template
                      , QuickCheck
                      , quickcheck-instances
+                     , quickcheck-with-counterexamples
                      , quickcheck-state-machine
                      , random
                      , resourcet
@@ -53,6 +54,7 @@ test-suite quickcheck-state-machine-example-test
                      , CrudWebserverDbSpec
                      , CrudWebserverFileSpec
                      , DieHardSpec
+                     , HspecInstance
                      , MutableReferenceSpec
                      , Spec
                      , TicketDispenserSpec
@@ -60,7 +62,9 @@ test-suite quickcheck-state-machine-example-test
   build-depends:       base
                      , containers
                      , hspec
+                     , hspec-core
                      , QuickCheck
+                     , quickcheck-with-counterexamples
                      , quickcheck-state-machine
                      , quickcheck-state-machine-example
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
