@@ -3,3 +3,5 @@ packages:
   - '.'
   - location: '..'
     extra-dep: true
+extra-deps:
+  - 'quickcheck-with-counterexamples-1.0'

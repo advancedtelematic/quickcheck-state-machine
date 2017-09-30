@@ -149,6 +149,14 @@ instance HTraversable Action where
 instance HFunctor  Action
 instance HFoldable Action
 
+instance Constructors Action where
+  constructor x = Constructor $ case x of
+    New     -> "New"
+    Read{}  -> "Read"
+    Write{} -> "Write"
+    Inc{}   -> "Inc"
+  nConstructors _ = 4
+
 ------------------------------------------------------------------------
 
 -- If we run @quickCheck (prop_references None)@, then the property
@@ -170,9 +178,7 @@ prop_references :: Problem -> Property
 prop_references prb = monadicSequential (sm prb) $ \prog -> do
   (hist, model, prop) <- runProgram (sm prb) prog
   prettyProgram prog hist model $
-    checkActionNames prog numberOfConstructors prop
-  where
-  numberOfConstructors = 4
+    checkActionNames prog prop
 
 prop_referencesParallel :: Problem -> Property
 prop_referencesParallel prb = monadicParallel (sm prb) $ \prog -> do

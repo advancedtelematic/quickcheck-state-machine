@@ -156,6 +156,12 @@ instance HTraversable Action where
 instance HFunctor  Action
 instance HFoldable Action
 
+instance Constructors Action where
+  constructor x = Constructor $ case x of
+    TakeTicket -> "TakeTicket"
+    Reset      -> "Reset"
+  nConstructors _ = 2
+
 ------------------------------------------------------------------------
 
 sm :: SharedExclusive -> (FilePath, FilePath) -> StateMachine Model Action IO
@@ -170,7 +176,7 @@ prop_ticketDispenser :: Property
 prop_ticketDispenser = monadicSequential sm' $ \prog -> do
   (hist, model, prop) <- runProgram sm' prog
   prettyProgram prog hist model $
-    checkActionNames prog 2 prop
+    checkActionNames prog prop
   where
   sm' = sm Shared (ticketDb, ticketLock)
     where

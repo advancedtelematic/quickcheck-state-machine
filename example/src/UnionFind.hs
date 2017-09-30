@@ -188,6 +188,13 @@ instance HFoldable (Action a)
 instance Show a => Show (Untyped (Action a)) where
   show (Untyped act) = show act
 
+instance Constructors (Action a) where
+  constructor x = Constructor $ case x of
+    New{}   -> "New"
+    Find{}  -> "Find"
+    Union{} -> "Union"
+  nConstructors _ = 3
+
 ------------------------------------------------------------------------
 
 sm :: StateMachine (Model Int) (Action Int) IO
@@ -199,4 +206,4 @@ prop_unionFind :: Property
 prop_unionFind = monadicSequential sm $ \prog -> do
   (hist, model, prop) <- runProgram sm prog
   prettyProgram prog hist model $
-    checkActionNames prog 3 prop
+    checkActionNames prog prop
