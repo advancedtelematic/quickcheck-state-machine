@@ -24,14 +24,10 @@ import           Control.Monad
                    (void)
 import           Control.Monad.State
                    (evalStateT)
-import           Data.Char
-                   (isSpace)
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
                    (Eq1(..))
-import           Data.IORef
-                   (IORef)
 import           Data.List
                    (isSubsequenceOf)
 import           Data.Monoid
@@ -40,11 +36,6 @@ import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Test.QuickCheck
                    (Property, forAll, (===))
-import           Text.ParserCombinators.ReadP
-                   (string)
-import           Text.Read
-                   (choice, lift, readListPrec, readListPrecDefault,
-                   readPrec)
 
 import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality

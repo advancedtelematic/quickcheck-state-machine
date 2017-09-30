@@ -24,8 +24,6 @@ module TicketDispenser
   , prop_ticketDispenserParallelBad
   ) where
 
-import           Data.Char
-                   (isSpace)
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
@@ -44,17 +42,12 @@ import           Test.QuickCheck
                    (Property, frequency, property, (===))
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
-import           Text.ParserCombinators.ReadP
-                   (string)
-import           Text.Read
-                   (choice, lift, readListPrec, readListPrecDefault,
-                   readPrec)
 
 import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (shrinkPropertyHelper, shrinkPropertyHelperC)
+                   (shrinkPropertyHelperC)
 
 ------------------------------------------------------------------------
 

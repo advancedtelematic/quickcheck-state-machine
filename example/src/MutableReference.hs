@@ -39,8 +39,8 @@ import           Data.IORef
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Property, arbitrary, elements, frequency, property,
-                   shrink, (===))
+                   (arbitrary, elements, frequency, property, shrink,
+                   (===))
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 

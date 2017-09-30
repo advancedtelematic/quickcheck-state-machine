@@ -29,7 +29,7 @@ module DieHard
 import           Data.Functor.Classes
                    (Show1)
 import           Test.QuickCheck
-                   (Property, elements, property)
+                   (elements, property)
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
