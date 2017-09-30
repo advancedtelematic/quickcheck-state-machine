@@ -54,8 +54,6 @@ import           Control.Monad.State
                    (evalStateT, replicateM)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl)
-import           Data.Functor.Classes
-                   (Show1)
 import           Data.Map
                    (Map)
 import qualified Data.Map                                     as M

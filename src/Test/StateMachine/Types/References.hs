@@ -35,8 +35,6 @@ import           Data.Functor.Classes
                    showsPrec1)
 import           Data.Typeable
                    (Typeable)
-import           Text.Read
-                   (readPrec)
 
 import           Test.StateMachine.Types.HFunctor
 

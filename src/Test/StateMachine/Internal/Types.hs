@@ -28,19 +28,13 @@ module Test.StateMachine.Internal.Types
   , Internal(..)
   ) where
 
-import           Data.List
-                   (intercalate)
 import           Data.Typeable
-                   (Typeable, cast)
+                   (Typeable)
 import           Text.Read
-                   (Lexeme(Ident), lexP, lift, parens, prec, readPrec,
-                   step)
-import           Text.Show
-                   (showList)
+                   (Lexeme(Ident), lexP, parens, prec, readPrec, step)
 
 import           Test.StateMachine.Types
                    (Untyped(Untyped))
-import           Test.StateMachine.Types.HFunctor
 import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------

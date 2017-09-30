@@ -43,7 +43,7 @@ module Test.StateMachine.Types
   where
 
 import           Data.Functor.Classes
-                   (Ord1, Show1, showsPrec1)
+                   (Ord1)
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
