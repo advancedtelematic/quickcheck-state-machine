@@ -29,6 +29,7 @@ library
                      , Test.StateMachine.TH
                      , Test.StateMachine.Types
                      , Test.StateMachine.Types.Generics
+                     , Test.StateMachine.Types.Generics.TH
                      , Test.StateMachine.Types.HFunctor
                      , Test.StateMachine.Types.HFunctor.TH
                      , Test.StateMachine.Types.History

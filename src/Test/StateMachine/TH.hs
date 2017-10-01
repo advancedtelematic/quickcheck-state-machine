@@ -6,7 +6,12 @@ module Test.StateMachine.TH
 import           Language.Haskell.TH
                    (Dec, Name, Q)
 
+import           Test.StateMachine.Types.Generics.TH as TH
 import           Test.StateMachine.Types.HFunctor.TH as TH
 
+-- | Derive instances of 'HFunctor', 'HFoldable', 'HTraversable', 'Constructor'.
 deriveTestClasses :: Name -> Q [Dec]
-deriveTestClasses = deriveHClasses
+deriveTestClasses = (fmap (fmap concat . sequence) . sequence)
+  [ deriveHClasses
+  , deriveConstructors
+  ]
