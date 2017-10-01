@@ -27,8 +27,10 @@ library
                      , Test.StateMachine.Internal.Types.Environment
                      , Test.StateMachine.Internal.Utils
                      , Test.StateMachine.Internal.Utils.BoxDrawer
+                     , Test.StateMachine.TH
                      , Test.StateMachine.Types
                      , Test.StateMachine.Types.HFunctor
+                     , Test.StateMachine.Types.HFunctor.TH
                      , Test.StateMachine.Types.History
                      , Test.StateMachine.Types.References
   build-depends:       ansi-wl-pprint (>=0.6.7.3 && <0.7)
@@ -43,6 +45,8 @@ library
                      , quickcheck-with-counterexamples (< 2.0)
                      , random (==1.1.*)
                      , stm (>=2.4.4.1 && <2.5)
+                     , template-haskell
+                     , th-abstraction
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-test
