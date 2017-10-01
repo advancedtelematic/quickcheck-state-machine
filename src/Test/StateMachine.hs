@@ -46,7 +46,6 @@ module Test.StateMachine
   , prettyParallelProgram
 
     -- * Types
-  , module Test.StateMachine.Generics
   , module Test.StateMachine.Types
 
     -- * Reexport
@@ -73,7 +72,6 @@ import qualified Test.QuickCheck.Counterexamples       as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM, monadic, run)
 
-import           Test.StateMachine.Generics
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types

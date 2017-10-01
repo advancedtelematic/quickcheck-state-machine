@@ -1,6 +1,6 @@
 {-# LANGUAGE KindSignatures #-}
 
-module Test.StateMachine.Generics where
+module Test.StateMachine.Types.Generics where
 
 newtype Constructor = Constructor String
   deriving (Eq, Ord)

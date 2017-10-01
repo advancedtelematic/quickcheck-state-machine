@@ -18,7 +18,6 @@ tested-with:         GHC == 8.0.2
 library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
-                     , Test.StateMachine.Generics
                      , Test.StateMachine.Internal.AlphaEquality
                      , Test.StateMachine.Internal.Parallel
                      , Test.StateMachine.Internal.ScopeCheck
@@ -29,6 +28,7 @@ library
                      , Test.StateMachine.Internal.Utils.BoxDrawer
                      , Test.StateMachine.TH
                      , Test.StateMachine.Types
+                     , Test.StateMachine.Types.Generics
                      , Test.StateMachine.Types.HFunctor
                      , Test.StateMachine.Types.HFunctor.TH
                      , Test.StateMachine.Types.History
