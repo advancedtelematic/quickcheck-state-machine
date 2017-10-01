@@ -37,8 +37,12 @@ module CrudWebserverFile
   , prop_crudWebserverFileParallel
   ) where
 
+import           Control.Concurrent
+                   (newEmptyMVar, putMVar, takeMVar)
 import           Control.Concurrent.Async
-                   (Async, async, cancel, poll)
+                   (Async, async, cancel, waitEither)
+import           Control.Exception
+                   (bracket)
 import           Control.Monad.IO.Class
                    (liftIO)
 import           Control.Monad.Reader
@@ -123,10 +127,15 @@ server dir
   :<|> deleteFile dir
 
 -- | Serve the `API` on port 8080
-runServer :: IO ()
-runServer = do
+runServer :: IO () -> IO ()
+runServer ready = do
   dir <- Directory.getTemporaryDirectory
-  Warp.run 8080 (serve (Proxy :: Proxy API) (server dir))
+  Warp.runSettings settings (serve (Proxy :: Proxy API) (server dir))
+  where
+    settings
+      = Warp.setPort 8080
+      . Warp.setBeforeMainLoop ready
+      $ Warp.defaultSettings
 
 ------------------------------------------------------------------------
 
@@ -233,18 +242,19 @@ burl = BaseUrl Http "localhost" 8080 ""
 
 setup :: MonadBaseControl IO m => m (Async ())
 setup = liftBaseWith $ \_ -> do
-  pid <- async runServer
-  res <- poll pid
-  case res of
-    Nothing         -> return ()
-    Just (Left err) -> error (show err)
-    Just (Right _)  -> error "setup: impossible, server shouldn't return."
-  return pid
+  signal <- newEmptyMVar
+  aServer <- async (runServer (putMVar signal ()))
+  aConfirm <- async (takeMVar signal)
+  ok <- waitEither aServer aConfirm
+  case ok of
+    Right () -> return aServer
+    Left ()  -> error "Server should not return"
 
 runner :: ReaderT ClientEnv IO Property -> IO Property
-runner p = do
-  mgr <- newManager defaultManagerSettings
-  runReaderT p (ClientEnv mgr burl)
+runner p =
+  bracket setup cancel $ \_ -> do
+    mgr <- newManager defaultManagerSettings
+    runReaderT p (ClientEnv mgr burl)
 
 ------------------------------------------------------------------------
 
@@ -255,14 +265,12 @@ sm = StateMachine
 
 prop_crudWebserverFile :: Property
 prop_crudWebserverFile =
-  bracketP setup cancel $ \_ ->
-    monadicSequential sm $ \prog -> do
-      (hist, model, prop) <- runProgram sm prog
-      prettyProgram prog hist model $
-        checkActionNames prog prop
+  monadicSequential sm $ \prog -> do
+    (hist, model, prop) <- runProgram sm prog
+    prettyProgram prog hist model $
+      checkActionNames prog prop
 
 prop_crudWebserverFileParallel :: Property
 prop_crudWebserverFileParallel =
-  bracketP setup cancel $ \_ ->
-    monadicParallel sm $ \prog ->
-      prettyParallelProgram prog =<< runParallelProgram sm prog
+  monadicParallel sm $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram sm prog
