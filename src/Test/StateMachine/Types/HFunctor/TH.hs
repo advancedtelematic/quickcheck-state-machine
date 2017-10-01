@@ -16,8 +16,6 @@ import           Control.Monad
                    (when, (>=>))
 import           Data.Foldable
                    (foldl')
-import           Data.List
-                   (group, sort)
 import           Data.Monoid
                    (mempty, (<>))
 import qualified Data.Set                         as Set
@@ -26,6 +24,8 @@ import           Data.Traversable
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Datatype
 
+import           Test.StateMachine.Internal.Utils
+                   (dropLast, nub, toLast)
 import           Test.StateMachine.Types.HFunctor
 
 -- | Derive 'HFunctor', 'HFoldable' and 'HTraversable'.
@@ -115,9 +115,6 @@ mkFFor dict info =
   where
     mkF (_, pats, body) = LamE pats body
 
-nub :: Ord a => [a] -> [a]
-nub = fmap head . group . sort
-
 htraversalWithCxtFor :: Dictionary -> DatatypeInfo -> Q (Cxt, Dec)
 htraversalWithCxtFor dict info =
   fmap mkFunD (htraversalBodyFor dict info)
@@ -177,9 +174,3 @@ variableHead :: Type -> Bool
 variableHead (AppT u _) = variableHead u
 variableHead (VarT _)   = True
 variableHead _          = False
-
-dropLast :: Int -> [a] -> [a]
-dropLast n xs = zipWith const xs (drop n xs)
-
-toLast :: Int -> [a] -> a
-toLast n = last . dropLast n
