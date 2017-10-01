@@ -49,7 +49,7 @@ import           Test.QuickCheck.Counterexamples
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
-                   (deriveHClasses)
+                   (deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -147,15 +147,7 @@ deriving instance Show1 v => Show (Action v resp)
 instance Show (Untyped Action) where
   show (Untyped act) = show act
 
-deriveHClasses ''Action
-
-instance Constructors Action where
-  constructor x = Constructor $ case x of
-    New     -> "New"
-    Read{}  -> "Read"
-    Write{} -> "Write"
-    Inc{}   -> "Inc"
-  nConstructors _ = 4
+deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
 

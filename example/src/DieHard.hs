@@ -38,7 +38,7 @@ import           Test.QuickCheck.Counterexamples
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
-                   (deriveHClasses)
+                   (deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -145,17 +145,7 @@ semantics BigIntoSmall = return ()
 instance Show (Untyped Action) where
   show (Untyped act) = show act
 
-deriveHClasses ''Action
-
-instance Constructors Action where
-  constructor x = Constructor $ case x of
-    FillBig      -> "FillBig"
-    FillSmall    -> "FillSmall"
-    EmptyBig     -> "EmptyBig"
-    EmptySmall   -> "EmptySmall"
-    SmallIntoBig -> "SmallIntoBig"
-    BigIntoSmall -> "BigIntoSmall"
-  nConstructors _ = 6
+deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
 

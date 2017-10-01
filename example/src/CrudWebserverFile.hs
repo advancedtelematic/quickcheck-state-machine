@@ -75,7 +75,7 @@ import           Test.QuickCheck.Instances
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
-                   (deriveHClasses)
+                   (deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -206,17 +206,10 @@ semantics act = do
 
 ------------------------------------------------------------------------
 
-deriveHClasses ''Action
+deriveTestClasses ''Action
 
 instance Show (Untyped Action) where
   show (Untyped act) = show act
-
-instance Constructors Action where
-  constructor x = Constructor $ case x of
-    PutFile{}    -> "PutFile"
-    GetFile{}    -> "GetFile"
-    DeleteFile{} -> "DeleteFile"
-  nConstructors _ = 3
 
 ------------------------------------------------------------------------
 

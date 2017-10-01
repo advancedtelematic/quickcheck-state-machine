@@ -52,7 +52,7 @@ import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
                    (shrinkPropertyHelperC)
 import           Test.StateMachine.TH
-                   (deriveHClasses)
+                   (deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -147,13 +147,7 @@ semantics se (tdb, tlock) cmd = case cmd of
 
 ------------------------------------------------------------------------
 
-deriveHClasses ''Action
-
-instance Constructors Action where
-  constructor x = Constructor $ case x of
-    TakeTicket -> "TakeTicket"
-    Reset      -> "Reset"
-  nConstructors _ = 2
+deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
 

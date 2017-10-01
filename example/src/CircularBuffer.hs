@@ -45,7 +45,7 @@ import           Test.QuickCheck
                    frequency, oneof, property, shrink, (===))
 import           Test.StateMachine
 import           Test.StateMachine.TH
-                   (deriveHClasses)
+                   (deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -84,14 +84,6 @@ deriving instance Show1 v => Show (Action v p)
 
 instance Show (Untyped Action) where
   show (Untyped act) = show act
-
-instance Constructors Action where
-  constructor x = Constructor $ case x of
-    New{} -> "New"
-    Put{} -> "Put"
-    Get{} -> "Get"
-    Len{} -> "Len"
-  nConstructors _ = 4
 
 ------------------------------------------------------------------------
 
@@ -249,7 +241,7 @@ semantics bugs (Len buffer)   = lenBuffer bugs (opaque buffer)
 
 ------------------------------------------------------------------------
 
-deriveHClasses ''Action
+deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
 

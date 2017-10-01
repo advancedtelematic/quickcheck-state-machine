@@ -35,7 +35,7 @@ import           Test.QuickCheck
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
-                   (deriveHClasses)
+                   (deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -182,17 +182,10 @@ semantics (Union ref1 ref2) = unionElements (opaque ref1) (opaque ref2)
 
 ------------------------------------------------------------------------
 
-deriveHClasses ''Action
+deriveTestClasses ''Action
 
 instance Show a => Show (Untyped (Action a)) where
   show (Untyped act) = show act
-
-instance Constructors (Action a) where
-  constructor x = Constructor $ case x of
-    New{}   -> "New"
-    Find{}  -> "Find"
-    Union{} -> "Union"
-  nConstructors _ = 3
 
 ------------------------------------------------------------------------
 
