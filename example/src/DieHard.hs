@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE KindSignatures     #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -36,6 +37,8 @@ import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveHClasses)
 
 ------------------------------------------------------------------------
 
@@ -142,16 +145,7 @@ semantics BigIntoSmall = return ()
 instance Show (Untyped Action) where
   show (Untyped act) = show act
 
-instance HFunctor     Action
-instance HFoldable    Action
-
-instance HTraversable Action where
-  htraverse _ FillBig      = pure FillBig
-  htraverse _ FillSmall    = pure FillSmall
-  htraverse _ EmptyBig     = pure EmptyBig
-  htraverse _ EmptySmall   = pure EmptySmall
-  htraverse _ SmallIntoBig = pure SmallIntoBig
-  htraverse _ BigIntoSmall = pure BigIntoSmall
+deriveHClasses ''Action
 
 instance Constructors Action where
   constructor x = Constructor $ case x of

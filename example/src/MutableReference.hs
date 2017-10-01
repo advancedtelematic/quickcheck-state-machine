@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE KindSignatures     #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -47,6 +48,8 @@ import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveHClasses)
 
 ------------------------------------------------------------------------
 
@@ -144,14 +147,7 @@ deriving instance Show1 v => Show (Action v resp)
 instance Show (Untyped Action) where
   show (Untyped act) = show act
 
-instance HTraversable Action where
-  htraverse _ New           = pure New
-  htraverse f (Read  ref)   = Read  <$> htraverse f ref
-  htraverse f (Write ref i) = Write <$> htraverse f ref <*> pure i
-  htraverse f (Inc   ref)   = Inc   <$> htraverse f ref
-
-instance HFunctor  Action
-instance HFoldable Action
+deriveHClasses ''Action
 
 instance Constructors Action where
   constructor x = Constructor $ case x of

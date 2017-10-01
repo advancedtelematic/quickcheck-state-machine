@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeOperators         #-}
 
 ------------------------------------------------------------------------
@@ -73,6 +74,8 @@ import           Test.QuickCheck.Instances
                    ()
 
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveHClasses)
 
 ------------------------------------------------------------------------
 
@@ -203,13 +206,7 @@ semantics act = do
 
 ------------------------------------------------------------------------
 
-instance HTraversable Action where
-  htraverse _ (PutFile    file content) = pure (PutFile    file content)
-  htraverse _ (GetFile    file)         = pure (GetFile    file)
-  htraverse _ (DeleteFile file)         = pure (DeleteFile file)
-
-instance HFunctor  Action
-instance HFoldable Action
+deriveHClasses ''Action
 
 instance Show (Untyped Action) where
   show (Untyped act) = show act

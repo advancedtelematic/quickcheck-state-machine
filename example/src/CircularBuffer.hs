@@ -4,6 +4,7 @@
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -43,6 +44,8 @@ import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
                    frequency, oneof, property, shrink, (===))
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveHClasses)
 
 ------------------------------------------------------------------------
 
@@ -81,14 +84,6 @@ deriving instance Show1 v => Show (Action v p)
 
 instance Show (Untyped Action) where
   show (Untyped act) = show act
-
-instance HFunctor Action
-instance HFoldable Action
-instance HTraversable Action where
-  htraverse _ (New n)        = pure (New n)
-  htraverse f (Put x buffer) = Put x <$> htraverse f buffer
-  htraverse f (Get buffer)   = Get <$> htraverse f buffer
-  htraverse f (Len buffer)   = Len <$> htraverse f buffer
 
 instance Constructors Action where
   constructor x = Constructor $ case x of
@@ -251,6 +246,10 @@ semantics bugs (New n)        = Opaque <$> newBuffer bugs n
 semantics _    (Put x buffer) = putBuffer x (opaque buffer)
 semantics _    (Get buffer)   = getBuffer (opaque buffer)
 semantics bugs (Len buffer)   = lenBuffer bugs (opaque buffer)
+
+------------------------------------------------------------------------
+
+deriveHClasses ''Action
 
 ------------------------------------------------------------------------
 

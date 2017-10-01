@@ -92,6 +92,8 @@ import           Test.QuickCheck.Instances
                    ()
 
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveHClasses)
 
 ------------------------------------------------------------------------
 
@@ -320,14 +322,7 @@ instance Show (Untyped Action) where
 -- And in order for the library to deal with @Reference@s we need to
 -- explain how to traverse them.
 
-instance HTraversable Action where
-  htraverse _ (PostUser   user) = pure (PostUser user)
-  htraverse f (GetUser    key)  = GetUser    <$> htraverse f key
-  htraverse f (IncAgeUser key)  = IncAgeUser <$> htraverse f key
-  htraverse f (DeleteUser key)  = DeleteUser <$> htraverse f key
-
-instance HFunctor  Action
-instance HFoldable Action
+deriveHClasses ''Action
 
 instance Constructors Action where
   constructor x = Constructor $ case x of

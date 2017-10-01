@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE KindSignatures     #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -50,6 +51,8 @@ import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
                    (shrinkPropertyHelperC)
+import           Test.StateMachine.TH
+                   (deriveHClasses)
 
 ------------------------------------------------------------------------
 
@@ -144,12 +147,7 @@ semantics se (tdb, tlock) cmd = case cmd of
 
 ------------------------------------------------------------------------
 
-instance HTraversable Action where
-  htraverse _ TakeTicket = pure TakeTicket
-  htraverse _ Reset      = pure Reset
-
-instance HFunctor  Action
-instance HFoldable Action
+deriveHClasses ''Action
 
 instance Constructors Action where
   constructor x = Constructor $ case x of
