@@ -95,4 +95,4 @@ spec =
 deriving instance Eq (Action v a)
 
 instance Eq (Untyped Action) where
-  a == b = cast a == Just b
+  Untyped a == Untyped b = cast a == Just b
