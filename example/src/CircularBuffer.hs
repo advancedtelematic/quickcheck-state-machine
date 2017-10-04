@@ -5,10 +5,19 @@
 {-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 -- |
+-- Module      :  CircularBuffer
+-- Copyright   :  (C) 2017, Xia Li-yao
+-- License     :  BSD-style (see the file LICENSE)
 --
--- This module contains a specification of a circular buffer.
+-- Maintainer  :  Xia Li-yao
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- This module contains a specification of a circular buffer. Adapted
+-- from John Hughes' /Experiences with QuickCheck: Testing the hard
+-- stuff and staying sane/.
 --
 ------------------------------------------------------------------------
 
