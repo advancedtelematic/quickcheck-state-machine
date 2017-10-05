@@ -2,20 +2,105 @@
 
 module Test.StateMachine.Types.Generics.TH where
 
+import           Control.Applicative
+                   (liftA2)
 import           Control.Monad
                    (filterM, (>=>))
 import           Data.Foldable
-                   (foldl')
+                   (asum, foldl')
+import           Data.Functor.Classes
+                   (Show1)
+import           Data.Maybe
+                   (maybeToList)
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Datatype
 import           Test.QuickCheck
                    (shrink)
 
 import           Test.StateMachine.Internal.Utils
-                   (dropLast, nub)
+                   (dropLast, nub, toLast)
+import           Test.StateMachine.Types
+                   (Untyped)
 import           Test.StateMachine.Types.Generics
 import           Test.StateMachine.Types.References
                    (Reference)
+
+-- * Show of actions
+
+-- | Derive @Show (Action v a)@ and @Show (Untyped Action)@.
+deriveShows :: Name -> Q [Dec]
+deriveShows = (liftA2 . liftA2) (++) deriveShow deriveShowUntyped
+
+-- | Derive @Show (Action v a)@.
+deriveShow :: Name -> Q [Dec]
+deriveShow = reifyDatatype >=> deriveShow'
+
+deriveShow' :: DatatypeInfo -> Q [Dec]
+deriveShow' info = do
+  (v_, ts) <- showConstraints info
+  let show1v = maybeToList (fmap (AppT (ConT ''Show1)) v_)
+      cxt_ = show1v ++ fmap (AppT (ConT ''Show)) ts
+      instanceHead_ = AppT
+        (ConT ''Show)
+        (foldl' AppT (ConT (datatypeName info)) (datatypeVars info))
+  return [StandaloneDerivD cxt_ instanceHead_]
+
+-- | Derive @Show (Untyped Action)@.
+deriveShowUntyped :: Name -> Q [Dec]
+deriveShowUntyped = reifyDatatype >=> deriveShowUntyped'
+
+deriveShowUntyped' :: DatatypeInfo -> Q [Dec]
+deriveShowUntyped' info = do
+  (_, ts) <- showConstraints info
+  let cxt_ = fmap (AppT (ConT ''Show)) ts
+      instanceHead_ = AppT
+        (ConT ''Show)
+        (AppT
+          (ConT ''Untyped)
+          (foldl' AppT (ConT (datatypeName info)) (dropLast 2 (datatypeVars info))))
+  return [StandaloneDerivD cxt_ instanceHead_]
+
+-- | Gather types of fields with parametric types to form @Show@ constraints
+-- for a derived instance.
+--
+-- - @(Show1 v, Show a)@ for fields of type @Reference v a@
+-- - @Show a@ for fields of type @a@
+--
+-- The @Show1 v@ constraint is separated so that we can easily remove
+-- it from the list.
+showConstraints :: DatatypeInfo -> Q (Maybe Type, [Type])
+showConstraints info = do
+  let SigT v _ = toLast 1 (datatypeVars info)
+  fmap gatherShowConstraints
+    (traverse (showConstraintsByCon v) (datatypeCons info))
+
+showConstraintsByCon :: Type -> ConstructorInfo -> Q (Maybe Type, [Type])
+showConstraintsByCon v info =
+  fmap gatherShowConstraints
+    (traverse (showConstraintsByField v) (constructorFields info))
+
+showConstraintsByField :: Type -> Type -> Q (Maybe Type, [Type])
+showConstraintsByField v t' = do
+  t <- resolveTypeSynonyms t'
+  return $ case t of
+    AppT (AppT (ConT _ref) v') a
+      | _ref == ''Reference && v == v' -> (Just v, singleton a)
+    _ -> (Nothing, singleton t)
+  where
+    singleton t | variableHead t = [t]
+                | otherwise = []
+
+gatherShowConstraints :: [(Maybe Type, [Type])] -> (Maybe Type, [Type])
+gatherShowConstraints vts =
+  let (vs', ts') = unzip vts
+      v = asum vs'
+      ts = nub (concat ts')
+  in (v, ts)
+
+variableHead :: Type -> Bool
+variableHead (AppT u _) = variableHead u
+variableHead (VarT _)   = True
+variableHead _          = False
 
 -- * Shrinkers
 
