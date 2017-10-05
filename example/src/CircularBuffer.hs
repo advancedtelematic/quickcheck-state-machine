@@ -30,8 +30,6 @@ import           Control.Monad
                    (guard)
 import           Data.Function
                    (on)
-import           Data.Functor.Classes
-                   (Show1)
 import           Data.IORef
 import           Data.Maybe
                    (isJust)
@@ -45,7 +43,7 @@ import           Test.QuickCheck
                    frequency, oneof, property, (===))
 import           Test.StateMachine
 import           Test.StateMachine.TH
-                   (deriveTestClasses, mkShrinker)
+                   (deriveShows, deriveTestClasses, mkShrinker)
 
 ------------------------------------------------------------------------
 
@@ -134,11 +132,7 @@ data Action (v :: * -> *) :: * -> * where
   -- | Get the number of elements in the buffer.
   Len :: Reference v (Opaque Buffer) -> Action v Int
 
-deriving instance Show1 v => Show (Action v p)
-
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
-
+deriveShows ''Action
 deriveTestClasses ''Action
 
 ------------------------------------------------------------------------

@@ -32,8 +32,6 @@ module MutableReference
 
 import           Control.Concurrent
                    (threadDelay)
-import           Data.Functor.Classes
-                   (Show1(..))
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -49,7 +47,7 @@ import           Test.QuickCheck.Counterexamples
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
-                   (deriveTestClasses)
+                   (deriveShows, deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -142,11 +140,7 @@ semantics prb (Inc   ref)   =
 
 ------------------------------------------------------------------------
 
-deriving instance Show1 v => Show (Action v resp)
-
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
-
+deriveShows ''Action
 deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
