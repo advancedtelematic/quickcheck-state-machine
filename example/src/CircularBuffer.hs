@@ -37,6 +37,8 @@ import           Data.Maybe
 import           Data.Vector.Unboxed.Mutable
                    (IOVector)
 import qualified Data.Vector.Unboxed.Mutable as V
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
                    frequency, oneof, property, shrink, (===))
@@ -252,10 +254,10 @@ semantics bugs (Len buffer)   = lenBuffer bugs (opaque buffer)
 
 ------------------------------------------------------------------------
 
-sm :: Version -> Bugs -> StateMachine Model Action IO
+sm :: Version -> Bugs -> StateMachine Model Action Void IO
 sm version bugs = StateMachine
   (generator version) shrinker (precondition bugs) transition
-  postcondition initModel (semantics bugs) id
+  postcondition initModel (okSemantics (semantics bugs)) id
 
 -- | Property parameterized by spec version and bugs.
 prepropcircularBuffer :: Version -> Bugs -> Property

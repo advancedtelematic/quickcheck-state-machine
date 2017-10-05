@@ -190,7 +190,7 @@ shrinker _                       = []
 
 ------------------------------------------------------------------------
 
-semantics :: Action Concrete resp -> ReaderT ClientEnv IO resp
+semantics :: Semantics Action String (ReaderT ClientEnv IO)
 semantics act = do
   env <- ask
   res <- liftIO $ flip runClientM env $ case act of
@@ -198,8 +198,8 @@ semantics act = do
     GetFile    file         -> getFileC    file
     DeleteFile file         -> deleteFileC file
   case res of
-    Left  err  -> error (show err)
-    Right resp -> return resp
+    Left  err  -> return (Fail (show err))
+    Right resp -> return (Ok resp)
 
 ------------------------------------------------------------------------
 
@@ -243,7 +243,7 @@ runner p = do
 
 ------------------------------------------------------------------------
 
-sm :: StateMachine Model Action (ReaderT ClientEnv IO)
+sm :: StateMachine Model Action String (ReaderT ClientEnv IO)
 sm = StateMachine
   generator shrinker preconditions transitions
   postconditions initModel semantics runner

@@ -31,7 +31,9 @@ module Test.StateMachine.Types
   , Transition
   , Postcondition
   , InitialModel
+  , Result(..)
   , Semantics
+  , okSemantics
   , Runner
 
   -- * Higher-order functors, foldables and traversables
@@ -46,6 +48,8 @@ import           Data.Functor.Classes
                    (Ord1)
 import           Data.Typeable
                    (Typeable)
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Gen, Property)
 
@@ -66,14 +70,14 @@ data Untyped (act :: (* -> *) -> * -> *) where
 
 ------------------------------------------------------------------------
 
-data StateMachine model act m = StateMachine
+data StateMachine model act err m = StateMachine
   { generator'     :: Generator model act
   , shrinker'      :: Shrinker  act
   , precondition'  :: Precondition model act
   , transition'    :: Transition   model act
   , postcondition' :: Postcondition model act
   , model'         :: InitialModel model
-  , semantics'     :: Semantics act m
+  , semantics'     :: Semantics act err m
   , runner'        :: Runner m
   }
 
@@ -105,8 +109,13 @@ type Postcondition model act = forall resp.
 --   check.
 type InitialModel m = forall (v :: * -> *). m v
 
+data Result resp err = Ok resp | Fail err
+
 -- | When we execute our actions we have access to concrete references.
-type Semantics act m = forall resp. act Concrete resp -> m resp
+type Semantics act err m = forall resp. act Concrete resp -> m (Result resp err)
+
+okSemantics :: Monad m => (forall resp. act Concrete resp -> m resp) -> Semantics act Void m
+okSemantics sem = fmap Ok . sem
 
 -- | How to run the monad used by the semantics.
 type Runner m = m Property -> IO Property

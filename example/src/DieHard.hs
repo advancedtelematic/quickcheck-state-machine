@@ -28,6 +28,8 @@ module DieHard
 
 import           Data.Functor.Classes
                    (Show1)
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (elements, property)
 import           Test.QuickCheck.Counterexamples
@@ -168,10 +170,10 @@ instance Constructors Action where
 -- To make the code fit on a line, we first group all things related to
 -- generation and execution of programs respectively.
 
-sm :: StateMachine Model Action IO
+sm :: StateMachine Model Action Void IO
 sm = StateMachine
   generator shrinker preconditions transitions
-  postconditions initModel semantics id
+  postconditions initModel (okSemantics semantics) id
 
 prop_dieHard :: PropertyOf (Program Action)
 prop_dieHard = monadicSequentialC sm $ \prog -> do

@@ -28,6 +28,8 @@ import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
                    (Eq1(..), Show1)
+import           Data.Void
+                   (Void)
 import           Prelude                                  hiding
                    (readFile)
 import           System.Directory
@@ -157,10 +159,10 @@ instance Constructors Action where
 
 ------------------------------------------------------------------------
 
-sm :: SharedExclusive -> (FilePath, FilePath) -> StateMachine Model Action IO
+sm :: SharedExclusive -> (FilePath, FilePath) -> StateMachine Model Action Void IO
 sm se files = StateMachine
   generator shrinker preconditions transitions
-  postconditions initModel (semantics se files) id
+  postconditions initModel (okSemantics (semantics se files)) id
 
 -- Sequentially the model is consistant (even though the lock is
 -- shared).

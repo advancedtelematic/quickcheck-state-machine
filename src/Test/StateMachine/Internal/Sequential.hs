@@ -122,21 +122,21 @@ shrinkProgram shrinker precondition transition model
   . unProgram
 
 executeProgram
-  :: forall m act model
+  :: forall m act err model
   .  Monad m
   => Show (Untyped act)
   => HFunctor act
-  => StateMachine  model act m
+  => StateMachine  model act err m
   -> Program act
-  -> m (History act, model Concrete, Property)
+  -> m (History act err, model Concrete, Property)
 executeProgram StateMachine {..}
   = fmap (\(hist, _, cmodel, _, prop) -> (hist, cmodel, prop))
   . foldM go (mempty, model', model', emptyEnvironment, property True)
   . unProgram
   where
-  go :: (History act, model Symbolic, model Concrete, Environment, Property)
+  go :: (History act err, model Symbolic, model Concrete, Environment, Property)
      -> Internal act
-     -> m (History act, model Symbolic, model Concrete, Environment, Property)
+     -> m (History act err, model Symbolic, model Concrete, Environment, Property)
   go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) = do
     if not (precondition' smodel act)
     then
@@ -148,18 +148,31 @@ executeProgram StateMachine {..}
              )
     else do
       let cact = hfmap (fromSymbolic env) act
-      resp <- semantics' cact
-      let cresp = Concrete resp
-          hist' = History
-            [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
-            , ResponseEvent (toDyn cresp) (show resp) (Pid 0)
-            ]
-      return ( hist <> hist'
-             , transition' smodel act sym
-             , transition' cmodel cact cresp
-             , insertConcrete sym cresp env
-             , prop .&&. postcondition' cmodel cact resp
-             )
+      mresp <- semantics' cact
+      case mresp of
+        Fail err -> do
+          let hist' = History
+                [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
+                , ResponseEvent (Fail err) "<fail>" (Pid 0)
+                ]
+          return ( hist <> hist'
+                 , smodel
+                 , cmodel
+                 , env
+                 , prop
+                 )
+        Ok resp  -> do
+          let cresp = Concrete resp
+              hist' = History
+                [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
+                , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
+                ]
+          return ( hist <> hist'
+                 , transition' smodel act sym
+                 , transition' cmodel cact cresp
+                 , insertConcrete sym cresp env
+                 , prop .&&. postcondition' cmodel cact resp
+                 )
     where
     fromSymbolic :: Environment -> Symbolic v ->  Concrete v
     fromSymbolic env' sym' = case reifyEnvironment env' sym' of
