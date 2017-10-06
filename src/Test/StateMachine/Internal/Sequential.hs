@@ -125,7 +125,7 @@ executeProgram
   :: forall m act err model
   .  Monad m
   => Show (Untyped act)
-  => HFunctor act
+  => HTraversable act
   => StateMachine  model act err m
   -> Program act
   -> m (History act err, model Concrete, Property)
@@ -147,34 +147,35 @@ executeProgram StateMachine {..}
              , counterexample ("precondition failed for: " ++ show (Untyped act)) prop
              )
     else do
-      let cact = hfmap (fromSymbolic env) act
-      mresp <- semantics' cact
-      case mresp of
-        Fail err -> do
-          let hist' = History
-                [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
-                , ResponseEvent (Fail err) "<fail>" (Pid 0)
-                ]
-          return ( hist <> hist'
-                 , smodel
-                 , cmodel
-                 , env
-                 , prop
-                 )
-        Ok resp  -> do
-          let cresp = Concrete resp
-              hist' = History
-                [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
-                , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
-                ]
-          return ( hist <> hist'
-                 , transition' smodel act sym
-                 , transition' cmodel cact cresp
-                 , insertConcrete sym cresp env
-                 , prop .&&. postcondition' cmodel cact resp
-                 )
-    where
-    fromSymbolic :: Environment -> Symbolic v ->  Concrete v
-    fromSymbolic env' sym' = case reifyEnvironment env' sym' of
-      Left  err -> error (show err)
-      Right con -> con
+      case reify env act of
+
+                      -- This means that the reference that the action uses
+                      -- failed to be created, so we do nothing.
+        Left _     -> return (hist, smodel, cmodel, env, prop)
+
+        Right cact -> do
+          mresp <- semantics' cact
+          case mresp of
+            Fail err -> do
+              let hist' = History
+                    [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
+                    , ResponseEvent (Fail err) "<fail>" (Pid 0)
+                    ]
+              return ( hist <> hist'
+                     , smodel
+                     , cmodel
+                     , env
+                     , prop
+                     )
+            Ok resp  -> do
+              let cresp = Concrete resp
+                  hist' = History
+                    [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
+                    , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
+                    ]
+              return ( hist <> hist'
+                     , transition' smodel act sym
+                     , transition' cmodel cact cresp
+                     , insertConcrete sym cresp env
+                     , prop .&&. postcondition' cmodel cact resp
+                     )

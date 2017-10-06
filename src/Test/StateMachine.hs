@@ -144,7 +144,7 @@ runProgram
   :: forall m act err model
   .  Monad m
   => Show (Untyped act)
-  => HFunctor act
+  => HTraversable act
   => StateMachine model act err m
   -> Program act
   -> PropertyM m (History act err, model Concrete, Property)

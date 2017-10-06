@@ -164,20 +164,22 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
     -> StateT Environment m ()
   runMany hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
     env <- get
-    let cact = either (error . show) id (reify env act)
-    liftBaseWith $ const $ atomically $ writeTChan hchan $
-      InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
-    mresp <- lift (semantics cact)
-    case mresp of
-      Fail err -> do
+    case reify env act of
+      Left  _    -> return () -- The reference that the action uses failed to
+                              -- create.
+      Right cact -> do
+        liftBaseWith $ const $ atomically $ writeTChan hchan $
+          InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
+        mresp <- lift (semantics cact)
         threadDelay 10
-        liftBaseWith $ const $
-          atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
-      Ok resp  -> do
-        modify (insertConcrete sym (Concrete resp))
-        threadDelay 10
-        liftBaseWith $ const $
-          atomically $ writeTChan hchan $ ResponseEvent (Ok (toDyn resp)) (show resp) pid
+        case mresp of
+          Fail err -> do
+            liftBaseWith $ const $
+              atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
+          Ok resp  -> do
+            modify (insertConcrete sym (Concrete resp))
+            liftBaseWith $ const $
+              atomically $ writeTChan hchan $ ResponseEvent (Ok (toDyn resp)) (show resp) pid
 
 ------------------------------------------------------------------------
 
