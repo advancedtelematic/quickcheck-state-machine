@@ -121,7 +121,7 @@ monadicSequential
   :: Monad m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act m
+  => StateMachine model act err m
   -> (Program act -> PropertyM m a)
   -> Property
 monadicSequential sm = property . monadicSequentialC sm
@@ -130,7 +130,7 @@ monadicSequentialC
   :: Monad m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act m
+  => StateMachine model act err m
   -> (Program act -> PropertyM m a)
   -> PropertyOf (Program act)
 monadicSequentialC StateMachine {..} predicate
@@ -141,18 +141,18 @@ monadicSequentialC StateMachine {..} predicate
   . predicate
 
 runProgram
-  :: forall m act model
+  :: forall m act err model
   .  Monad m
   => Show (Untyped act)
-  => HFunctor act
-  => StateMachine  model act m
+  => HTraversable act
+  => StateMachine model act err m
   -> Program act
-  -> PropertyM m (History act, model Concrete, Property)
+  -> PropertyM m (History act err, model Concrete, Property)
 runProgram sm = run . executeProgram sm
 
 prettyProgram
   :: MonadIO m
-  => Program act -> History act -> model Concrete -> Property -> PropertyM m ()
+  => Program act -> History act err -> model Concrete -> Property -> PropertyM m ()
 prettyProgram _ hist _ prop = putStrLn (ppHistory hist) `whenFailM` prop
 
 actionNames :: forall act. Constructors act => Program act -> [(Constructor, Int)]
@@ -210,7 +210,7 @@ monadicParallel
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act m
+  => StateMachine model act err m
   -> (ParallelProgram act -> PropertyM m ())
   -> Property
 monadicParallel sm = property . monadicParallelC sm
@@ -219,7 +219,7 @@ monadicParallelC
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act m
+  => StateMachine model act err m
   -> (ParallelProgram act -> PropertyM m ())
   -> PropertyOf (ParallelProgram act)
 monadicParallelC StateMachine {..} predicate
@@ -233,9 +233,9 @@ runParallelProgram
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HTraversable act
-  => StateMachine model act m
+  => StateMachine model act err m
   -> ParallelProgram act
-  -> PropertyM m [(History act, Property)]
+  -> PropertyM m [(History act err, Property)]
 runParallelProgram = runParallelProgram' 10
 
 runParallelProgram'
@@ -243,9 +243,9 @@ runParallelProgram'
   => Show (Untyped act)
   => HTraversable act
   => Int
-  -> StateMachine model act m
+  -> StateMachine model act err m
   -> ParallelProgram act
-  -> PropertyM m [(History act, Property)]
+  -> PropertyM m [(History act err, Property)]
 runParallelProgram' n StateMachine {..} prog =
   replicateM n $ do
     hist <- run (executeParallelProgram semantics' prog)
@@ -254,8 +254,7 @@ runParallelProgram' n StateMachine {..} prog =
 prettyParallelProgram
   :: MonadIO m
   => HFoldable act
-  => ParallelProgram act -> [(History act, Property)] -> PropertyM m ()
+  => ParallelProgram act -> [(History act err, Property)] -> PropertyM m ()
 prettyParallelProgram prog
   = mapM_ (\(hist, prop) ->
               print (toBoxDrawings prog hist) `whenFailM` prop)
-

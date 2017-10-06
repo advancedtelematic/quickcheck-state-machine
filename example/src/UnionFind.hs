@@ -26,6 +26,8 @@ import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
 import           Data.Typeable
                    (Typeable)
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
                    frequency, property, shrink, (.&&.), (.||.), (===))
@@ -197,10 +199,10 @@ instance Constructors (Action a) where
 
 ------------------------------------------------------------------------
 
-sm :: StateMachine (Model Int) (Action Int) IO
+sm :: StateMachine (Model Int) (Action Int) Void IO
 sm = StateMachine
   generator shrinker preconditions transitions
-  postconditions initModel semantics id
+  postconditions initModel (okSemantics semantics) id
 
 prop_unionFind :: Property
 prop_unionFind = monadicSequential sm $ \prog -> do

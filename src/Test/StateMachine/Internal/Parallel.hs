@@ -123,20 +123,20 @@ shrinkParallelProgram shrinker precondition transition model
 --   and then the suffixes in parallel, and return the history (or
 --   trace) of the execution.
 executeParallelProgram
-  :: forall m act
+  :: forall m act err
   .  MonadBaseControl IO m
   => HTraversable act
   => Show (Untyped act)
-  => Semantics act m
+  => Semantics act err m
   -> ParallelProgram act
-  -> m (History act)
+  -> m (History act err)
 executeParallelProgram semantics = liftSemFork . unParallelProgram
   where
   liftSemFork
     :: HTraversable act
     => Show (Untyped act)
     => Fork (Program act)
-    -> m (History act)
+    -> m (History act err)
   liftSemFork (Fork left prefix right) = do
     hchan <- liftBaseWith (const newTChanIO)
     env   <- execStateT (runMany hchan (Pid 0) (unProgram prefix)) emptyEnvironment
@@ -158,23 +158,32 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
   runMany
     :: HTraversable act
     => Show (Untyped act)
-    => TChan (HistoryEvent (UntypedConcrete act))
+    => TChan (HistoryEvent (UntypedConcrete act) err)
     -> Pid
     -> [Internal act]
     -> StateT Environment m ()
   runMany hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
     env <- get
-    let cact = either (error . show) id (reify env act)
-    liftBaseWith $ const $ atomically $ writeTChan hchan $
-      InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
-    resp <- lift (semantics cact)
-    modify (insertConcrete sym (Concrete resp))
-    threadDelay 10
-    liftBaseWith $ const $ atomically $ writeTChan hchan $ ResponseEvent (toDyn resp) (show resp) pid
+    case reify env act of
+      Left  _    -> return () -- The reference that the action uses failed to
+                              -- create.
+      Right cact -> do
+        liftBaseWith $ const $ atomically $ writeTChan hchan $
+          InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
+        mresp <- lift (semantics cact)
+        threadDelay 10
+        case mresp of
+          Fail err -> do
+            liftBaseWith $ const $
+              atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
+          Ok resp  -> do
+            modify (insertConcrete sym (Concrete resp))
+            liftBaseWith $ const $
+              atomically $ writeTChan hchan $ ResponseEvent (Ok (toDyn resp)) (show resp) pid
 
 ------------------------------------------------------------------------
 
-linearTree :: History' act -> [Tree (Operation act)]
+linearTree :: History' act err -> [Tree (Operation act err)]
 linearTree [] = []
 linearTree es =
   [ Node (Operation act str (dynResp resp) pid) (linearTree es')
@@ -182,7 +191,8 @@ linearTree es =
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
-  dynResp resp = either (error . show) id (reifyDynamic resp)
+  dynResp (Ok   resp) = Ok (either (error . show) id (reifyDynamic resp))
+  dynResp (Fail err)  = Fail err
 
   filter1 :: (a -> Bool) -> [a] -> [a]
   filter1 _ []                   = []
@@ -194,49 +204,51 @@ linearTree es =
   matchInv _   _                            = False
 
 linearise
-  :: forall model act
+  :: forall model act err
   .  Transition    model act
   -> Postcondition model act
   -> InitialModel model
-  -> History act
+  -> History act err
   -> Property
 linearise transition postcondition model0 = go . unHistory
   where
-  go :: History' act -> Property
+  go :: History' act err -> Property
   go [] = property True
   go es = anyP (step model0) (linearTree es)
 
-  step :: model Concrete -> Tree (Operation act) -> Property
-  step model (Node (Operation act _ resp@(Concrete resp') _) roses) =
+  step :: model Concrete -> Tree (Operation act err) -> Property
+  step model (Node (Operation act _ (Fail _)                     _) roses) =
+    anyP' (step model) roses
+  step model (Node (Operation act _ (Ok (resp@(Concrete resp'))) _) roses) =
     postcondition model act resp' .&&.
     anyP' (step (transition model act resp)) roses
-    where
-    anyP' :: (a -> Property) -> [a] -> Property
-    anyP' _ [] = property True
-    anyP' p xs = anyP p xs
+
+anyP' :: (a -> Property) -> [a] -> Property
+anyP' _ [] = property True
+anyP' p xs = anyP p xs
 
 ------------------------------------------------------------------------
 
-toBoxDrawings :: HFoldable act => ParallelProgram act -> History act -> Doc
+toBoxDrawings :: HFoldable act => ParallelProgram act -> History act err -> Doc
 toBoxDrawings prog = toBoxDrawings' allVars
   where
   allVars    = S.unions [l, p, r]
   Fork l p r = fmap (S.unions . vars . unProgram) (unParallelProgram prog)
   vars xs    = [ getUsedVars x | Internal x _ <- xs]
 
-toBoxDrawings' :: Set Var -> History act -> Doc
+toBoxDrawings' :: Set Var -> History act err -> Doc
 toBoxDrawings' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
   where
     (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
     (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
 
-    out :: HistoryEvent act -> String
+    out :: HistoryEvent act err -> String
     out (InvocationEvent _ str var _)
       | var `S.member` knownVars = show var ++ " ← " ++ str
       | otherwise = str
     out (ResponseEvent _ str _) = str
 
-    toEventType :: [HistoryEvent act] -> [(EventType, Pid)]
+    toEventType :: [HistoryEvent act err] -> [(EventType, Pid)]
     toEventType = map go
       where
       go e = case e of

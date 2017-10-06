@@ -36,6 +36,8 @@ import           Data.Functor.Classes
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
+import           Data.Void
+                   (Void)
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
@@ -171,10 +173,10 @@ instance Constructors Action where
 -- the race condition, but @quickCheck (prop_parallelReferences
 -- RaceCondition)@ will!
 
-sm :: Problem -> StateMachine Model Action IO
+sm :: Problem -> StateMachine Model Action Void IO
 sm prb = StateMachine
   generator shrinker precondition transition
-  postcondition initModel (semantics prb) id
+  postcondition initModel (okSemantics (semantics prb)) id
 
 prop_references :: Problem -> PropertyOf (Program Action)
 prop_references prb = monadicSequentialC (sm prb) $ \prog -> do
