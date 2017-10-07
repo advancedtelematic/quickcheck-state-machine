@@ -34,7 +34,7 @@ before_install:
 install:
 # Build dependencies
 - stack --install-ghc test --only-dependencies
-- stack --stack-yaml=example/stack.yaml test --only-dependencies
+- stack --stack-yaml=example/stack.yaml test --only-snapshot
 
 script:
 # Build the package, its tests, and its docs and run the tests
