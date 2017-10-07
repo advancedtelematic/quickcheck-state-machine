@@ -23,6 +23,7 @@ module TicketDispenser
   , prop_ticketDispenserParallel
   , prop_ticketDispenserParallelOK
   , prop_ticketDispenserParallelBad
+  , withDbLock
   ) where
 
 import           Data.Dynamic
@@ -34,9 +35,12 @@ import           Data.Void
 import           Prelude                                  hiding
                    (readFile)
 import           System.Directory
-                   (removePathForcibly)
+                   (createDirectoryIfMissing, getTemporaryDirectory,
+                   removeFile)
 import           System.FileLock
                    (SharedExclusive(..), lockFile, unlockFile)
+import           System.FilePath
+                   ((</>))
 import           System.IO
                    (hClose, openTempFile)
 import           System.IO.Strict
@@ -151,59 +155,55 @@ deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
 
-sm :: SharedExclusive -> (FilePath, FilePath) -> StateMachine Model Action Void IO
+type DbLock = (FilePath, FilePath)
+
+withDbLock :: (DbLock -> IO ()) -> IO ()
+withDbLock run = do
+  tmp <- getTemporaryDirectory
+  let tmpTD = tmp </> "ticket-dispenser"
+  createDirectoryIfMissing True tmpTD
+  (tdb,   dbh)   <- openTempFile tmpTD "ticket-dispenser.db"
+  hClose dbh
+  (tlock, lockh) <- openTempFile tmpTD "ticket-dispenser.lock"
+  hClose lockh
+  run (tdb, tlock)
+  removeFile tdb
+  removeFile tlock
+
+sm :: SharedExclusive -> DbLock -> StateMachine Model Action Void IO
 sm se files = StateMachine
   generator shrinker preconditions transitions
   postconditions initModel (okSemantics (semantics se files)) id
 
--- Sequentially the model is consistant (even though the lock is
+-- Sequentially the model is consistent (even though the lock is
 -- shared).
 
-prop_ticketDispenser :: Property
-prop_ticketDispenser = monadicSequential sm' $ \prog -> do
+prop_ticketDispenser :: DbLock -> Property
+prop_ticketDispenser files = monadicSequential sm' $ \prog -> do
   (hist, model, prop) <- runProgram sm' prog
   prettyProgram prog hist model $
     checkActionNames prog prop
   where
-  sm' = sm Shared (ticketDb, ticketLock)
-    where
-    -- Predefined files are used for the database and the file lock.
-    ticketDb, ticketLock :: FilePath
-    ticketDb   = "/tmp/ticket-dispenser.db"
-    ticketLock = "/tmp/ticket-dispenser.lock"
+    sm' = sm Shared files
 
-prop_ticketDispenserParallel :: SharedExclusive -> PropertyOf (ParallelProgram Action)
-prop_ticketDispenserParallel se =
-  bracketPC setup cleanup $ \files ->
-    monadicParallelC (sm se files) $ \prog ->
-      prettyParallelProgram prog =<< runParallelProgram' 100 (sm se files) prog
+prop_ticketDispenserParallel :: SharedExclusive -> DbLock -> PropertyOf (ParallelProgram Action)
+prop_ticketDispenserParallel se files =
+  monadicParallelC sm' $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram' 100 sm' prog
   where
-
-  -- In the parallel case we create a temporary files for the database and
-  -- the lock.
-  setup = do
-    (tdb,   dbh)   <- openTempFile "/tmp/" "ticket-dispenser.db"
-    hClose dbh
-    (tlock, lockh) <- openTempFile "/tmp/" "ticket-dispenser.lock"
-    hClose lockh
-    return (tdb, tlock)
-
-  -- After the test are run we remove the temporary files.
-  cleanup (tdb, tlock) = do
-    removePathForcibly tdb
-    removePathForcibly tlock
+    sm' = sm se files
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.
-prop_ticketDispenserParallelOK :: PropertyOf (ParallelProgram Action)
+prop_ticketDispenserParallelOK :: DbLock -> PropertyOf (ParallelProgram Action)
 prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 
 -- If we allow file locks to be shared, then we get race conditions as
 -- expected. The following property asserts that one of the smallest
 -- counterexamples are found.
-prop_ticketDispenserParallelBad :: Property
-prop_ticketDispenserParallelBad =
-  shrinkPropertyHelperC (prop_ticketDispenserParallel Shared) $ \(ParallelProgram f) ->
+prop_ticketDispenserParallelBad :: DbLock -> Property
+prop_ticketDispenserParallelBad files =
+  shrinkPropertyHelperC (prop_ticketDispenserParallel Shared files) $ \(ParallelProgram f) ->
     any (alphaEqFork f)
       [ fork [iact Reset 0]      []             [iact Reset 1]
       , fork [iact TakeTicket 0] [iact Reset 1] [iact TakeTicket 2]

@@ -40,9 +40,11 @@
 module CrudWebserverDb where
 
 import           Control.Concurrent
-                   (threadDelay)
+                   (newEmptyMVar, putMVar, takeMVar, threadDelay)
 import           Control.Concurrent.Async.Lifted
-                   (Async, async, cancel)
+                   (Async, async, cancel, waitEither)
+import           Control.Exception
+                   (bracket)
 import           Control.Monad.IO.Class
                    (liftIO)
 import           Control.Monad.Logger
@@ -84,6 +86,10 @@ import           Servant.Client
                    client, runClientM)
 import           Servant.Server
                    (Handler)
+import           System.Directory
+                   (getTemporaryDirectory)
+import           System.FilePath
+                   ((</>))
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
                    frequency, listOf, property, shrink, suchThat,
@@ -174,8 +180,15 @@ mkApp sqliteFile = do
   runSqlPool (runMigration migrateAll) pool
   return (app pool)
 
-runServer :: FilePath -> Warp.Port -> IO ()
-runServer sqliteFile port = Warp.run port =<< mkApp sqliteFile
+runServer :: FilePath -> Warp.Port -> IO () -> IO ()
+runServer sqliteFile port ready = do
+  app' <- mkApp sqliteFile
+  Warp.runSettings settings app'
+  where
+    settings
+      = Warp.setPort port
+      . Warp.setBeforeMainLoop ready
+      $ Warp.defaultSettings
 
 ------------------------------------------------------------------------
 
@@ -335,23 +348,41 @@ sm port = StateMachine
   generator shrinker preconditions transitions
   postconditions initModel (okSemantics semantics) (runner port)
 
+
+crudWebserverDbPort :: Int
+crudWebserverDbPort = 8081
+
+withCrudWebserverDb :: IO () -> IO ()
+withCrudWebserverDb =
+  bracketServer (setup "sqlite.db" crudWebserverDbPort)
+
 prop_crudWebserverDb :: Property
 prop_crudWebserverDb =
-  bracketP (setup "sqlite.db" port) cancel $ \_ ->
-    monadicSequential (sm port) $ \prog -> do
-      (hist, model, prop) <- runProgram (sm port) prog
-      prettyProgram prog hist model $
-        checkActionNames prog prop
+  monadicSequential sm' $ \prog -> do
+    (hist, model, prop) <- runProgram sm' prog
+    prettyProgram prog hist model $
+      checkActionNames prog prop
   where
-  port = 8081
+    sm' = sm crudWebserverDbPort
+
+
+crudWebserverDbParallelPort :: Int
+crudWebserverDbParallelPort = 8082
+
+withCrudWebserverDbParallel :: IO () -> IO ()
+withCrudWebserverDbParallel =
+  bracketServer (setup "sqlite-parallel.db" crudWebserverDbParallelPort)
+
+bracketServer :: IO (Async ()) -> IO () -> IO ()
+bracketServer start run = do
+  bracket start cancel (const run)
 
 prop_crudWebserverDbParallel :: Property
 prop_crudWebserverDbParallel =
-  bracketP (setup "sqlite-parallel.db" port) cancel $ \_ ->
-    monadicParallel (sm port) $ \prog ->
-      prettyParallelProgram prog =<< runParallelProgram (sm port) prog
+  monadicParallel sm' $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram sm' prog
   where
-  port = 8082
+    sm' = sm crudWebserverDbParallelPort
 
 -- Where the URL of the server, how to run the reader monad that the
 -- semantics live in, and how to setup the webserver is defined as
@@ -367,10 +398,17 @@ runner port p = do
 
 setup :: MonadBaseControl IO m => FilePath -> Warp.Port -> m (Async ())
 setup sqliteFile port = liftBaseWith $ \_ -> do
-  mgr <- newManager defaultManagerSettings
-  pid <- async (runServer sqliteFile port)
-  healthy mgr 10
-  return pid
+  signal <- newEmptyMVar
+  tmp <- getTemporaryDirectory
+  aServer <- async (runServer (tmp </> sqliteFile) port (putMVar signal ()))
+  aConfirm <- async (takeMVar signal)
+  ok <- waitEither aServer aConfirm
+  case ok of
+    Right () -> do
+      mgr <- newManager defaultManagerSettings
+      healthy mgr 10
+      return aServer
+    Left () -> error "Server should not return"
   where
   healthy :: Manager -> Int -> IO ()
   healthy _   0     = error "healthy: server isn't healthy"

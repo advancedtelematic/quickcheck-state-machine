@@ -21,6 +21,7 @@ library
                      , containers
                      , directory
                      , filelock
+                     , filepath
                      , http-client
                      , lifted-async
                      , monad-control

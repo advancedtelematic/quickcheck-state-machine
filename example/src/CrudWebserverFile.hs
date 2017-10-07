@@ -38,8 +38,12 @@ module CrudWebserverFile
   , prop_crudWebserverFileParallel
   ) where
 
+import           Control.Concurrent
+                   (newEmptyMVar, putMVar, takeMVar)
 import           Control.Concurrent.Async
-                   (Async, async, cancel, poll)
+                   (Async, async, cancel, waitEither)
+import           Control.Exception
+                   (bracket)
 import           Control.Monad.IO.Class
                    (liftIO)
 import           Control.Monad.Reader
@@ -67,6 +71,8 @@ import           Servant.Client
 import           Servant.Server
                    (Server, serve)
 import qualified System.Directory            as Directory
+import           System.FilePath
+                   ((</>))
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
                    shrink, (===))
@@ -105,26 +111,34 @@ type API =   PutFile
 ------------------------------------------------------------------------
 
 -- | Handler for the `PutFile` endpoint
-putFile :: Server PutFile
-putFile file contents = liftIO (Text.writeFile file contents)
+putFile :: FilePath -> Server PutFile
+putFile dir file contents = liftIO (Text.writeFile (dir </> file) contents)
 
 -- | Handler for the `GetFile` endpoint
-getFile :: Server GetFile
-getFile file = liftIO (Text.readFile file)
+getFile :: FilePath -> Server GetFile
+getFile dir file = liftIO (Text.readFile (dir </> file))
 
 -- | Handler for the `DeleteFile` endpoint
-deleteFile :: Server DeleteFile
-deleteFile file = liftIO (Directory.removeFile file)
+deleteFile :: FilePath -> Server DeleteFile
+deleteFile dir file = liftIO (Directory.removeFile (dir </> file))
 
 -- | Handler for the entire REST `API`
-server :: Server API
-server = putFile
-    :<|> getFile
-    :<|> deleteFile
+server :: FilePath -> Server API
+server dir
+  =    putFile dir
+  :<|> getFile dir
+  :<|> deleteFile dir
 
 -- | Serve the `API` on port 8080
-runServer :: IO ()
-runServer = Warp.run 8080 (serve (Proxy :: Proxy API) server)
+runServer :: IO () -> IO ()
+runServer ready = do
+  dir <- Directory.getTemporaryDirectory
+  Warp.runSettings settings (serve (Proxy :: Proxy API) (server dir))
+  where
+    settings
+      = Warp.setPort 8080
+      . Warp.setBeforeMainLoop ready
+      $ Warp.defaultSettings
 
 ------------------------------------------------------------------------
 
@@ -218,18 +232,19 @@ burl = BaseUrl Http "localhost" 8080 ""
 
 setup :: MonadBaseControl IO m => m (Async ())
 setup = liftBaseWith $ \_ -> do
-  pid <- async runServer
-  res <- poll pid
-  case res of
-    Nothing         -> return ()
-    Just (Left err) -> error (show err)
-    Just (Right _)  -> error "setup: impossible, server shouldn't return."
-  return pid
+  signal <- newEmptyMVar
+  aServer <- async (runServer (putMVar signal ()))
+  aConfirm <- async (takeMVar signal)
+  ok <- waitEither aServer aConfirm
+  case ok of
+    Right () -> return aServer
+    Left ()  -> error "Server should not return"
 
 runner :: ReaderT ClientEnv IO Property -> IO Property
-runner p = do
-  mgr <- newManager defaultManagerSettings
-  runReaderT p (ClientEnv mgr burl)
+runner p =
+  bracket setup cancel $ \_ -> do
+    mgr <- newManager defaultManagerSettings
+    runReaderT p (ClientEnv mgr burl)
 
 ------------------------------------------------------------------------
 
@@ -240,14 +255,12 @@ sm = StateMachine
 
 prop_crudWebserverFile :: Property
 prop_crudWebserverFile =
-  bracketP setup cancel $ \_ ->
-    monadicSequential sm $ \prog -> do
-      (hist, model, prop) <- runProgram sm prog
-      prettyProgram prog hist model $
-        checkActionNames prog prop
+  monadicSequential sm $ \prog -> do
+    (hist, model, prop) <- runProgram sm prog
+    prettyProgram prog hist model $
+      checkActionNames prog prop
 
 prop_crudWebserverFileParallel :: Property
 prop_crudWebserverFileParallel =
-  bracketP setup cancel $ \_ ->
-    monadicParallel sm $ \prog ->
-      prettyParallelProgram prog =<< runParallelProgram sm prog
+  monadicParallel sm $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram sm prog
