@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies      #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module HspecInstance where
@@ -10,3 +12,7 @@ import           Test.QuickCheck.Counterexamples
 
 instance Example (PropertyOf a) where
   evaluateExample = evaluateExample . property
+
+instance Example (a -> PropertyOf b) where
+  type Arg (a ->  PropertyOf b) = a
+  evaluateExample = evaluateExample . fmap property
