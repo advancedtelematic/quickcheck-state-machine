@@ -26,9 +26,7 @@ module Test.StateMachine
     Program
   , programLength
   , forAllProgram
-  , forAllProgramC
   , monadicSequential
-  , monadicSequentialC
   , runProgram
   , prettyProgram
   , actionNames
@@ -37,13 +35,17 @@ module Test.StateMachine
     -- * Parallel property combinators
   , ParallelProgram
   , forAllParallelProgram
-  , forAllParallelProgramC
   , History
   , monadicParallel
-  , monadicParallelC
   , runParallelProgram
   , runParallelProgram'
   , prettyParallelProgram
+
+    -- * With counterexamples
+  , forAllProgramC
+  , monadicSequentialC
+  , forAllParallelProgramC
+  , monadicParallelC
 
     -- * Types
   , module Test.StateMachine.Generics
@@ -101,6 +103,8 @@ forAllProgram generator shrinker precondition transition model =
   . forAllProgramC generator shrinker precondition transition model
   . \prop p -> CE.property (prop p)
 
+-- | Variant of 'forAllProgram' which returns the generated and shrunk
+-- program if the property fails.
 forAllProgramC
   :: Show (Untyped act)
   => HFoldable act
@@ -117,21 +121,26 @@ forAllProgramC generator shrinker precondition transition model =
     (evalStateT (generateProgram generator precondition transition 0) model)
     (shrinkProgram shrinker precondition transition model)
 
+-- | Wrapper around 'forAllProgram' using the 'StateMachine' specification
+-- to generate and shrink sequential programs.
 monadicSequential
   :: Monad m
   => Show (Untyped act)
   => HFoldable act
   => StateMachine model act err m
   -> (Program act -> PropertyM m a)
+     -- ^ Predicate that should hold for all programs.
   -> Property
 monadicSequential sm = property . monadicSequentialC sm
 
+-- | Variant of 'monadicSequential' with counterexamples.
 monadicSequentialC
   :: Monad m
   => Show (Untyped act)
   => HFoldable act
   => StateMachine model act err m
   -> (Program act -> PropertyM m a)
+     -- ^ Predicate that should hold for all programs.
   -> PropertyOf (Program act)
 monadicSequentialC StateMachine {..} predicate
   = fmap (\(prog :&: ()) -> prog)
@@ -140,12 +149,15 @@ monadicSequentialC StateMachine {..} predicate
   . monadic (ioProperty . runner')
   . predicate
 
+-- | Testable property of sequential programs derived from a
+-- 'StateMachine' specification.
 runProgram
   :: forall m act err model
   .  Monad m
   => Show (Untyped act)
   => HTraversable act
   => StateMachine model act err m
+     -- ^
   -> Program act
   -> PropertyM m (History act err, model Concrete, Property)
 runProgram sm = run . executeProgram sm
@@ -190,6 +202,8 @@ forAllParallelProgram generator shrinker precondition transition model =
   . forAllParallelProgramC generator shrinker precondition transition model
   . \prop p -> CE.property (prop p)
 
+-- | Variant of 'forAllParallelProgram' which returns the generated and shrunk
+-- program if the property fails.
 forAllParallelProgramC
   :: Show (Untyped act)
   => HFoldable act
@@ -206,21 +220,26 @@ forAllParallelProgramC generator shrinker precondition transition model =
     (generateParallelProgram generator precondition transition model)
     (shrinkParallelProgram shrinker precondition transition model)
 
+-- | Wrapper around 'forAllParallelProgram' using the 'StateMachine'
+-- specification to generate and shrink parallel programs.
 monadicParallel
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HFoldable act
   => StateMachine model act err m
   -> (ParallelProgram act -> PropertyM m ())
+     -- ^ Predicate that should hold for all parallel programs.
   -> Property
 monadicParallel sm = property . monadicParallelC sm
 
+-- | Variant of 'monadicParallel' with counterexamples.
 monadicParallelC
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HFoldable act
   => StateMachine model act err m
   -> (ParallelProgram act -> PropertyM m ())
+     -- ^ Predicate that should hold for all parallel programs.
   -> PropertyOf (ParallelProgram act)
 monadicParallelC StateMachine {..} predicate
   = fmap (\(prog :&: ()) -> prog)
@@ -229,11 +248,14 @@ monadicParallelC StateMachine {..} predicate
   . monadic (ioProperty . runner')
   . predicate
 
+-- | Testable property of parallel programs derived from a
+-- 'StateMachine' specification.
 runParallelProgram
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HTraversable act
   => StateMachine model act err m
+     -- ^
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
 runParallelProgram = runParallelProgram' 10
@@ -244,6 +266,7 @@ runParallelProgram'
   => HTraversable act
   => Int
   -> StateMachine model act err m
+     -- ^
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
 runParallelProgram' n StateMachine {..} prog =
