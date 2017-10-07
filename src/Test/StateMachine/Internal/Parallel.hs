@@ -217,7 +217,7 @@ linearise transition postcondition model0 = go . unHistory
   go es = anyP (step model0) (linearTree es)
 
   step :: model Concrete -> Tree (Operation act err) -> Property
-  step model (Node (Operation act _ (Fail _)                     _) roses) =
+  step model (Node (Operation _ _ (Fail _)                     _) roses) =
     anyP' (step model) roses
   step model (Node (Operation act _ (Ok (resp@(Concrete resp'))) _) roses) =
     postcondition model act resp' .&&.
