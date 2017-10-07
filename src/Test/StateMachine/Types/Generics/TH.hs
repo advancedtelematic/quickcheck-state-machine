@@ -1,6 +1,26 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Test.StateMachine.Types.Generics.TH where
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Types.Generics.TH
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH, Li-yao Xia
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Li-yao Xia <lysxia@gmail.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- Template Haskell functions to derive some general-purpose functionalities.
+--
+-----------------------------------------------------------------------------
+
+module Test.StateMachine.Types.Generics.TH
+  ( deriveShows
+  , deriveShow
+  , deriveShowUntyped
+  , mkShrinker
+  , deriveConstructors
+  ) where
 
 import           Control.Applicative
                    (liftA2)
@@ -27,11 +47,19 @@ import           Test.StateMachine.Types.References
 
 -- * Show of actions
 
--- | Derive @Show (Action v a)@ and @Show (Untyped Action)@.
+-- | Given a name @''Action@,
+-- derive 'Show' for @(Action v a)@ and @('Untyped' Action)@.
+-- See 'deriveShow' and 'deriveShowUntyped'.
 deriveShows :: Name -> Q [Dec]
 deriveShows = (liftA2 . liftA2) (++) deriveShow deriveShowUntyped
 
--- | Derive @Show (Action v a)@.
+-- |
+--
+-- @
+-- 'deriveShow' ''Action
+-- ===>
+-- deriving instance 'Show1' v => 'Show' (Action v a)@.
+-- @
 deriveShow :: Name -> Q [Dec]
 deriveShow = reifyDatatype >=> deriveShow'
 
@@ -45,7 +73,12 @@ deriveShow' info = do
         (foldl' AppT (ConT (datatypeName info)) (datatypeVars info))
   return [StandaloneDerivD cxt_ instanceHead_]
 
--- | Derive @Show (Untyped Action)@.
+-- |
+-- @
+-- 'deriveShowUntyped' ''Action
+-- ===>
+-- deriving instance 'Show' ('Untyped' Action)
+-- @
 deriveShowUntyped :: Name -> Q [Dec]
 deriveShowUntyped = reifyDatatype >=> deriveShowUntyped'
 
@@ -104,7 +137,9 @@ variableHead _          = False
 
 -- * Shrinkers
 
--- | A generic shrinker which avoids shrinking references.
+-- | @$('mkShrinker' ''Action)@
+-- creates a generic shrinker of type @(Action v a -> [Action v a])@
+-- which ignores 'Reference' fields.
 mkShrinker :: Name -> Q Exp
 mkShrinker = reifyDatatype >=> mkShrinker'
 
@@ -159,6 +194,12 @@ isReference _                          = False
 
 -- * Constructor class
 
+-- |
+-- @
+-- 'deriveConstructors' ''Action
+-- ===>
+-- instance 'Constructors' Action where ...
+-- @
 deriveConstructors :: Name -> Q [Dec]
 deriveConstructors = (fmap . fmap) deriveConstructors' reifyDatatype
 

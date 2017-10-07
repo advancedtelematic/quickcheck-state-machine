@@ -1,5 +1,19 @@
 {-# LANGUAGE KindSignatures #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Types.Generics
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH, Li-yao Xia
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Li-yao Xia <lysxia@gmail.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- Datatype-generic utilities.
+--
+-----------------------------------------------------------------------------
+
 module Test.StateMachine.Types.Generics where
 
 newtype Constructor = Constructor String

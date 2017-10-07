@@ -1,5 +1,19 @@
 {-# LANGUAGE TemplateHaskell #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Types.HFunctor.TH
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH, Li-yao Xia
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Li-yao Xia <lysxia@gmail.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- Template Haskell functions to derive higher-order structures.
+--
+-----------------------------------------------------------------------------
+
 module Test.StateMachine.Types.HFunctor.TH
   ( deriveHClasses
   , deriveHTraversable
@@ -28,7 +42,7 @@ import           Test.StateMachine.Internal.Utils
                    (dropLast, nub, toLast)
 import           Test.StateMachine.Types.HFunctor
 
--- | Derive 'HFunctor', 'HFoldable' and 'HTraversable'.
+-- | Derive 'HFunctor', 'HFoldable', 'HTraversable'.
 deriveHClasses :: Name -> Q [Dec]
 deriveHClasses =
   (liftA3 . liftA3) (\a b c -> a ++ b ++ c)
@@ -36,7 +50,12 @@ deriveHClasses =
     deriveHFoldable
     deriveHTraversable
 
--- | Derive 'HTraversable'.
+-- |
+-- @
+-- 'deriveHTraversable' ''Action
+-- ===>
+-- instance 'HTraversable' Action where ...
+-- @
 deriveHTraversable :: Name -> Q [Dec]
 deriveHTraversable = reifying deriveIFor dictHTraversable
 
@@ -44,15 +63,29 @@ deriveHTraversable = reifying deriveIFor dictHTraversable
 mkhtraverse :: Name -> Q Exp
 mkhtraverse = reifying mkFFor dictHTraversable
 
+-- |
+-- @
+-- 'deriveHFoldable' ''Action
+-- ===>
+-- instance 'HFoldable' Action where ...
+-- @
 deriveHFoldable :: Name -> Q [Dec]
 deriveHFoldable = reifying deriveIFor dictHFoldable
 
+-- | Derive the body of 'hfoldMap'.
 mkhfoldMap :: Name -> Q Exp
 mkhfoldMap = reifying mkFFor dictHFoldable
 
+-- |
+-- @
+-- 'deriveHFunctor' ''Action
+-- ===>
+-- instance 'HFunctor' Action where ...
+-- @
 deriveHFunctor :: Name -> Q [Dec]
 deriveHFunctor = reifying deriveIFor dictHFunctor
 
+-- | Derive the body of 'hfmap'.
 mkhfmap :: Name -> Q Exp
 mkhfmap = reifying mkFFor dictHFunctor
 
