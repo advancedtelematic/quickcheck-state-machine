@@ -26,9 +26,7 @@ module Test.StateMachine
     Program
   , programLength
   , forAllProgram
-  , forAllProgramC
   , monadicSequential
-  , monadicSequentialC
   , runProgram
   , prettyProgram
   , actionNames
@@ -37,13 +35,17 @@ module Test.StateMachine
     -- * Parallel property combinators
   , ParallelProgram
   , forAllParallelProgram
-  , forAllParallelProgramC
   , History
   , monadicParallel
-  , monadicParallelC
   , runParallelProgram
   , runParallelProgram'
   , prettyParallelProgram
+
+    -- * With counterexamples
+  , forAllProgramC
+  , monadicSequentialC
+  , forAllParallelProgramC
+  , monadicParallelC
 
     -- * Types
   , module Test.StateMachine.Generics
