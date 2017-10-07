@@ -4,6 +4,7 @@
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -29,8 +30,6 @@ import           Control.Monad
                    (guard)
 import           Data.Function
                    (on)
-import           Data.Functor.Classes
-                   (Show1)
 import           Data.IORef
 import           Data.Maybe
                    (isJust)
@@ -41,8 +40,10 @@ import           Data.Void
                    (Void)
 import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
-                   frequency, oneof, property, shrink, (===))
+                   frequency, oneof, property, (===))
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveShows, deriveTestClasses, mkShrinker)
 
 ------------------------------------------------------------------------
 
@@ -62,6 +63,60 @@ data Version = NoLen | YesLen
 
 ------------------------------------------------------------------------
 
+-- | An efficient mutable circular buffer.
+data Buffer = Buffer
+  { top :: IORef Int     -- ^ Index to the top: where to 'Put' the next element
+  , bot :: IORef Int     -- ^ Index to the bottom: where to 'Get' the next element
+  , arr :: IOVector Int  -- ^ Array of elements of fixed capacity
+  }
+
+-- | Different buffers are assumed to have disjoint memories,
+-- so we can use 'V.overlaps' to check equality.
+instance Eq Buffer where
+  (==) =
+    ((==) `on` top) `also`
+    ((==) `on` bot) `also`
+    (V.overlaps `on` arr)
+    where
+      also = (liftA2 . liftA2) (&&)
+
+-- | See 'New'.
+newBuffer :: Bugs -> Int -> IO Buffer
+newBuffer bugs n = Buffer
+  <$> newIORef 0
+  <*> newIORef 0
+  <*> V.new (if FullIsEmpty `elem` bugs then n else n + 1)
+
+-- | See 'Put'.
+putBuffer :: Int -> Buffer -> IO ()
+putBuffer x Buffer{top, arr} = do
+  i <- readIORef top
+  V.write arr i x
+  writeIORef top $! (i + 1) `mod` V.length arr
+
+-- | See 'Get'.
+getBuffer :: Buffer -> IO Int
+getBuffer Buffer{bot, arr} = do
+  j <- readIORef bot
+  y <- V.read arr j
+  writeIORef bot $! (j + 1) `mod` V.length arr
+  return y
+
+-- | See 'Len'.
+lenBuffer :: Bugs -> Buffer -> IO Int
+lenBuffer bugs Buffer{top, bot, arr} = do
+  i <- readIORef top
+  j <- readIORef bot
+  return $
+    if BadRem `elem` bugs then
+      (i - j) `rem` V.length arr
+    else if StillBadRem `elem` bugs then
+      abs ((i - j) `rem` V.length arr)
+    else
+      (i - j) `mod` V.length arr
+
+------------------------------------------------------------------------
+
 -- | Buffer actions.
 data Action (v :: * -> *) :: * -> * where
 
@@ -77,26 +132,8 @@ data Action (v :: * -> *) :: * -> * where
   -- | Get the number of elements in the buffer.
   Len :: Reference v (Opaque Buffer) -> Action v Int
 
-deriving instance Show1 v => Show (Action v p)
-
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
-
-instance HFunctor Action
-instance HFoldable Action
-instance HTraversable Action where
-  htraverse _ (New n)        = pure (New n)
-  htraverse f (Put x buffer) = Put x <$> htraverse f buffer
-  htraverse f (Get buffer)   = Get <$> htraverse f buffer
-  htraverse f (Len buffer)   = Len <$> htraverse f buffer
-
-instance Constructors Action where
-  constructor x = Constructor $ case x of
-    New{} -> "New"
-    Put{} -> "Put"
-    Get{} -> "Get"
-    Len{} -> "Len"
-  nConstructors _ = 4
+deriveShows ''Action
+deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
 
@@ -185,64 +222,14 @@ generator version (Model m) = frequency
         ] ++ [ return (Untyped (Len buffer)) | version == YesLen ])
   ]
 
+-- | Equivalent to
+--
+-- > shrinker (New n)        = [ New n' | n' <- shrink n ]
+-- > shrinker (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
+-- > shrinker _              = []
+--
 shrinker :: Shrinker Action
-shrinker (New n)        = [ New n' | n' <- shrink n ]
-shrinker (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
-shrinker _              = []
-
-------------------------------------------------------------------------
-
--- | An efficient mutable circular buffer.
-data Buffer = Buffer
-  { top :: IORef Int     -- ^ Index to the top: where to 'Put' the next element
-  , bot :: IORef Int     -- ^ Index to the bottom: where to 'Get' the next element
-  , arr :: IOVector Int  -- ^ Array of elements of fixed capacity
-  }
-
--- | Different buffers are assumed to have disjoint memories,
--- so we can use 'V.overlaps' to check equality.
-instance Eq Buffer where
-  (==) =
-    ((==) `on` top) `also`
-    ((==) `on` bot) `also`
-    (V.overlaps `on` arr)
-    where
-      also = (liftA2 . liftA2) (&&)
-
--- | See 'New'.
-newBuffer :: Bugs -> Int -> IO Buffer
-newBuffer bugs n = Buffer
-  <$> newIORef 0
-  <*> newIORef 0
-  <*> V.new (if FullIsEmpty `elem` bugs then n else n + 1)
-
--- | See 'Put'.
-putBuffer :: Int -> Buffer -> IO ()
-putBuffer x Buffer{top, arr} = do
-  i <- readIORef top
-  V.write arr i x
-  writeIORef top $! (i + 1) `mod` V.length arr
-
--- | See 'Get'.
-getBuffer :: Buffer -> IO Int
-getBuffer Buffer{bot, arr} = do
-  j <- readIORef bot
-  y <- V.read arr j
-  writeIORef bot $! (j + 1) `mod` V.length arr
-  return y
-
--- | See 'Len'.
-lenBuffer :: Bugs -> Buffer -> IO Int
-lenBuffer bugs Buffer{top, bot, arr} = do
-  i <- readIORef top
-  j <- readIORef bot
-  return $
-    if BadRem `elem` bugs then
-      (i - j) `rem` V.length arr
-    else if StillBadRem `elem` bugs then
-      abs ((i - j) `rem` V.length arr)
-    else
-      (i - j) `mod` V.length arr
+shrinker = $(mkShrinker ''Action)
 
 ------------------------------------------------------------------------
 

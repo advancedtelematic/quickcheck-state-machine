@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE KindSignatures     #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -33,6 +34,8 @@ import           Test.QuickCheck
                    frequency, property, shrink, (.&&.), (.||.), (===))
 
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -179,23 +182,10 @@ semantics (Union ref1 ref2) = unionElements (opaque ref1) (opaque ref2)
 
 ------------------------------------------------------------------------
 
-instance HTraversable (Action a) where
-  htraverse _ (New   x)         = pure (New x)
-  htraverse f (Find  ref)       = Find <$> htraverse f ref
-  htraverse f (Union ref1 ref2) = Union <$> htraverse f ref1 <*> htraverse f ref2
-
-instance HFunctor  (Action a)
-instance HFoldable (Action a)
+deriveTestClasses ''Action
 
 instance Show a => Show (Untyped (Action a)) where
   show (Untyped act) = show act
-
-instance Constructors (Action a) where
-  constructor x = Constructor $ case x of
-    New{}   -> "New"
-    Find{}  -> "Find"
-    Union{} -> "Union"
-  nConstructors _ = 3
 
 ------------------------------------------------------------------------
 

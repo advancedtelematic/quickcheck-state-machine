@@ -7,6 +7,9 @@
 
   * Two examples of how to test CRUD web applications were added.
 
+  * Template Haskell derivation of `shrink` and type classes: `Show`, `Constructors`,
+    `HFunctor`, `HFoldable`, `HTraversable`.
+
 #### 0.1.0
 
   * The API was simplified, thanks to ideas stolen from

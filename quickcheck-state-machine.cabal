@@ -18,7 +18,6 @@ tested-with:         GHC == 8.0.2
 library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
-                     , Test.StateMachine.Generics
                      , Test.StateMachine.Internal.AlphaEquality
                      , Test.StateMachine.Internal.Parallel
                      , Test.StateMachine.Internal.ScopeCheck
@@ -27,10 +26,15 @@ library
                      , Test.StateMachine.Internal.Types.Environment
                      , Test.StateMachine.Internal.Utils
                      , Test.StateMachine.Internal.Utils.BoxDrawer
+                     , Test.StateMachine.TH
                      , Test.StateMachine.Types
+                     , Test.StateMachine.Types.Generics
+                     , Test.StateMachine.Types.Generics.TH
                      , Test.StateMachine.Types.HFunctor
+                     , Test.StateMachine.Types.HFunctor.TH
                      , Test.StateMachine.Types.History
                      , Test.StateMachine.Types.References
+  other-modules:       Test.StateMachine.Utils
   build-depends:       ansi-wl-pprint (>=0.6.7.3 && <0.7)
                      , async
                      , base (>=4.7 && <5)
@@ -43,6 +47,8 @@ library
                      , quickcheck-with-counterexamples (< 2.0)
                      , random (==1.1.*)
                      , stm (>=2.4.4.1 && <2.5)
+                     , template-haskell
+                     , th-abstraction
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-test

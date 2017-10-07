@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE KindSignatures     #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -31,8 +32,6 @@ module MutableReference
 
 import           Control.Concurrent
                    (threadDelay)
-import           Data.Functor.Classes
-                   (Show1(..))
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -47,6 +46,8 @@ import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
 import           Test.StateMachine
+import           Test.StateMachine.TH
+                   (deriveShows, deriveTestClasses)
 
 ------------------------------------------------------------------------
 
@@ -139,27 +140,8 @@ semantics prb (Inc   ref)   =
 
 ------------------------------------------------------------------------
 
-deriving instance Show1 v => Show (Action v resp)
-
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
-
-instance HTraversable Action where
-  htraverse _ New           = pure New
-  htraverse f (Read  ref)   = Read  <$> htraverse f ref
-  htraverse f (Write ref i) = Write <$> htraverse f ref <*> pure i
-  htraverse f (Inc   ref)   = Inc   <$> htraverse f ref
-
-instance HFunctor  Action
-instance HFoldable Action
-
-instance Constructors Action where
-  constructor x = Constructor $ case x of
-    New     -> "New"
-    Read{}  -> "Read"
-    Write{} -> "Write"
-    Inc{}   -> "Inc"
-  nConstructors _ = 4
+deriveShows ''Action
+deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
 

@@ -8,28 +8,14 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module exports some QuickCheck utility functions. Some of these should
--- perhaps be upstreamed.
---
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Internal.Utils
-  ( anyP
-  , liftProperty
-  , whenFailM
-  , bracketP
-  , bracketPC
-  , alwaysP
-  , shrinkPropertyHelper
-  , shrinkPropertyHelper'
-  , shrinkPropertyHelperC
-  , shrinkPropertyHelperC'
-  , shrinkPair
-  , shrinkPair'
-  ) where
+module Test.StateMachine.Internal.Utils where
 
 import           Control.Exception
                    (bracketOnError)
+import           Data.List
+                   (group, sort)
 import           Test.QuickCheck
                    (Property, Result(Failure), chatty, counterexample,
                    ioProperty, output, property, quickCheckWithResult,
@@ -105,3 +91,14 @@ shrinkPair' shrinkerA shrinkerB (x, y) =
 -- | Same above, but for homogeneous pairs.
 shrinkPair :: (a -> [a]) -> ((a, a) -> [(a, a)])
 shrinkPair shrinker = shrinkPair' shrinker shrinker
+
+------------------------------------------------------------------------
+
+nub :: Ord a => [a] -> [a]
+nub = fmap head . group . sort
+
+dropLast :: Int -> [a] -> [a]
+dropLast n xs = zipWith const xs (drop n xs)
+
+toLast :: Int -> [a] -> a
+toLast n = last . dropLast n

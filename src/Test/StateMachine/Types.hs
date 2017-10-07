@@ -36,6 +36,9 @@ module Test.StateMachine.Types
   , okSemantics
   , Runner
 
+  -- * Data type generic operations
+  , module Test.StateMachine.Types.Generics
+
   -- * Higher-order functors, foldables and traversables
   , module Test.StateMachine.Types.HFunctor
 
@@ -53,6 +56,7 @@ import           Data.Void
 import           Test.QuickCheck
                    (Gen, Property)
 
+import           Test.StateMachine.Types.Generics
 import           Test.StateMachine.Types.HFunctor
 import           Test.StateMachine.Types.References
 
