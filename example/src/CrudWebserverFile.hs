@@ -240,6 +240,8 @@ setup = liftBaseWith $ \_ -> do
     Right () -> return aServer
     Left ()  -> error "Server should not return"
 
+-- Note that this will setup and tear down a server per generated
+-- program.
 runner :: ReaderT ClientEnv IO Property -> IO Property
 runner p =
   bracket setup cancel $ \_ -> do

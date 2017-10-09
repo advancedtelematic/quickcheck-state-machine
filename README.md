@@ -332,7 +332,7 @@ Here are some more examples to get you started:
   * Circular buffer
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CircularBuffer.hs)
     -- another example that shows how the sequential property can find help find
-    different kind of bugs. This exampel is borrowed from the paper *Testing the
+    different kind of bugs. This example is borrowed from the paper *Testing the
     Hard Stuff and Staying Sane*
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
     [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)];
@@ -342,27 +342,31 @@ Here are some more examples to get you started:
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/TicketDispenser.hs) --
     a simple example where the parallel property is used once again to find a
     race condition. The semantics in this example uses a simple database file
-    that needs to be setup and teared down. This example also appears in the
+    that needs to be setup and cleaned up. This example also appears in the
     *Testing a Database for Race Conditions with QuickCheck* and *Testing the
     Hard Stuff and Staying
     Sane*
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
     [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)] papers;
 
-  * CRUD webserver
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverFile.hs)
-    -- create, read, update and delete files on a webserver using an API written
+  * CRUD
+    webserver
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverFile.hs) --
+    create, read, update and delete files on a webserver using an API written
     using [Servant](https://github.com/haskell-servant/servant). The
-    specification uses two fixed file names for the tests, for an example where
-    the created resources might be unique ids, see the next example;
+    specification uses two fixed file names for the tests, and the webserver is
+    setup and torn down for every generated program;
 
-  * CRUD webserver where create returns unique ids
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverDb.hs)
-    -- create, read, update and delete users in a sqlite database on a webserver
-    using an API written using
-    [Servant](https://github.com/haskell-servant/servant). Creating a user will
-    return a unique id, which subsequent reads, updates, and deletes need to
-    use.
+  * CRUD webserver where create returns unique
+    ids
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverDb.hs) --
+    create, read, update and delete users in a sqlite database on a webserver
+    using an API written
+    using [Servant](https://github.com/haskell-servant/servant). Creating a user
+    will return a unique id, which subsequent reads, updates, and deletes need
+    to use. In this example, unlike in the last one, the server is setup and
+    torn down once per property rather than generate program.
+
 
 All examples have an associated `Spec` module located in
 the
