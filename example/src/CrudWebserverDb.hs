@@ -66,8 +66,6 @@ import           Data.String.Conversions
 import           Data.Text
                    (Text)
 import qualified Data.Text                       as T
-import           Data.Void
-                   (Void)
 import           Database.Persist.Sqlite
                    (ConnectionPool, Key, SqlBackend, createSqlitePool,
                    delete, get, insert, liftSqlPersistMPool,
@@ -343,10 +341,10 @@ deriveTestClasses ''Action
 -- property that asserts that the semantics respect the model in a
 -- single-threaded and two-threaded context respectively.
 
-sm :: Warp.Port -> StateMachine Model Action Void (ReaderT ClientEnv IO)
-sm port = StateMachine
+sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO)
+sm port = stateMachine
   generator shrinker preconditions transitions
-  postconditions initModel (okSemantics semantics) (runner port)
+  postconditions initModel semantics (runner port)
 
 
 crudWebserverDbPort :: Int

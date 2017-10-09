@@ -65,7 +65,7 @@ import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Utils.BoxDrawer
 import           Test.StateMachine.Types                      hiding
-                   (StateMachine(..))
+                   (StateMachine'(..))
 import           Test.StateMachine.Types.History
 
 ------------------------------------------------------------------------

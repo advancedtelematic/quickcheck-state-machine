@@ -24,7 +24,9 @@ module Test.StateMachine.Types
     Untyped(..)
 
     -- * Type aliases
-  , StateMachine(..)
+  , StateMachine
+  , stateMachine
+  , StateMachine'(..)
   , Generator
   , Shrinker
   , Precondition
@@ -33,7 +35,6 @@ module Test.StateMachine.Types
   , InitialModel
   , Result(..)
   , Semantics
-  , okSemantics
   , Runner
 
   -- * Data type generic operations
@@ -74,7 +75,9 @@ data Untyped (act :: (* -> *) -> * -> *) where
 
 ------------------------------------------------------------------------
 
-data StateMachine model act err m = StateMachine
+type StateMachine model act m = StateMachine' model act Void m
+
+data StateMachine' model act err m = StateMachine
   { generator'     :: Generator model act
   , shrinker'      :: Shrinker  act
   , precondition'  :: Precondition model act
@@ -84,6 +87,20 @@ data StateMachine model act err m = StateMachine
   , semantics'     :: Semantics act err m
   , runner'        :: Runner m
   }
+
+stateMachine
+  :: Functor m
+  => Generator model act
+  -> Shrinker act
+  -> Precondition model act
+  -> Transition   model act
+  -> Postcondition model act
+  -> InitialModel model
+  -> (forall resp. act Concrete resp -> m resp)
+  -> Runner m
+  -> StateMachine' model act Void m
+stateMachine gen shr precond trans post model sem run =
+  StateMachine gen shr precond trans post model (fmap Ok . sem) run
 
 -- | When generating actions we have access to a model containing
 --   symbolic references.
@@ -117,9 +134,6 @@ data Result resp err = Ok resp | Fail err
 
 -- | When we execute our actions we have access to concrete references.
 type Semantics act err m = forall resp. act Concrete resp -> m (Result resp err)
-
-okSemantics :: Monad m => (forall resp. act Concrete resp -> m resp) -> Semantics act Void m
-okSemantics sem = fmap Ok . sem
 
 -- | How to run the monad used by the semantics.
 type Runner m = m Property -> IO Property

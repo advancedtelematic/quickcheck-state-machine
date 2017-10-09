@@ -250,7 +250,7 @@ runner p =
 
 ------------------------------------------------------------------------
 
-sm :: StateMachine Model Action String (ReaderT ClientEnv IO)
+sm :: StateMachine' Model Action String (ReaderT ClientEnv IO)
 sm = StateMachine
   generator shrinker preconditions transitions
   postconditions initModel semantics runner
