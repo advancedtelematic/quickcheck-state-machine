@@ -51,8 +51,6 @@ module Test.StateMachine
   , module Test.StateMachine.Types
 
     -- * Reexport
-  , bracketP
-  , bracketPC
   , Test.QuickCheck.quickCheck
   ) where
 
@@ -78,7 +76,7 @@ import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (bracketP, bracketPC, whenFailM)
+                   (whenFailM)
 import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
