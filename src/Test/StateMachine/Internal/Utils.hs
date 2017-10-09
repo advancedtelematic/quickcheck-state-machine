@@ -12,14 +12,12 @@
 
 module Test.StateMachine.Internal.Utils where
 
-import           Control.Exception
-                   (bracketOnError)
 import           Data.List
                    (group, sort)
 import           Test.QuickCheck
                    (Property, Result(Failure), chatty, counterexample,
-                   ioProperty, output, property, quickCheckWithResult,
-                   stdArgs, whenFail)
+                   output, property, quickCheckWithResult, stdArgs,
+                   whenFail)
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 import qualified Test.QuickCheck.Counterexamples as CE
@@ -40,14 +38,6 @@ liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
 
 whenFailM :: Monad m => IO () -> Property -> PropertyM m ()
 whenFailM m prop = liftProperty (m `whenFail` prop)
-
-bracketP :: IO a -> (a -> IO b) -> (a -> Property) -> Property
-bracketP up down prop = ioProperty $
-  bracketOnError up down (return . prop)
-
-bracketPC :: IO a -> (a -> IO b) -> (a -> PropertyOf c) -> PropertyOf c
-bracketPC up down prop = CE.ioProperty $
-  bracketOnError up down (return . prop)
 
 -- | A property that tests @prop@ repeatedly @n@ times, failing as soon as any
 --   of the tests of @prop@ fails.
