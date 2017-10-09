@@ -356,6 +356,9 @@ withCrudWebserverDb :: IO () -> IO ()
 withCrudWebserverDb =
   bracketServer (setup "sqlite.db" crudWebserverDbPort)
 
+-- Note that this property assumes that there is a server setup and
+-- running. It can be checked, for example, as follows:
+-- @withCrudWebserverDb (quickCheck prop_crudWebserverDb)@.
 prop_crudWebserverDb :: Property
 prop_crudWebserverDb =
   monadicSequential sm' $ \prog -> do
