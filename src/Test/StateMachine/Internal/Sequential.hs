@@ -126,7 +126,7 @@ executeProgram
   .  Monad m
   => Show (Untyped act)
   => HTraversable act
-  => StateMachine  model act err m
+  => StateMachine' model act err m
   -> Program act
   -> m (History act err, model Concrete, Property)
 executeProgram StateMachine {..}

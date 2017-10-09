@@ -30,8 +30,6 @@ import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
                    (Eq1(..), Show1)
-import           Data.Void
-                   (Void)
 import           Prelude                                  hiding
                    (readFile)
 import           System.Directory
@@ -170,10 +168,10 @@ withDbLock run = do
   removeFile tdb
   removeFile tlock
 
-sm :: SharedExclusive -> DbLock -> StateMachine Model Action Void IO
-sm se files = StateMachine
+sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO
+sm se files = stateMachine
   generator shrinker preconditions transitions
-  postconditions initModel (okSemantics (semantics se files)) id
+  postconditions initModel (semantics se files) id
 
 -- Sequentially the model is consistent (even though the lock is
 -- shared).

@@ -125,7 +125,7 @@ monadicSequential
   :: Monad m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act err m
+  => StateMachine' model act err m
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
   -> Property
@@ -136,7 +136,7 @@ monadicSequentialC
   :: Monad m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act err m
+  => StateMachine' model act err m
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
   -> PropertyOf (Program act)
@@ -154,7 +154,7 @@ runProgram
   .  Monad m
   => Show (Untyped act)
   => HTraversable act
-  => StateMachine model act err m
+  => StateMachine' model act err m
      -- ^
   -> Program act
   -> PropertyM m (History act err, model Concrete, Property)
@@ -224,7 +224,7 @@ monadicParallel
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act err m
+  => StateMachine' model act err m
   -> (ParallelProgram act -> PropertyM m ())
      -- ^ Predicate that should hold for all parallel programs.
   -> Property
@@ -235,7 +235,7 @@ monadicParallelC
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HFoldable act
-  => StateMachine model act err m
+  => StateMachine' model act err m
   -> (ParallelProgram act -> PropertyM m ())
      -- ^ Predicate that should hold for all parallel programs.
   -> PropertyOf (ParallelProgram act)
@@ -252,7 +252,7 @@ runParallelProgram
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HTraversable act
-  => StateMachine model act err m
+  => StateMachine' model act err m
      -- ^
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
@@ -263,7 +263,7 @@ runParallelProgram'
   => Show (Untyped act)
   => HTraversable act
   => Int
-  -> StateMachine model act err m
+  -> StateMachine' model act err m
      -- ^
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
