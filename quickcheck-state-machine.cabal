@@ -12,6 +12,7 @@ category:            Testing
 build-type:          Simple
 extra-source-files:  README.md
                    , CHANGELOG.md
+                   , CONTRIBUTING.md
 cabal-version:       >=1.10
 tested-with:         GHC == 8.0.2
 
