@@ -137,7 +137,7 @@ executeProgram StateMachine {..}
   go :: (History act err, model Symbolic, model Concrete, Environment, Property)
      -> Internal act
      -> m (History act err, model Symbolic, model Concrete, Environment, Property)
-  go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) = do
+  go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) =
     if not (precondition' smodel act)
     then
       return ( hist
@@ -146,7 +146,7 @@ executeProgram StateMachine {..}
              , env
              , counterexample ("precondition failed for: " ++ show (Untyped act)) prop
              )
-    else do
+    else
       case reify env act of
 
                       -- This means that the reference that the action uses

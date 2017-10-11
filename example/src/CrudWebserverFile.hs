@@ -62,9 +62,8 @@ import           Network.HTTP.Client
                    (defaultManagerSettings, newManager)
 import qualified Network.Wai.Handler.Warp    as Warp
 import           Servant
-                   ((:>), Capture, Delete, Get, JSON, Put, ReqBody)
-import           Servant
-                   ((:<|>)(..), Proxy(..))
+                   ((:<|>)(..), (:>), Capture, Delete, Get, JSON,
+                   Proxy(..), Put, ReqBody)
 import           Servant.Client
                    (BaseUrl(..), Client, ClientEnv(..), Scheme(..),
                    client, runClientM)

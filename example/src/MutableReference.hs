@@ -165,5 +165,5 @@ prop_references prb = monadicSequentialC (sm prb) $ \prog -> do
     checkActionNames prog prop
 
 prop_referencesParallel :: Problem -> PropertyOf (ParallelProgram Action)
-prop_referencesParallel prb = monadicParallelC (sm prb) $ \prog -> do
+prop_referencesParallel prb = monadicParallelC (sm prb) $ \prog ->
   prettyParallelProgram prog =<< runParallelProgram (sm prb) prog

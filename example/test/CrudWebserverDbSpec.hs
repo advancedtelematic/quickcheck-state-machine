@@ -16,7 +16,7 @@ spec = do
 
     describe "Sequential property" $
 
-      it "`prop_crudWebserverDb`: sequential property holds" $
+      it "`prop_crudWebserverDb`: sequential property holds"
         prop_crudWebserverDb
 
   around_ withCrudWebserverDbParallel $ modifyMaxSuccess (const 3) $

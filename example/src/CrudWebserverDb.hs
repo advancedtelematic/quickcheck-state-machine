@@ -375,7 +375,7 @@ withCrudWebserverDbParallel =
   bracketServer (setup "sqlite-parallel.db" crudWebserverDbParallelPort)
 
 bracketServer :: IO (Async ()) -> IO () -> IO ()
-bracketServer start run = do
+bracketServer start run =
   bracket start cancel (const run)
 
 prop_crudWebserverDbParallel :: Property
