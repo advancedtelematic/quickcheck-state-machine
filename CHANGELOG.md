@@ -1,4 +1,10 @@
-#### ???
+#### 0.2.0
+
+  * Z-inspired definition of relations and associated operations were
+    added to help defining concise and showable models;
+
+  * Template Haskell derivation of `shrink` and type classes: `Show`,
+    `Constructors`, `HFunctor`, `HFoldable`, `HTraversable`;
 
   * New and more flexible combinators for building sequential and
     parallel properties replaced the old clunky ones;
@@ -6,9 +12,6 @@
   * Circular buffer example was added;
 
   * Two examples of how to test CRUD web applications were added.
-
-  * Template Haskell derivation of `shrink` and type classes: `Show`, `Constructors`,
-    `HFunctor`, `HFoldable`, `HTraversable`.
 
 #### 0.1.0
 
