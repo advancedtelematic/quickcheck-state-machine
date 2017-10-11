@@ -57,15 +57,6 @@ domain xys = [ x | (x, _) <- xys ]
 codomain :: Rel a b -> [b]
 codomain xys = [ y | (_, y) <- xys ]
 
-isTotalRel :: Eq a => Rel a b -> [a] -> Bool
-isTotalRel r xs = domain r ~= xs
-
-isSurjRel :: Eq b => Rel a b -> [b] -> Bool
-isSurjRel r ys = codomain r ~= ys
-
-isTotalSurjRel :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
-isTotalSurjRel r xs ys = isTotalRel r xs && isSurjRel r ys
-
 compose :: Eq b => Rel b c -> Rel a b -> Rel a c
 compose yzs xys =
   [ (x, z)
@@ -154,11 +145,20 @@ acs <||> bds =
 
 ------------------------------------------------------------------------
 
+isTotalRel :: Eq a => Rel a b -> [a] -> Bool
+isTotalRel r xs = domain r ~= xs
+
+isSurjRel :: Eq b => Rel a b -> [b] -> Bool
+isSurjRel r ys = codomain r ~= ys
+
+isTotalSurjRel :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
+isTotalSurjRel r xs ys = isTotalRel r xs && isSurjRel r ys
+
 isPartialFun :: (Eq a, Eq b) => Rel a b -> Bool
 isPartialFun f  = (f `compose` inverse f) ~= identity (codomain f)
 
 isTotalFun :: (Eq a, Eq b) => Rel a b -> [a] -> Bool
-isTotalFun r xs = isPartialFun r && domain r ~= xs
+isTotalFun r xs = isPartialFun r && isTotalRel r xs
 
 isPartialInj :: (Eq a, Eq b) => Rel a b -> Bool
 isPartialInj r = isPartialFun r && isPartialFun (inverse r)
@@ -167,10 +167,10 @@ isTotalInj :: (Eq a, Eq b) => Rel a b -> [a] -> Bool
 isTotalInj r xs = isTotalFun r xs && isPartialFun (inverse r)
 
 isPartialSurj :: (Eq a, Eq b) => Rel a b -> [b] -> Bool
-isPartialSurj r ys = isPartialFun r && codomain r ~= ys
+isPartialSurj r ys = isPartialFun r && isSurjRel r ys
 
 isTotalSurj :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
-isTotalSurj r xs ys = isTotalFun r xs && codomain r ~= ys
+isTotalSurj r xs ys = isTotalFun r xs && isSurjRel r ys
 
 isBijection :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
 isBijection r xs ys = isTotalInj r xs && isTotalSurj r xs ys
