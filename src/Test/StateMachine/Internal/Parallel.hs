@@ -25,7 +25,6 @@ module Test.StateMachine.Internal.Parallel
   , executeParallelProgram
   , linearise
   , toBoxDrawings
-  , toBoxDrawings'
   ) where
 
 import           Control.Concurrent.Async.Lifted
@@ -181,26 +180,9 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
 
 ------------------------------------------------------------------------
 
-linearTree :: History' act err -> [Tree (Operation act err)]
-linearTree [] = []
-linearTree es =
-  [ Node (Operation act str (dynResp resp) pid) (linearTree es')
-  | InvocationEvent (UntypedConcrete act) str _ pid <- takeInvocations es
-  , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
-  ]
-  where
-  dynResp (Ok   resp) = Ok (either (error . show) id (reifyDynamic resp))
-  dynResp (Fail err)  = Fail err
-
-  filter1 :: (a -> Bool) -> [a] -> [a]
-  filter1 _ []                   = []
-  filter1 p (x : xs) | p x       = x : filter1 p xs
-                     | otherwise = xs
-
-  -- Hmm, is this enough?
-  matchInv pid (InvocationEvent _ _ _ pid') = pid == pid'
-  matchInv _   _                            = False
-
+-- | Try to linearise a history of a parallel program execution using a
+--   sequential model. See the *Linearizability: a correctness condition for
+--   concurrent objects* paper linked to from the README for more info.
 linearise
   :: forall model act err
   .  Transition    model act
@@ -227,31 +209,33 @@ anyP' p xs = anyP p xs
 
 ------------------------------------------------------------------------
 
+-- | Draw an ASCII diagram of the history of a parallel program. Useful for
+--   seeing how a race condition might have occured.
 toBoxDrawings :: HFoldable act => ParallelProgram act -> History act err -> Doc
 toBoxDrawings prog = toBoxDrawings' allVars
   where
-  allVars    = S.unions [l, p, r]
-  Fork l p r = fmap (S.unions . vars . unProgram) (unParallelProgram prog)
-  vars xs    = [ getUsedVars x | Internal x _ <- xs]
+  allVars       = S.unions [l0, p0, r0]
+  Fork l0 p0 r0 = fmap (S.unions . vars . unProgram) (unParallelProgram prog)
+  vars xs       = [ getUsedVars x | Internal x _ <- xs]
 
-toBoxDrawings' :: Set Var -> History act err -> Doc
-toBoxDrawings' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
-  where
-    (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
-    (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
+  toBoxDrawings' :: Set Var -> History act err -> Doc
+  toBoxDrawings' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
+    where
+      (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
+      (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
 
-    out :: HistoryEvent act err -> String
-    out (InvocationEvent _ str var _)
-      | var `S.member` knownVars = show var ++ " ← " ++ str
-      | otherwise = str
-    out (ResponseEvent _ str _) = str
+      out :: HistoryEvent act err -> String
+      out (InvocationEvent _ str var _)
+        | var `S.member` knownVars = show var ++ " ← " ++ str
+        | otherwise = str
+      out (ResponseEvent _ str _) = str
 
-    toEventType :: [HistoryEvent act err] -> [(EventType, Pid)]
-    toEventType = map go
-      where
-      go e = case e of
-        InvocationEvent _ _ _ pid -> (Open,  pid)
-        ResponseEvent   _ _   pid -> (Close, pid)
+      toEventType :: [HistoryEvent act err] -> [(EventType, Pid)]
+      toEventType = map go
+        where
+        go e = case e of
+          InvocationEvent _ _ _ pid -> (Open,  pid)
+          ResponseEvent   _ _   pid -> (Close, pid)
 
-    evT :: [(EventType, Pid)]
-    evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
+      evT :: [(EventType, Pid)]
+      evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)

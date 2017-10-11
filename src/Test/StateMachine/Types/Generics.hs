@@ -16,6 +16,7 @@
 
 module Test.StateMachine.Types.Generics where
 
+-- | A constructor name is a string.
 newtype Constructor = Constructor String
   deriving (Eq, Ord)
 

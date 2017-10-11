@@ -75,8 +75,11 @@ data Untyped (act :: (* -> *) -> * -> *) where
 
 ------------------------------------------------------------------------
 
+-- | A (non-failing) state machine record bundles up all functionality
+--   needed to perform our tests.
 type StateMachine model act m = StateMachine' model act Void m
 
+-- | Same as above, but with possibily failing semantics.
 data StateMachine' model act err m = StateMachine
   { generator'     :: Generator model act
   , shrinker'      :: Shrinker  act
@@ -88,6 +91,8 @@ data StateMachine' model act err m = StateMachine
   , runner'        :: Runner m
   }
 
+-- | Helper for lifting non-failing semantics to a possibily failing
+--   state machine record.
 stateMachine
   :: Functor m
   => Generator model act
@@ -130,6 +135,7 @@ type Postcondition model act = forall resp.
 --   check.
 type InitialModel m = forall (v :: * -> *). m v
 
+-- | The result of executing an action.
 data Result resp err = Ok resp | Fail err
 
 -- | When we execute our actions we have access to concrete references.

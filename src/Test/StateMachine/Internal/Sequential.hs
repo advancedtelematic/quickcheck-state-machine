@@ -121,6 +121,9 @@ shrinkProgram shrinker precondition transition model
   . shrinkList (liftShrinkInternal shrinker)
   . unProgram
 
+-- | Execute a program and return a history, the final model and a property
+--   which contains the information of whether the execution respects the state
+--   machine model or not.
 executeProgram
   :: forall m act err model
   .  Monad m
