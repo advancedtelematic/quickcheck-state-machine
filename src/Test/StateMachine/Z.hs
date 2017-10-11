@@ -20,6 +20,20 @@ import qualified Data.List as List
 
 ------------------------------------------------------------------------
 
+union :: Eq a => [a] -> [a] -> [a]
+union = List.union
+
+intersect :: Eq a => [a] -> [a] -> [a]
+intersect = List.intersect
+
+isSubsetOf :: Eq a => [a] -> [a] -> Bool
+r `isSubsetOf` s = r == r `intersect` s
+
+(~=) :: Eq a => [a] -> [a] -> Bool
+xs ~= ys = xs `isSubsetOf` ys && ys `isSubsetOf` xs
+
+------------------------------------------------------------------------
+
 -- | Relations.
 type Rel a b = [(a, b)]
 
@@ -44,10 +58,10 @@ codomain :: Rel a b -> [b]
 codomain xys = [ y | (_, y) <- xys ]
 
 isTotalRel :: Eq a => Rel a b -> [a] -> Bool
-isTotalRel r xs = domain r == xs
+isTotalRel r xs = domain r ~= xs
 
 isSurjRel :: Eq b => Rel a b -> [b] -> Bool
-isSurjRel r ys = codomain r == ys
+isSurjRel r ys = codomain r ~= ys
 
 isTotalSurjRel :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
 isTotalSurjRel r xs ys = isTotalRel r xs && isSurjRel r ys
@@ -62,15 +76,6 @@ compose yzs xys =
 
 fcompose :: Eq b => Rel a b -> Rel b c -> Rel a c
 fcompose r s = compose s r
-
-union :: Eq a => [a] -> [a] -> [a]
-union = List.union
-
-intersect :: Eq a => [a] -> [a] -> [a]
-intersect = List.intersect
-
-isSubsetOf :: Eq a => [a] -> [a] -> Bool
-r `isSubsetOf` s = r == r `intersect` s
 
 inverse :: Rel a b -> Rel b a
 inverse xys = [ (y, x) | (x, y) <- xys ]
@@ -150,10 +155,10 @@ acs <||> bds =
 ------------------------------------------------------------------------
 
 isPartialFun :: (Eq a, Eq b) => Rel a b -> Bool
-isPartialFun f  = (f `compose` inverse f) == identity (codomain f)
+isPartialFun f  = (f `compose` inverse f) ~= identity (codomain f)
 
 isTotalFun :: (Eq a, Eq b) => Rel a b -> [a] -> Bool
-isTotalFun r xs = isPartialFun r && domain r == xs
+isTotalFun r xs = isPartialFun r && domain r ~= xs
 
 isPartialInj :: (Eq a, Eq b) => Rel a b -> Bool
 isPartialInj r = isPartialFun r && isPartialFun (inverse r)
@@ -162,10 +167,10 @@ isTotalInj :: (Eq a, Eq b) => Rel a b -> [a] -> Bool
 isTotalInj r xs = isTotalFun r xs && isPartialFun (inverse r)
 
 isPartialSurj :: (Eq a, Eq b) => Rel a b -> [b] -> Bool
-isPartialSurj r ys = isPartialFun r && codomain r == ys
+isPartialSurj r ys = isPartialFun r && codomain r ~= ys
 
 isTotalSurj :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
-isTotalSurj r xs ys = isTotalFun r xs && codomain r == ys
+isTotalSurj r xs ys = isTotalFun r xs && codomain r ~= ys
 
 isBijection :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
 isBijection r xs ys = isTotalInj r xs && isTotalSurj r xs ys
