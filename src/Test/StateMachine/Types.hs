@@ -79,7 +79,7 @@ data Untyped (act :: (* -> *) -> * -> *) where
 --   needed to perform our tests.
 type StateMachine model act m = StateMachine' model act Void m
 
--- | Same as above, but with possibily failing semantics.
+-- | Same as above, but with possibly failing semantics.
 data StateMachine' model act err m = StateMachine
   { generator'     :: Generator model act
   , shrinker'      :: Shrinker  act
@@ -91,7 +91,7 @@ data StateMachine' model act err m = StateMachine
   , runner'        :: Runner m
   }
 
--- | Helper for lifting non-failing semantics to a possibily failing
+-- | Helper for lifting non-failing semantics to a possibly failing
 --   state machine record.
 stateMachine
   :: Functor m

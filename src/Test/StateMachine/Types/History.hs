@@ -13,8 +13,8 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module contains the notion of a history of an exection of a (parallel)
--- program.
+-- This module contains the notion of a history of an execution of a
+-- (parallel) program.
 --
 -----------------------------------------------------------------------------
 
@@ -92,7 +92,7 @@ findCorrespondingResp pid (e : es) =
 data Operation act err = forall resp. Typeable resp =>
   Operation (act Concrete resp) String (Result (Concrete resp) err) Pid
 
--- | Given a history, return all possible interleavings of invocation
+-- | Given a history, return all possible interleavings of invocations
 --   and corresponding response events.
 linearTree :: History' act err -> [Tree (Operation act err)]
 linearTree [] = []
