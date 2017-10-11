@@ -1,7 +1,5 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE Rank2Types                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -173,7 +171,7 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
         mresp <- lift (semantics cact)
         threadDelay 10
         case mresp of
-          Fail err -> do
+          Fail err ->
             liftBaseWith $ const $
               atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
           Ok resp  -> do

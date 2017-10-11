@@ -18,17 +18,17 @@ spec = do
 
     around withDbLock $
 
-      it "`prop_ticketDispenser`: the model is sequentially sound" $
+      it "`prop_ticketDispenser`: the model is sequentially sound"
         prop_ticketDispenser
 
   describe "Parallel property" $ do
 
     around withDbLock $ modifyMaxSuccess (const 5) $
 
-      it "`prop_ticketDispenserParallelOK`: works with exclusive file locks" $
+      it "`prop_ticketDispenserParallelOK`: works with exclusive file locks"
         prop_ticketDispenserParallelOK
 
     around withDbLock $ modifyMaxSuccess (const 5) $
 
-      it "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared" $
+      it "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared"
         prop_ticketDispenserParallelBad

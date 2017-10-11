@@ -9,7 +9,8 @@ import           Test.QuickCheck
 import           CircularBuffer
 
 spec :: Spec
-spec = do
+spec =
+
   modifyMaxSuccess (const 500) $
 
     describe "Sequential property" $ do
@@ -26,5 +27,5 @@ spec = do
       it "`unpropStillBadRem`: the fourth bug is found" $
         expectFailure unpropStillBadRem
 
-      it "`prop_circularBuffer`: the fixed version is correct" $
+      it "`prop_circularBuffer`: the fixed version is correct"
         prop_circularBuffer

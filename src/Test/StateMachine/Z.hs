@@ -76,10 +76,10 @@ inverse :: Rel a b -> Rel b a
 inverse xys = [ (y, x) | (x, y) <- xys ]
 
 lookupDom :: Eq a => a -> Rel a b -> [b]
-lookupDom x xys = xys >>= \(x', y) -> if x == x' then [y] else []
+lookupDom x xys = xys >>= \(x', y) -> [ y | x == x' ]
 
 lookupCod :: Eq b => b -> Rel a b -> [a]
-lookupCod y xys = xys >>= \(x, y') -> if y == y' then [x] else []
+lookupCod y xys = xys >>= \(x, y') -> [ x | y == y' ]
 
 ------------------------------------------------------------------------
 
