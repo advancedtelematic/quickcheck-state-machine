@@ -57,6 +57,7 @@ instance Monoid (Program act) where
 deriving instance Show (Untyped act) => Show (Program act)
 deriving instance Read (Untyped act) => Read (Program act)
 
+-- | Returns the number of actions in a program.
 programLength :: Program act -> Int
 programLength = length . unProgram
 

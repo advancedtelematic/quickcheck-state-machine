@@ -158,16 +158,16 @@ runProgram
   -> PropertyM m (History act err, model Concrete, Property)
 runProgram sm = run . executeProgram sm
 
+-- | Takes the output of running a program and pretty prints a
+--   counterexample if the run failed.
 prettyProgram
   :: MonadIO m
-  => Program act -> History act err -> model Concrete -> Property -> PropertyM m ()
+  => Program act
+  -> History act err
+  -> model Concrete
+  -> Property
+  -> PropertyM m ()
 prettyProgram _ hist _ prop = putStrLn (ppHistory hist) `whenFailM` prop
-
-actionNames :: forall act. Constructors act => Program act -> [(Constructor, Int)]
-actionNames = M.toList . foldl go M.empty . unProgram
-  where
-  go :: Map Constructor Int -> Internal act -> Map Constructor Int
-  go ih (Internal act _) = M.insertWith (+) (constructor act) 1 ih
 
 -- | Print distribution of actions and fail if some actions have not been
 --   executed.
@@ -178,6 +178,13 @@ checkActionNames prog
   where
     names = actionNames prog
     numOfConstructors = nConstructors prog
+
+-- | Returns the frequency of actions in a program.
+actionNames :: forall act. Constructors act => Program act -> [(Constructor, Int)]
+actionNames = M.toList . foldl go M.empty . unProgram
+  where
+  go :: Map Constructor Int -> Internal act -> Map Constructor Int
+  go ih (Internal act _) = M.insertWith (+) (constructor act) 1 ih
 
 ------------------------------------------------------------------------
 
@@ -199,7 +206,7 @@ forAllParallelProgram generator shrinker precondition transition model =
   . \prop p -> CE.property (prop p)
 
 -- | Variant of 'forAllParallelProgram' which returns the generated and shrunk
--- program if the property fails.
+--   program if the property fails.
 forAllParallelProgramC
   :: Show (Untyped act)
   => HFoldable act
@@ -245,7 +252,7 @@ monadicParallelC StateMachine {..} predicate
   . predicate
 
 -- | Testable property of parallel programs derived from a
--- 'StateMachine' specification.
+--   'StateMachine' specification.
 runParallelProgram
   :: MonadBaseControl IO m
   => Show (Untyped act)
@@ -256,11 +263,15 @@ runParallelProgram
   -> PropertyM m [(History act err, Property)]
 runParallelProgram = runParallelProgram' 10
 
+-- | Same as above, but with the ability to choose how many times each
+--   parallel program is executed. It can be important to tune this
+--   value in order to reveal race conditions. The more runs, the more
+--   likely we will find a bug, but it also takes longer.
 runParallelProgram'
   :: MonadBaseControl IO m
   => Show (Untyped act)
   => HTraversable act
-  => Int
+  => Int -- ^ How many times to execute the parallel program.
   -> StateMachine' model act err m
      -- ^
   -> ParallelProgram act
@@ -270,10 +281,14 @@ runParallelProgram' n StateMachine {..} prog =
     hist <- run (executeParallelProgram semantics' prog)
     return (hist, linearise transition' postcondition' model' hist)
 
+-- | Takes the output of a parallel program runs and pretty prints a
+--   counter example if any of the runs fail.
 prettyParallelProgram
   :: MonadIO m
   => HFoldable act
-  => ParallelProgram act -> [(History act err, Property)] -> PropertyM m ()
+  => ParallelProgram act
+  -> [(History act err, Property)] -- ^ Output of 'runParallelProgram'.
+  -> PropertyM m ()
 prettyParallelProgram prog
   = mapM_ (\(hist, prop) ->
               print (toBoxDrawings prog hist) `whenFailM` prop)

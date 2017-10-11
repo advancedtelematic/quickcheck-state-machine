@@ -15,9 +15,8 @@ module Test.StateMachine.Internal.Utils where
 import           Data.List
                    (group, sort)
 import           Test.QuickCheck
-                   (Property, Result(Failure), chatty, counterexample,
-                   output, property, quickCheckWithResult, stdArgs,
-                   whenFail)
+                   (Property, chatty, counterexample, property,
+                   stdArgs, whenFail)
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 import qualified Test.QuickCheck.Counterexamples as CE
@@ -36,6 +35,7 @@ anyP p = foldr (\x ih -> p x .||. ih) (property False)
 liftProperty :: Monad m => Property -> PropertyM m ()
 liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
 
+-- | Lifts 'whenFail' to 'PropertyM'.
 whenFailM :: Monad m => IO () -> Property -> PropertyM m ()
 whenFailM m prop = liftProperty (m `whenFail` prop)
 
@@ -49,21 +49,10 @@ alwaysP n prop
 
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.
-shrinkPropertyHelper :: Property -> (String -> Bool) -> Property
-shrinkPropertyHelper prop p = shrinkPropertyHelper' prop (property . p)
-
--- | Same as above, but using a property predicate.
-shrinkPropertyHelper' :: Property -> (String -> Property) -> Property
-shrinkPropertyHelper' prop p = monadicIO $ do
-  result <- run $ quickCheckWithResult (stdArgs {chatty = False}) prop
-  case result of
-    Failure { output = outputLines } -> liftProperty $
-      counterexample ("failed: " ++ outputLines) $ p outputLines
-    _                                -> return ()
-
 shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
 shrinkPropertyHelperC prop p = shrinkPropertyHelperC' prop (property . p)
 
+-- | Same as above, but using a property predicate.
 shrinkPropertyHelperC' :: Show a => PropertyOf a -> (a -> Property) -> Property
 shrinkPropertyHelperC' prop p = monadicIO $ do
   ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
@@ -84,11 +73,14 @@ shrinkPair shrinker = shrinkPair' shrinker shrinker
 
 ------------------------------------------------------------------------
 
+-- | Remove duplicate elements from a list.
 nub :: Ord a => [a] -> [a]
 nub = fmap head . group . sort
 
+-- | Drop last 'n' elements of a list.
 dropLast :: Int -> [a] -> [a]
 dropLast n xs = zipWith const xs (drop n xs)
 
+-- | Indexing starting from the back of a list.
 toLast :: Int -> [a] -> a
 toLast n = last . dropLast n
