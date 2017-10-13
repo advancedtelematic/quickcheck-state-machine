@@ -168,7 +168,7 @@ executeProgram StateMachine {..}
                      , smodel
                      , cmodel
                      , env
-                     , prop
+                     , prop .&&. postcondition' cmodel cact (Fail err)
                      )
             Ok resp  -> do
               let cresp = Concrete resp
@@ -180,5 +180,5 @@ executeProgram StateMachine {..}
                      , transition' smodel act sym
                      , transition' cmodel cact cresp
                      , insertConcrete sym cresp env
-                     , prop .&&. postcondition' cmodel cact resp
+                     , prop .&&. postcondition' cmodel cact (Ok resp)
                      )

@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE Rank2Types           #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------------------------
@@ -32,9 +33,12 @@ module Test.StateMachine.Types
   , Precondition
   , Transition
   , Postcondition
+  , Postcondition'
+  , okPostcondition
   , InitialModel
   , Result(..)
   , Semantics
+  , Semantics'
   , Runner
 
   -- * Data type generic operations
@@ -53,7 +57,7 @@ import           Data.Functor.Classes
 import           Data.Typeable
                    (Typeable)
 import           Data.Void
-                   (Void)
+                   (Void, absurd)
 import           Test.QuickCheck
                    (Gen, Property)
 
@@ -85,27 +89,32 @@ data StateMachine' model act err m = StateMachine
   , shrinker'      :: Shrinker  act
   , precondition'  :: Precondition model act
   , transition'    :: Transition   model act
-  , postcondition' :: Postcondition model act
+  , postcondition' :: Postcondition' model err act
   , model'         :: InitialModel model
-  , semantics'     :: Semantics act err m
+  , semantics'     :: Semantics' act err m
   , runner'        :: Runner m
   }
 
 -- | Helper for lifting non-failing semantics to a possibly failing
 --   state machine record.
 stateMachine
-  :: Functor m
+  :: forall m model act
+  .  Functor m
   => Generator model act
   -> Shrinker act
   -> Precondition model act
   -> Transition   model act
   -> Postcondition model act
   -> InitialModel model
-  -> (forall resp. act Concrete resp -> m resp)
+  -> Semantics act m
   -> Runner m
   -> StateMachine' model act Void m
 stateMachine gen shr precond trans post model sem run =
-  StateMachine gen shr precond trans post model (fmap Ok . sem) run
+  StateMachine gen shr precond trans post' model (fmap Ok . sem) run
+  where
+  post' :: Postcondition' model Void act
+  post' m act (Ok resp)    = post m act resp
+  post' _ _   (Fail false) = absurd false
 
 -- | When generating actions we have access to a model containing
 --   symbolic references.
@@ -130,16 +139,24 @@ type Transition model act = forall resp v. Ord1 v =>
 type Postcondition model act = forall resp.
   model Concrete -> act Concrete resp -> resp -> Property
 
+type Postcondition' model err act = forall resp.
+  model Concrete -> act Concrete resp -> Result resp err -> Property
+
+okPostcondition :: Postcondition' model err act -> Postcondition model act
+okPostcondition postcondition model act resp = postcondition model act (Ok resp)
+
 -- | The initial model is polymorphic in the type of references it uses,
 --   so that it can be used both in the pre- and the post-condition
 --   check.
 type InitialModel m = forall (v :: * -> *). m v
 
+-- | When we execute our actions we have access to concrete references.
+type Semantics act m = forall resp. act Concrete resp -> m resp
+
 -- | The result of executing an action.
 data Result resp err = Ok resp | Fail err
 
--- | When we execute our actions we have access to concrete references.
-type Semantics act err m = forall resp. act Concrete resp -> m (Result resp err)
+type Semantics' act err m = forall resp. act Concrete resp -> m (Result resp err)
 
 -- | How to run the monad used by the semantics.
 type Runner m = m Property -> IO Property

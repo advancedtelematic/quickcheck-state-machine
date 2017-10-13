@@ -124,7 +124,7 @@ executeParallelProgram
   .  MonadBaseControl IO m
   => HTraversable act
   => Show (Untyped act)
-  => Semantics act err m
+  => Semantics' act err m
   -> ParallelProgram act
   -> m (History act err)
 executeParallelProgram semantics = liftSemFork . unParallelProgram

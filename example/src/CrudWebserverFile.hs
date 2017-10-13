@@ -74,9 +74,11 @@ import           System.FilePath
                    ((</>))
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
-                   shrink, (===))
+                   property, shrink, (===))
 import           Test.QuickCheck.Instances
                    ()
+import           Test.QuickCheck.Property
+                   (failed, reason)
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
@@ -177,8 +179,9 @@ transitions (Model m) act _ = Model $ case act of
   GetFile    _            -> m
   DeleteFile file         -> Map.delete file m
 
-postconditions :: Postcondition Model Action
-postconditions (Model m) act resp =
+postconditions :: Postcondition' Model String Action
+postconditions _         _   (Fail err) = property (failed { reason = err })
+postconditions (Model m) act (Ok resp)  =
   let Model m' = transitions (Model m) act (Concrete resp)
   in case act of
     PutFile    file content -> Map.lookup file m' === Just content
@@ -206,7 +209,7 @@ shrinker _                       = []
 
 ------------------------------------------------------------------------
 
-semantics :: Semantics Action String (ReaderT ClientEnv IO)
+semantics :: Semantics' Action String (ReaderT ClientEnv IO)
 semantics act = do
   env <- ask
   res <- liftIO $ flip runClientM env $ case act of
