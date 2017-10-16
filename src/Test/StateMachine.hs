@@ -279,7 +279,7 @@ runParallelProgram'
 runParallelProgram' n StateMachine {..} prog =
   replicateM n $ do
     hist <- run (executeParallelProgram semantics' prog)
-    return (hist, linearise transition' (okPostcondition postcondition') model' hist)
+    return (hist, linearise transition' postcondition' model' hist)
 
 -- | Takes the output of a parallel program runs and pretty prints a
 --   counter example if any of the runs fail.
