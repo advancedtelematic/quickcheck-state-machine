@@ -161,9 +161,7 @@ prop_references :: Problem -> Property
 prop_references prb = monadicSequential (sm prb) $ \prog -> do
   (hist, model, prop) <- runProgram (sm prb) prog
   prettyProgram prog hist model $
-    checkActionNames prog numberOfConstructors prop
-  where
-  numberOfConstructors = 4
+    checkActionNames prog prop
 ```
 
 If we run the sequential property without introducing any problems to the
