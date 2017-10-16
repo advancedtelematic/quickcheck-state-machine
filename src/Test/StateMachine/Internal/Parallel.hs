@@ -124,7 +124,7 @@ executeParallelProgram
   .  MonadBaseControl IO m
   => HTraversable act
   => Show (Untyped act)
-  => Semantics act err m
+  => Semantics' act err m
   -> ParallelProgram act
   -> m (History act err)
 executeParallelProgram semantics = liftSemFork . unParallelProgram
@@ -186,7 +186,7 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
 linearise
   :: forall model act err
   .  Transition    model act
-  -> Postcondition model act
+  -> Postcondition' model err act
   -> InitialModel model
   -> History act err
   -> Property
@@ -197,11 +197,12 @@ linearise transition postcondition model0 = go . unHistory
   go es = anyP (step model0) (linearTree es)
 
   step :: model Concrete -> Tree (Operation act err) -> Property
-  step model (Node (Operation _ _ (Fail _)                     _) roses) =
+  step model (Node (Operation act _ (Fail err)           _) roses) =
+    postcondition model act (Fail err) .&&.
     anyP' (step model) roses
-  step model (Node (Operation act _ (Ok (resp@(Concrete resp'))) _) roses) =
-    postcondition model act resp' .&&.
-    anyP' (step (transition model act resp)) roses
+  step model (Node (Operation act _ (Ok (Concrete resp)) _) roses) =
+    postcondition model act (Ok resp) .&&.
+    anyP' (step (transition model act (Concrete resp))) roses
 
 anyP' :: (a -> Property) -> [a] -> Property
 anyP' _ [] = property True
