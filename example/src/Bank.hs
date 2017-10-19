@@ -5,6 +5,7 @@
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
 
@@ -16,26 +17,20 @@
 
 module Bank where
 
+import           Data.Functor.Classes
+                   (Show1, liftShowsPrec)
 import           Data.Functor.Product
 import           Data.List
                    ((\\))
 import           Data.Proxy
 import           Test.QuickCheck
-                   (Arbitrary, Property, arbitrary, elements,
-                   frequency, oneof, property, shrink, suchThat)
+                   (Arbitrary, NonNegative, Property, arbitrary,
+                   counterexample, elements, frequency, getNonNegative,
+                   oneof, property, shrink, suchThat)
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
-import           Test.StateMachine.Z  hiding
-                   ((!))
-
-------------------------------------------------------------------------
-
-(!) :: Eq a => Fun a b -> a -> b
-f ! x = maybe (error "!") id (lookup x f)
-
-(.%) :: (Eq a, Eq b) => (Fun a b, a) -> (b -> b) -> Fun a b
-(f, x) .% g = f .! x .= g (f ! x)
+import           Test.StateMachine.Z
 
 ------------------------------------------------------------------------
 
@@ -91,10 +86,10 @@ next0 m@Model0{..} act _ = case act of
 ------------------------------------------------------------------------
 
 instance Arbitrary Person where
-  arbitrary = Person <$> arbitrary
+  arbitrary = Person <$> elements ["apa", "bepa", "cepa", "depa", "epa"]
 
 instance Arbitrary Account where
-  arbitrary = Account <$> arbitrary
+  arbitrary = Account <$> (getNonNegative <$> arbitrary)
 
 generator :: Generator Model0 Action0
 generator (Model0 accs _ _)
@@ -167,8 +162,9 @@ next1 (Pair Model0{..} model1)     (Close1 acc)        _ = Pair
   model1
 
 invariants1 :: Postcondition (Product Model0 Model1) Action1
-invariants1 (Pair Model0{..} Model1{..}) _ _ = property $
-  domain inbank `isSubsetOf` accounts
+invariants1 (Pair Model0{..} Model1{..}) _ _ =
+  counterexample "Invariant broken: domain inbank `isSubsetOf` accounts" $
+    property $ domain inbank `isSubsetOf` accounts
 
 sem1 :: Action1 Concrete resp -> IO resp
 sem1 act = case act of
@@ -251,7 +247,8 @@ instance (Show (Untyped act0), Show (Untyped act1)) =>
 instance (Constructors act0, Constructors act1) => Constructors (Plus act0 act1) where
   constructor (Inl act) = constructor act
   constructor (Inr act) = constructor act
-  nConstructors _       = 5                 -- Hmm?
+  nConstructors _       = nConstructors (Proxy :: Proxy act0) +
+                          nConstructors (Proxy :: Proxy act1)
 
 instance (HFunctor act0, HFunctor act1) => HFunctor (Plus act0 act1) where
   hfmap f (Inl act) = Inl (hfmap f act)
@@ -266,6 +263,19 @@ instance (HTraversable act0, HTraversable act1) => HTraversable (Plus act0 act1)
   htraverse f (Inr act) = Inr <$> htraverse f act
 
 ------------------------------------------------------------------------
+
+instance Show (Product Model0 Model1 Concrete) where
+  show (Pair model0 model1) = show model0 ++ "\n" ++ show model1
+
+instance Show1 (Action0 Symbolic) where
+  liftShowsPrec _ _ _ x _ = show x
+
+instance Show1 (Action1 Symbolic) where
+  liftShowsPrec _ _ _ x _ = show x
+
+instance Show1 (Plus Action0 Action1 Symbolic) where
+  liftShowsPrec _ _ _ (Inl act) _ = show act
+  liftShowsPrec _ _ _ (Inr act) _ = show act
 
 refined :: Action0 Symbolic resp -> Bool
 refined (Close _) = True
@@ -282,6 +292,6 @@ sm01 = stateMachine
 
 prop_refinement :: Property
 prop_refinement = monadicSequential sm01 $ \prog -> do
-  (hist, model, prop) <- runProgram sm01 prog
-  prettyProgram prog hist model $
+  (hist, model, prop) <- runProgram' sm01 prog
+  prettyProgram' prog hist model (liftTrans next0 next1) $
     checkActionNames prog prop

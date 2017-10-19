@@ -25,9 +25,12 @@ module Test.StateMachine.Internal.Sequential
   , liftShrinkInternal
   , shrinkProgram
   , executeProgram
+  , executeProgram'
   )
   where
 
+import           Data.Functor.Classes
+                   (Show1, showsPrec1)
 import           Control.Monad
                    (filterM, foldM, when)
 import           Control.Monad.State
@@ -174,6 +177,65 @@ executeProgram StateMachine {..}
               let cresp = Concrete resp
                   hist' = History
                     [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
+                    , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
+                    ]
+              return ( hist <> hist'
+                     , transition' smodel act sym
+                     , transition' cmodel cact cresp
+                     , insertConcrete sym cresp env
+                     , prop .&&. postcondition' cmodel cact (Ok resp)
+                     )
+
+executeProgram'
+  :: forall m act v err model
+  .  Monad m
+  => Show1 (act Symbolic)
+  => HTraversable act
+  => StateMachine' model act err m
+  -> Program act
+  -> m (History act err, model Concrete, Property)
+executeProgram' StateMachine {..}
+  = fmap (\(hist, _, cmodel, _, prop) -> (hist, cmodel, prop))
+  . foldM go (mempty, model', model', emptyEnvironment, property True)
+  . unProgram
+  where
+  go :: (History act err, model Symbolic, model Concrete, Environment, Property)
+     -> Internal act
+     -> m (History act err, model Symbolic, model Concrete, Environment, Property)
+  go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) =
+    if not (precondition' smodel act)
+    then
+      return ( hist
+             , smodel
+             , cmodel
+             , env
+             , counterexample ("precondition failed for: " ++ showsPrec1 10 act "") prop
+             )
+    else
+      case reify env act of
+
+                      -- This means that the reference that the action uses
+                      -- failed to be created, so we do nothing.
+        Left _     -> return (hist, smodel, cmodel, env, prop)
+
+        Right cact -> do
+          mresp <- semantics' cact
+          case mresp of
+            Fail err -> do
+              let hist' = History
+                    [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
+                    , ResponseEvent (Fail err) "<fail>" (Pid 0)
+                    ]
+              return ( hist <> hist'
+                     , smodel
+                     , cmodel
+                     , env
+                     , prop .&&. postcondition' cmodel cact (Fail err)
+                     )
+            Ok resp  -> do
+              let cresp = Concrete resp
+                  hist' = History
+                    [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
                     , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
                     ]
               return ( hist <> hist'

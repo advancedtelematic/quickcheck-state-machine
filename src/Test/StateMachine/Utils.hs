@@ -22,6 +22,7 @@ module Test.StateMachine.Utils
   , shrinkPropertyHelperC'
   , shrinkPair
   , shrinkPair'
+  , forAllShrinkShowC
   ) where
 
 import Test.StateMachine.Internal.Utils

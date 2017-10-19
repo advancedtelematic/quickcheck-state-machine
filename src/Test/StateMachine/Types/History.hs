@@ -2,6 +2,8 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -22,6 +24,7 @@ module Test.StateMachine.Types.History
   ( History(..)
   , History'
   , ppHistory
+  , ppHistory'
   , HistoryEvent(..)
   , getProcessIdEvent
   , UntypedConcrete(..)
@@ -31,15 +34,15 @@ module Test.StateMachine.Types.History
   where
 
 import           Data.Dynamic
-                   (Dynamic)
+                   (Dynamic, fromDyn)
 import           Data.Tree
                    (Tree(Node))
 import           Data.Typeable
                    (Typeable)
 
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Types
 import           Test.StateMachine.Internal.Types.Environment
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
@@ -68,6 +71,25 @@ ppHistory = foldr go "" . unHistory
   go :: HistoryEvent (UntypedConcrete act) err -> String -> String
   go (InvocationEvent _ str _ _) ih = " " ++ str ++ " ==> " ++ ih
   go (ResponseEvent   _ str   _) ih =        str ++ "\n"    ++ ih
+
+ppHistory'
+  :: forall model act err
+  .  Show (model Concrete)
+  => model Concrete -> Transition model act -> History act err -> String
+ppHistory' model0 transition
+  = showsPrec 10 model0
+  . go model0
+  . unHistory
+  where
+  go :: model Concrete -> History' act err -> String
+  go _     [] = "\n"
+  go model (InvocationEvent (UntypedConcrete act) astr var _pid : ResponseEvent res rstr _ : hist)
+    = "\n\n    " ++ astr ++ " --> " ++ rstr ++ "\n\n" ++ show model' ++ go model' hist
+    where
+    model' :: model Concrete
+    model' = case res of
+      Fail err -> model
+      Ok resp  -> transition model act (Concrete (fromDyn resp (error "ppHistory': fromDyn")))
 
 -- | Get the process id of an event.
 getProcessIdEvent :: HistoryEvent act err -> Pid

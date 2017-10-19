@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Test.StateMachine.Internal.Utils
@@ -15,13 +17,16 @@ module Test.StateMachine.Internal.Utils where
 import           Data.List
                    (group, sort)
 import           Test.QuickCheck
-                   (Property, chatty, counterexample, property,
-                   stdArgs, whenFail)
+                   (Gen, Property, Testable, again, chatty,
+                   counterexample, property, shrinking, stdArgs,
+                   whenFail)
 import           Test.QuickCheck.Counterexamples
-                   (PropertyOf)
+                   (PropertyFrom, PropertyOf, (:&:)(..), Counterexample)
 import qualified Test.QuickCheck.Counterexamples as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
+import           Test.QuickCheck.Property
+                   (Property(MkProperty), unProperty)
 import           Test.QuickCheck.Property
                    ((.&&.), (.||.))
 
@@ -70,6 +75,27 @@ shrinkPair' shrinkerA shrinkerB (x, y) =
 -- | Same above, but for homogeneous pairs.
 shrinkPair :: (a -> [a]) -> ((a, a) -> [(a, a)])
 shrinkPair shrinker = shrinkPair' shrinker shrinker
+
+-- | A variant of 'Test.QuickCheck.Monadic.forAllShrink' with an explicit show
+--   function.
+forAllShrinkShow
+  :: Testable prop
+  => Gen a -> (a -> [a]) -> (a -> String) -> (a -> prop) -> Property
+forAllShrinkShow gen shrinker shower pf =
+  again $
+  MkProperty $
+  gen >>= \x ->
+    unProperty $
+    shrinking shrinker x $ \x' ->
+      counterexample (shower x') (pf x')
+
+forAllShrinkShowC
+  :: CE.Testable prop
+  => Gen a -> (a -> [a]) -> (a -> String) -> (a -> prop) -> PropertyOf (a :&: Counterexample prop)
+forAllShrinkShowC arb shr shower prop =
+  CE.MkProperty $ \f ->
+    forAllShrinkShow arb shr shower $ \x ->
+      CE.unProperty (CE.property (prop x)) (\y -> f (x :&: y))
 
 ------------------------------------------------------------------------
 

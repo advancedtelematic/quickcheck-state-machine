@@ -176,8 +176,14 @@ isBijection :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
 isBijection r xs ys = isTotalInj r xs && isTotalSurj r xs ys
 
 -- | Application.
-(!) :: Eq a => Rel a b -> a -> Maybe b
-xys ! x = lookup x xys
+(!) :: Eq a => Fun a b -> a -> b
+f ! x = maybe (error "!: lookup failed.") id (lookup x f)
+
+(.%) :: (Eq a, Eq b) => (Fun a b, a) -> (b -> b) -> Fun a b
+(f, x) .% g = f .! x .= g (f ! x)
+
+------------------------------------------------------------------------
+
 
 (.!) :: Rel a b -> a -> (Rel a b, a)
 f .! x = (f, x)
