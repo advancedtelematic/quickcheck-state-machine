@@ -67,6 +67,8 @@ import           Data.Functor.Classes
 import           Data.Map
                    (Map)
 import qualified Data.Map                              as M
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Property, collect, cover, ioProperty, property)
 import qualified Test.QuickCheck
@@ -162,10 +164,10 @@ runProgram'
   :: Monad m
   => Show1 (act Symbolic)
   => HTraversable act
-  => StateMachine' model act err m
+  => StateMachine'' model act m
      -- ^
   -> Program act
-  -> PropertyM m (History act err, model Concrete, Property)
+  -> PropertyM m (History act Void, model Concrete, Reason)
 runProgram' sm = run . executeProgram' sm
 
 -- | Takes the output of running a program and pretty prints a
@@ -182,6 +184,7 @@ prettyProgram _ hist _ prop = putStrLn (ppHistory hist) `whenFailM` prop
 prettyProgram'
   :: MonadIO m
   => Show (model Concrete)
+  => Show err
   => Program act
   -> History act err
   -> model Concrete

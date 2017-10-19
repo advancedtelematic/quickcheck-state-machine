@@ -29,19 +29,21 @@ module Test.StateMachine.Internal.Sequential
   )
   where
 
-import           Data.Functor.Classes
-                   (Show1, showsPrec1)
 import           Control.Monad
                    (filterM, foldM, when)
 import           Control.Monad.State
                    (State, StateT, evalState, get, lift, put)
 import           Data.Dynamic
                    (toDyn)
+import           Data.Functor.Classes
+                   (Show1, showsPrec1)
 import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Gen, Property, choose, counterexample, property,
                    shrinkList, sized, suchThat, (.&&.))
@@ -173,74 +175,72 @@ executeProgram StateMachine {..}
                      , env
                      , prop .&&. postcondition' cmodel cact (Fail err)
                      )
-            Ok resp  -> do
+            OkResponse resp  -> do
               let cresp = Concrete resp
                   hist' = History
                     [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
-                    , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
+                    , ResponseEvent (OkResponse (toDyn cresp)) (show resp) (Pid 0)
                     ]
               return ( hist <> hist'
                      , transition' smodel act sym
                      , transition' cmodel cact cresp
                      , insertConcrete sym cresp env
-                     , prop .&&. postcondition' cmodel cact (Ok resp)
+                     , prop .&&. postcondition' cmodel cact (OkResponse resp)
                      )
 
 executeProgram'
-  :: forall m act v err model
+  :: forall m act model
   .  Monad m
   => Show1 (act Symbolic)
   => HTraversable act
-  => StateMachine' model act err m
+  => StateMachine'' model act m
   -> Program act
-  -> m (History act err, model Concrete, Property)
-executeProgram' StateMachine {..}
-  = fmap (\(hist, _, cmodel, _, prop) -> (hist, cmodel, prop))
-  . foldM go (mempty, model', model', emptyEnvironment, property True)
+  -> m (History act Void, model Concrete, Reason)
+executeProgram' StateMachine'' {..}
+  = fmap (\(hist, _, cmodel, _, reason) -> (hist, cmodel, reason))
+  . go (mempty, model'', model'', emptyEnvironment)
   . unProgram
   where
-  go :: (History act err, model Symbolic, model Concrete, Environment, Property)
-     -> Internal act
-     -> m (History act err, model Symbolic, model Concrete, Environment, Property)
-  go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) =
-    if not (precondition' smodel act)
+  go :: (History act err, model Symbolic, model Concrete, Environment)
+     -> [Internal act]
+     -> m (History act err, model Symbolic, model Concrete, Environment, Reason)
+  go (hist, smodel, cmodel, env)  []                                       =
+    return (hist, smodel, cmodel, env, Ok)
+  go (hist, smodel, cmodel, env)  (Internal act sym@(Symbolic var) : acts) =
+    if not (precondition'' smodel act)
     then
       return ( hist
              , smodel
              , cmodel
              , env
-             , counterexample ("precondition failed for: " ++ showsPrec1 10 act "") prop
+             , PreconditionFailed
              )
     else
       case reify env act of
 
                       -- This means that the reference that the action uses
                       -- failed to be created, so we do nothing.
-        Left _     -> return (hist, smodel, cmodel, env, prop)
+        Left _     -> return (hist, smodel, cmodel, env, ReferenceFailed)
 
         Right cact -> do
-          mresp <- semantics' cact
-          case mresp of
-            Fail err -> do
-              let hist' = History
-                    [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
-                    , ResponseEvent (Fail err) "<fail>" (Pid 0)
-                    ]
-              return ( hist <> hist'
-                     , smodel
-                     , cmodel
-                     , env
-                     , prop .&&. postcondition' cmodel cact (Fail err)
-                     )
-            Ok resp  -> do
-              let cresp = Concrete resp
-                  hist' = History
-                    [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
-                    , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
-                    ]
-              return ( hist <> hist'
-                     , transition' smodel act sym
-                     , transition' cmodel cact cresp
-                     , insertConcrete sym cresp env
-                     , prop .&&. postcondition' cmodel cact (Ok resp)
-                     )
+          resp <- semantics'' cact
+          let hist' = hist <> History
+                [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
+                , ResponseEvent (OkResponse (toDyn resp)) (show resp) (Pid 0)
+                ]
+          if not (postcondition'' cmodel cact resp)
+          then
+            return ( hist'
+                   , smodel
+                   , cmodel
+                   , env
+                   , PostconditionFailed
+                   )
+          else do
+            let cresp = Concrete resp
+            go ( hist'
+               , transition'' smodel act sym
+               , transition'' cmodel cact cresp
+               , insertConcrete sym cresp env
+               )
+               acts

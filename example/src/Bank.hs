@@ -22,11 +22,13 @@ import           Data.Functor.Classes
 import           Data.Functor.Product
 import           Data.List
                    ((\\))
+import           Data.Maybe
+                   (isJust)
 import           Data.Proxy
 import           Test.QuickCheck
-                   (Arbitrary, NonNegative, Property, arbitrary,
-                   counterexample, elements, frequency, getNonNegative,
-                   oneof, property, shrink, suchThat)
+                   (Arbitrary, Property, arbitrary, elements,
+                   frequency, getNonNegative, oneof, property, shrink,
+                   suchThat, (===))
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
@@ -50,8 +52,8 @@ data Model0 (v :: * -> *) = Model0
 initModel :: Model0 v
 initModel = Model0 [] empty empty
 
-invariants0 :: Model0 v -> Action0 v resp -> resp -> Property
-invariants0 Model0{..} _ _ = property $
+invariants0 :: Postcondition'' Model0 Action0
+invariants0 Model0{..} _ _ =
      isTotalFun owner accounts
   && isTotalFun bal accounts
   && all (\acc -> bal ! acc >= 0) accounts
@@ -65,15 +67,15 @@ data Action0 (v :: * -> *) :: * -> * where
 deriveShows       ''Action0
 deriveTestClasses ''Action0
 
-pre0 :: Model0 v -> Action0 v resp -> Bool
-pre0 Model0{..} act = case act of
-  Open prs acc   -> acc `notElem` accounts
+precondition0 :: Model0 v -> Action0 v resp -> Bool
+precondition0 Model0{..} act = case act of
+  Open _   acc   -> acc `notElem` accounts
   Close acc      -> acc `elem` accounts
   Deposit acc q  -> acc `elem` accounts && q >= 0
   Withdraw acc q -> acc `elem` accounts && q >= 0 && q <= bal ! acc
 
-next0 :: Model0 v -> Action0 v resp -> v resp -> Model0 v
-next0 m@Model0{..} act _ = case act of
+transition0 :: Model0 v -> Action0 v resp -> v resp -> Model0 v
+transition0 m@Model0{..} act _ = case act of
   Open prs acc   -> Model0 (accounts `union` [acc])
                            (owner .! acc .= prs)
                            (bal .! acc .= 0)
@@ -91,8 +93,8 @@ instance Arbitrary Person where
 instance Arbitrary Account where
   arbitrary = Account <$> (getNonNegative <$> arbitrary)
 
-generator :: Generator Model0 Action0
-generator (Model0 accs _ _)
+generator0 :: Generator Model0 Action0
+generator0 (Model0 accs _ _)
   | null accs = Untyped <$> (Open <$> arbitrary <*> arbitrary)
   | otherwise = frequency
       [ (1, Untyped <$> (Open     <$> arbitrary <*> arbitrary))
@@ -101,13 +103,14 @@ generator (Model0 accs _ _)
       , (8, Untyped <$> (Withdraw <$> elements accs <*> arbitrary))
       ]
 
-shrinker :: Shrinker Action0
-shrinker (Open prs acc)   = [ Open prs' acc   | prs' <- shrink prs ]
-shrinker (Deposit acc q)  = [ Deposit  acc q' | q'   <- shrink q ]
-shrinker (Withdraw acc q) = [ Withdraw acc q' | q'   <- shrink q ]
+shrinker0 :: Shrinker Action0
+shrinker0 (Open prs acc)   = [ Open prs' acc   | prs' <- shrink prs ]
+shrinker0 (Deposit acc q)  = [ Deposit  acc q' | q'   <- shrink q ]
+shrinker0 (Withdraw acc q) = [ Withdraw acc q' | q'   <- shrink q ]
+shrinker0 (Close _)        = []
 
-sem0 :: Action0 v resp -> IO resp
-sem0 act = case act of
+semantics0 :: Action0 v resp -> IO resp
+semantics0 act = case act of
   Open     _ _ -> return ()
   Close    _   -> return ()
   Deposit  _ _ -> return ()
@@ -115,8 +118,8 @@ sem0 act = case act of
 
 sm :: StateMachine Model0 Action0 IO
 sm = stateMachine
-  generator shrinker pre0 next0
-  invariants0 initModel sem0 id
+  generator0 shrinker0 precondition0 transition0
+  (\model act resp -> property (invariants0 model act resp)) initModel semantics0 id
 
 ------------------------------------------------------------------------
 
@@ -142,8 +145,8 @@ data Action1 (v :: * -> *) :: * -> * where
 deriveShows       ''Action1
 deriveTestClasses ''Action1
 
-pre1 :: Precondition (Product Model0 Model1) Action1
-pre1 (Pair Model0{..} Model1{..}) act = case act of
+precondition1 :: Precondition (Product Model0 Model1) Action1
+precondition1 (Pair Model0{..} Model1{..}) act = case act of
   Move1 acc1 acc2 q -> acc1 `elem` accounts && acc2 `elem` accounts &&
                        -- ^ Duplicated...
                        acc1 /= acc2 && q >= 0 && q <= bal ! acc1
@@ -151,28 +154,27 @@ pre1 (Pair Model0{..} Model1{..}) act = case act of
                        -- ^ Duplicated...
                        -- && acc `notElem` domain inbank
 
-next1 :: Transition (Product Model0 Model1) Action1
-next1 (Pair Model0{..} Model1{..}) (Move1 acc1 acc2 q) _ = Pair
+transition1 :: Transition (Product Model0 Model1) Action1
+transition1 (Pair Model0{..} Model1{..}) (Move1 acc1 acc2 q) _ = Pair
   (Model0 accounts owner (bal .! acc1 .% (\i -> i - q)))
   (Model1 (inbank `union` [(acc2, q)]))
-next1 (Pair Model0{..} model1)     (Close1 acc)        _ = Pair
+transition1 (Pair Model0{..} model1)     (Close1 acc)        _ = Pair
   (Model0 (accounts \\ [acc])
           ([acc] <-| owner)
           ([acc] <-| bal))
   model1
 
-invariants1 :: Postcondition (Product Model0 Model1) Action1
+invariants1 :: Postcondition'' (Product Model0 Model1) Action1
 invariants1 (Pair Model0{..} Model1{..}) _ _ =
-  counterexample "Invariant broken: domain inbank `isSubsetOf` accounts" $
-    property $ domain inbank `isSubsetOf` accounts
+  domain inbank `isSubsetOf` accounts
 
-sem1 :: Action1 Concrete resp -> IO resp
-sem1 act = case act of
+semantics1 :: Action1 Concrete resp -> IO resp
+semantics1 act = case act of
   Move1  _ _ _ -> return ()
   Close1 _     -> return ()
 
-gen1 :: Generator (Product Model0 Model1) Action1
-gen1 (Pair Model0{..} _) = frequency
+generator1 :: Generator (Product Model0 Model1) Action1
+generator1 (Pair Model0{..} _) = frequency
   [ (1, Untyped .    Close1 <$> elements accounts)
   , (8, Untyped <$> (Move1  <$> elements accounts <*> elements accounts <*> arbitrary))
   ]
@@ -194,8 +196,8 @@ liftPre
   :: Precondition model0 act0
   -> Precondition (Product model0 model1) act1
   -> Precondition (Product model0 model1) (Plus act0 act1)
-liftPre pre0 pre1 (Pair model0 _) (Inl act0) = pre0 model0 act0
-liftPre pre0 pre1 model01         (Inr act1) = pre1 model01 act1
+liftPre pre0 _   (Pair model0 _)  (Inl act0) = pre0 model0 act0
+liftPre _    pre1 model01         (Inr act1) = pre1 model01 act1
 
 liftTrans
   :: Transition model0 act0
@@ -207,32 +209,38 @@ liftTrans _      trans1 model01              (Inr act1) resp
   = trans1 model01 act1 resp
 
 liftPost
-  :: Postcondition model0 act0
-  -> Postcondition (Product model0 model1) act1
-  -> Postcondition (Product model0 model1) (Plus act0 act1)
-liftPost post0 _     (Pair model0 _) (Inl act0) = post0 model0  act0
-liftPost _     post1 model01         (Inr act1) = post1 model01 act1
+  :: Postcondition'' model0 act0
+  -> Postcondition'' (Product model0 model1) act1
+  -> (forall resp. act0 Concrete resp -> Maybe (act1 Concrete resp))
+  -> (forall resp. act1 Concrete resp -> act0 Concrete resp)
+  -> Postcondition'' (Product model0 model1) (Plus act0 act1)
+liftPost post0 post1 r0 _ (Pair model0 model1) (Inl act0) resp =
+  post0 model0 act0 resp && case r0 act0 of
+    Nothing   -> True
+    Just act1 -> post1 (Pair model0 model1) act1 resp
+liftPost post0 post1 _  r1 (Pair model0 model1) (Inr act1) resp =
+  post0 model0 (r1 act1) resp && post1 (Pair model0 model1) act1 resp
 
 liftSem
-  :: (forall resp. act0 Concrete resp -> m resp)
-  -> (forall resp. act1 Concrete resp -> m resp)
-  -> (forall resp. Plus act0 act1 Concrete resp -> m resp)
+  :: Semantics act0 m
+  -> Semantics act1 m
+  -> Semantics (Plus act0 act1) m
 liftSem sem0 _    (Inl act0) = sem0 act0
 liftSem _    sem1 (Inr act1) = sem1 act1
 
 liftShrinker :: Shrinker act0 -> Shrinker act1 -> Shrinker (Plus act0 act1)
-liftShrinker shrinker0 _         (Inl act) = Inl <$> shrinker0 act
-liftShrinker _         shrinker1 (Inr act) = Inr <$> shrinker1 act
+liftShrinker shr0 _    (Inl act) = Inl <$> shr0 act
+liftShrinker _    shr1 (Inr act) = Inr <$> shr1 act
 
 liftGen
   :: Generator model0 act0
   -> Generator (Product model0 model1) act1
   -> (forall resp. act0 Symbolic resp -> Bool)
   -> Generator (Product model0 model1) (Plus act0 act1)
-liftGen gen0 gen1 refined (Pair model0 model1) = oneof [act0, act1]
+liftGen gen0 gen1 r (Pair model0 model1) = oneof [act0, act1]
   where
   act0 = do
-    Untyped act <- gen0 model0 `suchThat` (\(Untyped act) -> not (refined act))
+    Untyped act <- gen0 model0 `suchThat` (\(Untyped act) -> not (r act))
     return (Untyped (Inl act))
 
   act1 = do
@@ -248,7 +256,8 @@ instance (Constructors act0, Constructors act1) => Constructors (Plus act0 act1)
   constructor (Inl act) = constructor act
   constructor (Inr act) = constructor act
   nConstructors _       = nConstructors (Proxy :: Proxy act0) +
-                          nConstructors (Proxy :: Proxy act1)
+                          nConstructors (Proxy :: Proxy act1) -- Minus the ones
+                                                              -- we refined...
 
 instance (HFunctor act0, HFunctor act1) => HFunctor (Plus act0 act1) where
   hfmap f (Inl act) = Inl (hfmap f act)
@@ -277,21 +286,28 @@ instance Show1 (Plus Action0 Action1 Symbolic) where
   liftShowsPrec _ _ _ (Inl act) _ = show act
   liftShowsPrec _ _ _ (Inr act) _ = show act
 
-refined :: Action0 Symbolic resp -> Bool
-refined (Close _) = True
-refined _         = False
+refined :: Action0 v resp -> Maybe (Action1 v resp)
+refined (Close acc) = Just (Close1 acc)
+refined _           = Nothing
+
+refines :: Action1 v resp -> Action0 v resp
+refines (Close1 acc)     = Close acc
+refines (Move1 acc1 _ q) = Withdraw acc1 q
 
 ------------------------------------------------------------------------
 
+sm01' :: StateMachine'' (Product Model0 Model1) (Plus Action0 Action1) IO
+sm01' = StateMachine''
+  (liftGen generator0 generator1 (isJust . refined)) (liftShrinker shrinker0 shrinker1)
+  (liftPre precondition0 precondition1) (liftTrans transition0 transition1)
+  (liftPost invariants0 invariants1 refined refines) (Pair initModel initModel1)
+  (liftSem semantics0 semantics1) id
+
 sm01 :: StateMachine (Product Model0 Model1) (Plus Action0 Action1) IO
-sm01 = stateMachine
-  (liftGen generator gen1 refined) (liftShrinker shrinker shrinker1)
-  (liftPre pre0 pre1) (liftTrans next0 next1)
-  (liftPost invariants0 invariants1) (Pair initModel initModel1)
-  (liftSem sem0 sem1) id
+sm01 = downStateMachine sm01'
 
 prop_refinement :: Property
 prop_refinement = monadicSequential sm01 $ \prog -> do
-  (hist, model, prop) <- runProgram' sm01 prog
-  prettyProgram' prog hist model (liftTrans next0 next1) $
-    checkActionNames prog prop
+  (hist, model, res) <- runProgram' sm01' prog
+  prettyProgram' prog hist model (liftTrans transition0 transition1) $
+    checkActionNames prog (res === Ok)

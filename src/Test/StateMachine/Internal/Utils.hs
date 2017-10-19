@@ -21,7 +21,7 @@ import           Test.QuickCheck
                    counterexample, property, shrinking, stdArgs,
                    whenFail)
 import           Test.QuickCheck.Counterexamples
-                   (PropertyFrom, PropertyOf, (:&:)(..), Counterexample)
+                   ((:&:)(..), Counterexample, PropertyOf)
 import qualified Test.QuickCheck.Counterexamples as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)

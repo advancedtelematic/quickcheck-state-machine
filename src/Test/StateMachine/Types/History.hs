@@ -34,7 +34,7 @@ module Test.StateMachine.Types.History
   where
 
 import           Data.Dynamic
-                   (Dynamic, fromDyn)
+                   (Dynamic)
 import           Data.Tree
                    (Tree(Node))
 import           Data.Typeable
@@ -75,21 +75,22 @@ ppHistory = foldr go "" . unHistory
 ppHistory'
   :: forall model act err
   .  Show (model Concrete)
+  => Show err
   => model Concrete -> Transition model act -> History act err -> String
 ppHistory' model0 transition
   = showsPrec 10 model0
   . go model0
+  . makeOperations
   . unHistory
   where
-  go :: model Concrete -> History' act err -> String
-  go _     [] = "\n"
-  go model (InvocationEvent (UntypedConcrete act) astr var _pid : ResponseEvent res rstr _ : hist)
-    = "\n\n    " ++ astr ++ " --> " ++ rstr ++ "\n\n" ++ show model' ++ go model' hist
-    where
-    model' :: model Concrete
-    model' = case res of
-      Fail err -> model
-      Ok resp  -> transition model act (Concrete (fromDyn resp (error "ppHistory': fromDyn")))
+  go :: model Concrete -> [Operation act err] -> String
+  go _     []                                = "\n"
+  go model (Operation act astr (OkResponse (Concrete resp)) rstr _ : ops) =
+    let model1 = transition model act (Concrete resp) in
+    "\n\n    " ++ astr ++ " --> " ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
+  go model (Operation _   astr (Fail err)                   _    _ : ops) =
+    "\n\n    " ++ astr ++ " *** " ++ show err ++ "\n\n" ++ show model ++ go model ops
+
 
 -- | Get the process id of an event.
 getProcessIdEvent :: HistoryEvent act err -> Pid
@@ -112,20 +113,30 @@ findCorrespondingResp pid (e : es) =
 -- | An operation packs up an invocation event with its corresponding
 --   response event.
 data Operation act err = forall resp. Typeable resp =>
-  Operation (act Concrete resp) String (Result (Concrete resp) err) Pid
+  Operation (act Concrete resp) String (Result (Concrete resp) err) String Pid
+
+makeOperations :: History' act err -> [Operation act err]
+makeOperations [] = []
+makeOperations (InvocationEvent (UntypedConcrete act) astr _ pid :
+                ResponseEvent resp rstr _ : hist) =
+  Operation act astr (dynResp resp) rstr pid : makeOperations hist
+  where
+  dynResp (OkResponse resp') = OkResponse (either (error . show) id (reifyDynamic resp'))
+  dynResp (Fail err)         = Fail err
+makeOperations _ = error "makeOperations: impossible."
 
 -- | Given a history, return all possible interleavings of invocations
 --   and corresponding response events.
 linearTree :: History' act err -> [Tree (Operation act err)]
 linearTree [] = []
 linearTree es =
-  [ Node (Operation act str (dynResp resp) pid) (linearTree es')
+  [ Node (Operation act str (dynResp resp) "<resp>" pid) (linearTree es')
   | InvocationEvent (UntypedConcrete act) str _ pid <- takeInvocations es
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
-  dynResp (Ok   resp) = Ok (either (error . show) id (reifyDynamic resp))
-  dynResp (Fail err)  = Fail err
+  dynResp (OkResponse resp) = OkResponse (either (error . show) id (reifyDynamic resp))
+  dynResp (Fail err)        = Fail err
 
   filter1 :: (a -> Bool) -> [a] -> [a]
   filter1 _ []                   = []

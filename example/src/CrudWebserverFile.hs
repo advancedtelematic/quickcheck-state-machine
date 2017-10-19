@@ -180,8 +180,8 @@ transitions (Model m) act _ = Model $ case act of
   DeleteFile file         -> Map.delete file m
 
 postconditions :: Postcondition' Model String Action
-postconditions _         _   (Fail err) = property (failed { reason = err })
-postconditions (Model m) act (Ok resp)  =
+postconditions _         _   (Fail err)        = property (failed { reason = err })
+postconditions (Model m) act (OkResponse resp) =
   let Model m' = transitions (Model m) act (Concrete resp)
   in case act of
     PutFile    file content -> Map.lookup file m' === Just content
@@ -218,7 +218,7 @@ semantics act = do
     DeleteFile file         -> deleteFileC file
   case res of
     Left  err  -> return (Fail (show err))
-    Right resp -> return (Ok resp)
+    Right resp -> return (OkResponse resp)
 
 ------------------------------------------------------------------------
 
