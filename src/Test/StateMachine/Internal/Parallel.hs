@@ -173,10 +173,10 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
           Fail err ->
             liftBaseWith $ const $
               atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
-          OkResponse resp  -> do
+          Success resp -> do
             modify (insertConcrete sym (Concrete resp))
             liftBaseWith $ const $
-              atomically $ writeTChan hchan $ ResponseEvent (OkResponse (toDyn resp)) (show resp) pid
+              atomically $ writeTChan hchan $ ResponseEvent (Success (toDyn resp)) (show resp) pid
 
 ------------------------------------------------------------------------
 
@@ -197,11 +197,11 @@ linearise transition postcondition model0 = go . unHistory
   go es = anyP (step model0) (linearTree es)
 
   step :: model Concrete -> Tree (Operation act err) -> Property
-  step model (Node (Operation act _ (Fail err)                   _ _) roses) =
+  step model (Node (Operation act _ (Fail err)                _ _) roses) =
     postcondition model act (Fail err) .&&.
     anyP' (step model) roses
-  step model (Node (Operation act _ (OkResponse (Concrete resp)) _ _) roses) =
-    postcondition model act (OkResponse resp) .&&.
+  step model (Node (Operation act _ (Success (Concrete resp)) _ _) roses) =
+    postcondition model act (Success resp) .&&.
     anyP' (step (transition model act (Concrete resp))) roses
 
 anyP' :: (a -> Property) -> [a] -> Property

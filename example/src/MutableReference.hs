@@ -32,15 +32,14 @@ module MutableReference
 
 import           Control.Concurrent
                    (threadDelay)
-import           Data.Functor.Classes
-                   (Show1, liftShowsPrec)
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (arbitrary, elements, frequency, shrink, (===))
+                   (arbitrary, elements, frequency, property, shrink,
+                   (===))
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
@@ -66,7 +65,6 @@ data Action (v :: * -> *) :: * -> * where
 -- instance on @IORef@s.)
 
 newtype Model v = Model [(Reference v (Opaque (IORef Int)), Int)]
-  deriving Show
 
 initModel :: Model v
 initModel = Model []
@@ -88,11 +86,11 @@ transition (Model m) (Inc   ref)   _   = Model (update ref (old + 1) m)
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 update ref i m = (ref, i) : filter ((/= ref) . fst) m
 
-postcondition :: Postcondition'' Model Action
-postcondition _         New         _    = True
-postcondition (Model m) (Read ref)  resp = lookup ref m == Just resp
-postcondition _         (Write _ _) _    = True
-postcondition _         (Inc _)     _    = True
+postcondition :: Postcondition Model Action
+postcondition _         New         _    = property True
+postcondition (Model m) (Read ref)  resp = lookup ref m === Just resp
+postcondition _         (Write _ _) _    = property True
+postcondition _         (Inc _)     _    = property True
 
 ------------------------------------------------------------------------
 
@@ -155,22 +153,16 @@ deriveTestClasses ''Action
 -- the race condition, but @quickCheck (prop_parallelReferences
 -- RaceCondition)@ will!
 
-sm'' :: Problem -> StateMachine'' Model Action IO
-sm'' prb = StateMachine''
+sm :: Problem -> StateMachine Model Action IO
+sm prb = stateMachine
   generator shrinker precondition transition
   postcondition initModel (semantics prb) id
 
-instance Show1 (Action Symbolic) where
-  liftShowsPrec _ _ _ x _ = show x
-
-sm :: Problem -> StateMachine Model Action IO
-sm = downStateMachine . sm''
-
 prop_references :: Problem -> PropertyOf (Program Action)
 prop_references prb = monadicSequentialC (sm prb) $ \prog -> do
-  (hist, _, res) <- runProgram' (sm'' prb) prog
-  prettyProgram' prog hist initModel transition $
-    checkActionNames prog (res === Ok)
+  (hist, model, prop) <- runProgram (sm prb) prog
+  prettyProgram prog hist model $
+    checkActionNames prog prop
 
 prop_referencesParallel :: Problem -> PropertyOf (ParallelProgram Action)
 prop_referencesParallel prb = monadicParallelC (sm prb) $ \prog ->

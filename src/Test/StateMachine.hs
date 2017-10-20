@@ -67,8 +67,8 @@ import           Data.Functor.Classes
 import           Data.Map
                    (Map)
 import qualified Data.Map                              as M
-import           Data.Void
-                   (Void)
+import           Data.Typeable
+                   (Typeable)
 import           Test.QuickCheck
                    (Property, collect, cover, ioProperty, property)
 import qualified Test.QuickCheck
@@ -163,11 +163,13 @@ runProgram sm = run . executeProgram sm
 runProgram'
   :: Monad m
   => Show1 (act Symbolic)
+  => Show err
+  => Typeable err
   => HTraversable act
-  => StateMachine'' model act m
+  => StateMachine'' model act err m
      -- ^
   -> Program act
-  -> PropertyM m (History act Void, model Concrete, Reason)
+  -> PropertyM m (History act err, model Concrete, Reason)
 runProgram' sm = run . executeProgram' sm
 
 -- | Takes the output of running a program and pretty prints a
@@ -188,7 +190,7 @@ prettyProgram'
   => Program act
   -> History act err
   -> model Concrete
-  -> Transition model act
+  -> Transition' model act err
   -> Property
   -> PropertyM m ()
 prettyProgram' _prog hist model transition prop =

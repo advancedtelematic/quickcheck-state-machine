@@ -1,9 +1,9 @@
+{-# LANGUAGE DeriveFunctor        #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -35,12 +35,14 @@ module Test.StateMachine.Types
   , Shrinker
   , Precondition
   , Transition
+  , Transition'
   , Postcondition
   , Postcondition'
   , Postcondition''
   , okPostcondition
   , InitialModel
   , Result(..)
+  , ppResult
   , Semantics
   , Semantics'
   , Runner
@@ -100,20 +102,21 @@ data StateMachine' model act err m = StateMachine
   , runner'        :: Runner m
   }
 
-data StateMachine'' model act m = StateMachine''
+data StateMachine'' model act err m = StateMachine''
   { generator''     :: Generator model act
   , shrinker''      :: Shrinker  act
   , precondition''  :: Precondition model act
-  , transition''    :: Transition   model act
-  , postcondition'' :: Postcondition'' model act
+  , transition''    :: Transition' model act err
+  , postcondition'' :: Postcondition'' model act err
   , model''         :: InitialModel model
-  , semantics''     :: Semantics act m
+  , semantics''     :: Semantics' act err m
   , runner''        :: Runner m
   }
 
-downStateMachine :: Functor m => StateMachine'' model act m -> StateMachine model act m
+downStateMachine :: Functor m => StateMachine'' model act err m -> StateMachine' model act err m
 downStateMachine StateMachine''{..} =
-  stateMachine generator'' shrinker'' precondition'' transition''
+  StateMachine generator'' shrinker'' precondition''
+  (\model act vresp -> transition'' model act (Success vresp))
   (\model act resp -> property (postcondition'' model act resp))
   model'' semantics'' runner''
 
@@ -132,11 +135,11 @@ stateMachine
   -> Runner m
   -> StateMachine' model act Void m
 stateMachine gen shr precond trans post model sem run =
-  StateMachine gen shr precond trans post' model (fmap OkResponse . sem) run
+  StateMachine gen shr precond trans post' model (fmap Success . sem) run
   where
   post' :: Postcondition' model Void act
-  post' m act (OkResponse resp) = post m act resp
-  post' _ _   (Fail false)      = absurd false
+  post' m act (Success resp) = post m act resp
+  post' _ _   (Fail false)   = absurd false
 
 -- | When generating actions we have access to a model containing
 --   symbolic references.
@@ -156,19 +159,22 @@ type Precondition model act = forall resp.
 type Transition model act = forall resp v. Ord1 v =>
   model v -> act v resp -> v resp -> model v
 
+type Transition' model act err = forall resp v. Ord1 v =>
+  model v -> act v resp -> Result err (v resp) -> model v
+
 -- | Post-conditions are checked after the actions have been executed
 --   and we got a response.
 type Postcondition model act = forall resp.
   model Concrete -> act Concrete resp -> resp -> Property
 
 type Postcondition' model err act = forall resp.
-  model Concrete -> act Concrete resp -> Result resp err -> Property
+  model Concrete -> act Concrete resp -> Result err resp -> Property
 
-type Postcondition'' model act = forall resp.
-  model Concrete -> act Concrete resp -> resp -> Bool
+type Postcondition'' model act err = forall resp.
+  model Concrete -> act Concrete resp -> Result err resp -> Bool
 
 okPostcondition :: Postcondition' model err act -> Postcondition model act
-okPostcondition postcondition model act resp = postcondition model act (OkResponse resp)
+okPostcondition postcondition model act resp = postcondition model act (Success resp)
 
 -- | The initial model is polymorphic in the type of references it uses,
 --   so that it can be used both in the pre- and the post-condition
@@ -179,12 +185,17 @@ type InitialModel m = forall (v :: * -> *). m v
 type Semantics act m = forall resp. act Concrete resp -> m resp
 
 -- | The result of executing an action.
-data Result resp err = OkResponse resp | Fail err
+data Result err resp = Success resp | Fail err
+  deriving Functor
 
-type Semantics' act err m = forall resp. act Concrete resp -> m (Result resp err)
+ppResult :: (Show err, Show resp) => Result err resp -> String
+ppResult (Success resp) = show resp
+ppResult (Fail err)     = show err
+
+type Semantics' act err m = forall resp. act Concrete resp -> m (Result err resp)
 
 -- | How to run the monad used by the semantics.
 type Runner m = m Property -> IO Property
 
-data Reason = Ok | PreconditionFailed | PostconditionFailed | ReferenceFailed
+data Reason = Ok | PreconditionFailed | PostconditionFailed
   deriving (Eq, Show)

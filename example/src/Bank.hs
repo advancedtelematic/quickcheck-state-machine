@@ -25,10 +25,12 @@ import           Data.List
 import           Data.Maybe
                    (isJust)
 import           Data.Proxy
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
-                   frequency, getNonNegative, oneof, property, shrink,
-                   suchThat, (===))
+                   frequency, getNonNegative, oneof, shrink, suchThat,
+                   (===))
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
@@ -36,10 +38,10 @@ import           Test.StateMachine.Z
 
 ------------------------------------------------------------------------
 
-data Account = Account Int
+newtype Account = Account Int
   deriving (Eq, Show)
 
-data Person  = Person String
+newtype Person  = Person String
   deriving (Eq, Show)
 
 data Model0 (v :: * -> *) = Model0
@@ -52,7 +54,7 @@ data Model0 (v :: * -> *) = Model0
 initModel :: Model0 v
 initModel = Model0 [] empty empty
 
-invariants0 :: Postcondition'' Model0 Action0
+invariants0 :: Postcondition'' Model0 Action0 Void
 invariants0 Model0{..} _ _ =
      isTotalFun owner accounts
   && isTotalFun bal accounts
@@ -74,7 +76,7 @@ precondition0 Model0{..} act = case act of
   Deposit acc q  -> acc `elem` accounts && q >= 0
   Withdraw acc q -> acc `elem` accounts && q >= 0 && q <= bal ! acc
 
-transition0 :: Model0 v -> Action0 v resp -> v resp -> Model0 v
+transition0 :: Transition' Model0 Action0 Void
 transition0 m@Model0{..} act _ = case act of
   Open prs acc   -> Model0 (accounts `union` [acc])
                            (owner .! acc .= prs)
@@ -116,10 +118,13 @@ semantics0 act = case act of
   Deposit  _ _ -> return ()
   Withdraw _ _ -> return ()
 
-sm :: StateMachine Model0 Action0 IO
-sm = stateMachine
+sm'' :: StateMachine'' Model0 Action0 Void IO
+sm'' = StateMachine''
   generator0 shrinker0 precondition0 transition0
-  (\model act resp -> property (invariants0 model act resp)) initModel semantics0 id
+  invariants0 initModel (fmap Success . semantics0) id
+
+sm :: StateMachine Model0 Action0 IO
+sm = downStateMachine sm''
 
 ------------------------------------------------------------------------
 
@@ -131,7 +136,7 @@ prop_bankSequential = monadicSequential sm $ \prog -> do
 
 ------------------------------------------------------------------------
 
-data Model1 (v :: * -> *) = Model1
+newtype Model1 (v :: * -> *) = Model1
   { inbank :: Rel Account Int }
   deriving (Eq, Show)
 
@@ -154,7 +159,7 @@ precondition1 (Pair Model0{..} Model1{..}) act = case act of
                        -- ^ Duplicated...
                        -- && acc `notElem` domain inbank
 
-transition1 :: Transition (Product Model0 Model1) Action1
+transition1 :: Transition' (Product Model0 Model1) Action1 Void
 transition1 (Pair Model0{..} Model1{..}) (Move1 acc1 acc2 q) _ = Pair
   (Model0 accounts owner (bal .! acc1 .% (\i -> i - q)))
   (Model1 (inbank `union` [(acc2, q)]))
@@ -164,14 +169,14 @@ transition1 (Pair Model0{..} model1)     (Close1 acc)        _ = Pair
           ([acc] <-| bal))
   model1
 
-invariants1 :: Postcondition'' (Product Model0 Model1) Action1
+invariants1 :: Postcondition'' (Product Model0 Model1) Action1 Void
 invariants1 (Pair Model0{..} Model1{..}) _ _ =
   domain inbank `isSubsetOf` accounts
 
 semantics1 :: Action1 Concrete resp -> IO resp
 semantics1 act = case act of
-  Move1  _ _ _ -> return ()
-  Close1 _     -> return ()
+  Move1 {}  -> return ()
+  Close1 _  -> return ()
 
 generator1 :: Generator (Product Model0 Model1) Action1
 generator1 (Pair Model0{..} _) = frequency
@@ -200,20 +205,20 @@ liftPre pre0 _   (Pair model0 _)  (Inl act0) = pre0 model0 act0
 liftPre _    pre1 model01         (Inr act1) = pre1 model01 act1
 
 liftTrans
-  :: Transition model0 act0
-  -> Transition (Product model0 model1) act1
-  -> Transition (Product model0 model1) (Plus act0 act1)
+  :: Transition' model0 act0 Void
+  -> Transition' (Product model0 model1) act1 Void
+  -> Transition' (Product model0 model1) (Plus act0 act1) Void
 liftTrans trans0 _      (Pair model0 model1) (Inl act0) resp
   = Pair (trans0 model0 act0 resp) model1
 liftTrans _      trans1 model01              (Inr act1) resp
   = trans1 model01 act1 resp
 
 liftPost
-  :: Postcondition'' model0 act0
-  -> Postcondition'' (Product model0 model1) act1
+  :: Postcondition'' model0 act0 Void
+  -> Postcondition'' (Product model0 model1) act1 Void
   -> (forall resp. act0 Concrete resp -> Maybe (act1 Concrete resp))
   -> (forall resp. act1 Concrete resp -> act0 Concrete resp)
-  -> Postcondition'' (Product model0 model1) (Plus act0 act1)
+  -> Postcondition'' (Product model0 model1) (Plus act0 act1) Void
 liftPost post0 post1 r0 _ (Pair model0 model1) (Inl act0) resp =
   post0 model0 act0 resp && case r0 act0 of
     Nothing   -> True
@@ -222,9 +227,9 @@ liftPost post0 post1 _  r1 (Pair model0 model1) (Inr act1) resp =
   post0 model0 (r1 act1) resp && post1 (Pair model0 model1) act1 resp
 
 liftSem
-  :: Semantics act0 m
-  -> Semantics act1 m
-  -> Semantics (Plus act0 act1) m
+  :: Semantics' act0 Void m
+  -> Semantics' act1 Void m
+  -> Semantics' (Plus act0 act1) Void m
 liftSem sem0 _    (Inl act0) = sem0 act0
 liftSem _    sem1 (Inr act1) = sem1 act1
 
@@ -296,18 +301,19 @@ refines (Move1 acc1 _ q) = Withdraw acc1 q
 
 ------------------------------------------------------------------------
 
-sm01' :: StateMachine'' (Product Model0 Model1) (Plus Action0 Action1) IO
+sm01' :: StateMachine'' (Product Model0 Model1) (Plus Action0 Action1) Void IO
 sm01' = StateMachine''
   (liftGen generator0 generator1 (isJust . refined)) (liftShrinker shrinker0 shrinker1)
-  (liftPre precondition0 precondition1) (liftTrans transition0 transition1)
+  (liftPre precondition0 precondition1)
+  (liftTrans transition0 transition1)
   (liftPost invariants0 invariants1 refined refines) (Pair initModel initModel1)
-  (liftSem semantics0 semantics1) id
+  (liftSem (fmap Success . semantics0) (fmap Success . semantics1)) id
 
 sm01 :: StateMachine (Product Model0 Model1) (Plus Action0 Action1) IO
 sm01 = downStateMachine sm01'
 
 prop_refinement :: Property
 prop_refinement = monadicSequential sm01 $ \prog -> do
-  (hist, model, res) <- runProgram' sm01' prog
-  prettyProgram' prog hist model (liftTrans transition0 transition1) $
+  (hist, _, res) <- runProgram' sm01' prog
+  prettyProgram' prog hist (Pair initModel initModel1) (liftTrans transition0 transition1) $
     checkActionNames prog (res === Ok)

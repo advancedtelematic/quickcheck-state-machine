@@ -57,7 +57,7 @@ type History' act err = [HistoryEvent (UntypedConcrete act) err]
 -- | An event is either an invocation or a response.
 data HistoryEvent act err
   = InvocationEvent act                  String Var Pid
-  | ResponseEvent   (Result Dynamic err) String     Pid
+  | ResponseEvent   (Result err Dynamic) String     Pid
 
 -- | Untyped concrete actions.
 data UntypedConcrete (act :: (* -> *) -> * -> *) where
@@ -76,7 +76,7 @@ ppHistory'
   :: forall model act err
   .  Show (model Concrete)
   => Show err
-  => model Concrete -> Transition model act -> History act err -> String
+  => model Concrete -> Transition' model act err -> History act err -> String
 ppHistory' model0 transition
   = showsPrec 10 model0
   . go model0
@@ -84,13 +84,13 @@ ppHistory' model0 transition
   . unHistory
   where
   go :: model Concrete -> [Operation act err] -> String
-  go _     []                                = "\n"
-  go model (Operation act astr (OkResponse (Concrete resp)) rstr _ : ops) =
-    let model1 = transition model act (Concrete resp) in
+  go _     []                                                 = "\n"
+  go model (Operation act astr resp@(Success _) rstr _ : ops) =
+    let model1 = transition model act resp in
     "\n\n    " ++ astr ++ " --> " ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
-  go model (Operation _   astr (Fail err)                   _    _ : ops) =
-    "\n\n    " ++ astr ++ " *** " ++ show err ++ "\n\n" ++ show model ++ go model ops
-
+  go model (Operation act astr resp@(Fail err)  _    _ : ops) =
+    let model1 = transition model act resp in
+    "\n\n    " ++ astr ++ " -/-> " ++ show err ++ "\n\n" ++ show model1 ++ go model1 ops
 
 -- | Get the process id of an event.
 getProcessIdEvent :: HistoryEvent act err -> Pid
@@ -102,7 +102,7 @@ takeInvocations = takeWhile $ \h -> case h of
   InvocationEvent {} -> True
   _                  -> False
 
-findCorrespondingResp :: Pid -> History' act err -> [(Result Dynamic err, History' act err)]
+findCorrespondingResp :: Pid -> History' act err -> [(Result err Dynamic, History' act err)]
 findCorrespondingResp _   [] = []
 findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
 findCorrespondingResp pid (e : es) =
@@ -113,7 +113,7 @@ findCorrespondingResp pid (e : es) =
 -- | An operation packs up an invocation event with its corresponding
 --   response event.
 data Operation act err = forall resp. Typeable resp =>
-  Operation (act Concrete resp) String (Result (Concrete resp) err) String Pid
+  Operation (act Concrete resp) String (Result err (Concrete resp)) String Pid
 
 makeOperations :: History' act err -> [Operation act err]
 makeOperations [] = []
@@ -121,8 +121,8 @@ makeOperations (InvocationEvent (UntypedConcrete act) astr _ pid :
                 ResponseEvent resp rstr _ : hist) =
   Operation act astr (dynResp resp) rstr pid : makeOperations hist
   where
-  dynResp (OkResponse resp') = OkResponse (either (error . show) id (reifyDynamic resp'))
-  dynResp (Fail err)         = Fail err
+  dynResp (Success resp') = Success (either (error . show) id (reifyDynamic resp'))
+  dynResp (Fail err)      = Fail err
 makeOperations _ = error "makeOperations: impossible."
 
 -- | Given a history, return all possible interleavings of invocations
@@ -135,8 +135,8 @@ linearTree es =
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
-  dynResp (OkResponse resp) = OkResponse (either (error . show) id (reifyDynamic resp))
-  dynResp (Fail err)        = Fail err
+  dynResp (Success resp) = Success (either (error . show) id (reifyDynamic resp))
+  dynResp (Fail err)     = Fail err
 
   filter1 :: (a -> Bool) -> [a] -> [a]
   filter1 _ []                   = []
