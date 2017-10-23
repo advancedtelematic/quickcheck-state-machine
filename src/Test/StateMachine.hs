@@ -34,18 +34,23 @@ module Test.StateMachine
 
     -- * Parallel property combinators
   , ParallelProgram
+  , ParallelProgram'
   , forAllParallelProgram
   , History
   , monadicParallel
+  , monadicParallel'
   , runParallelProgram
   , runParallelProgram'
+  , runParallelProgram''
   , prettyParallelProgram
+  , prettyParallelProgram'
 
     -- * With counterexamples
   , forAllProgramC
   , monadicSequentialC
   , forAllParallelProgramC
   , monadicParallelC
+  , monadicParallelC'
 
     -- * Types
   , module Test.StateMachine.Types
@@ -228,6 +233,24 @@ forAllParallelProgramC generator shrinker precondition transition model =
     (shrinkParallelProgram shrinker precondition transition model)
     (const "")
 
+forAllParallelProgramC'
+  :: Show1 (act Symbolic)
+  => Eq (Untyped act)
+  => HFoldable act
+  => Generator model act
+  -> Shrinker act
+  -> Precondition model act
+  -> Transition'  model act err
+  -> InitialModel model
+  -> (ParallelProgram' act -> PropertyOf a) -- ^ Predicate that should hold
+                                            --   for all parallel programs.
+  -> PropertyOf (ParallelProgram' act :&: a)
+forAllParallelProgramC' generator shrinker precondition transition model =
+  forAllShrinkShowC
+    (generateParallelProgram' generator precondition transition model)
+    (shrinkParallelProgram' shrinker precondition transition model)
+    (const "")
+
 -- | Wrapper around 'forAllParallelProgram' using the 'StateMachine'
 -- specification to generate and shrink parallel programs.
 monadicParallel
@@ -252,6 +275,33 @@ monadicParallelC
 monadicParallelC StateMachine {..} predicate
   = fmap (\(prog :&: ()) -> prog)
   . forAllParallelProgramC generator' shrinker' precondition' transition' model'
+  $ CE.property
+  . monadic (ioProperty . runner')
+  . predicate
+
+monadicParallel'
+  :: MonadBaseControl IO m
+  => Eq (Untyped act)
+  => Show1 (act Symbolic)
+  => HFoldable act
+  => StateMachine' model act m err
+  -> (ParallelProgram' act -> PropertyM m ())
+     -- ^ Predicate that should hold for all parallel programs.
+  -> Property
+monadicParallel' sm = property . monadicParallelC' sm
+
+monadicParallelC'
+  :: MonadBaseControl IO m
+  => Eq (Untyped act)
+  => Show1 (act Symbolic)
+  => HFoldable act
+  => StateMachine' model act m err
+  -> (ParallelProgram' act -> PropertyM m ())
+     -- ^ Predicate that should hold for all parallel programs.
+  -> PropertyOf (ParallelProgram' act)
+monadicParallelC' StateMachine {..} predicate
+  = fmap (\(prog :&: ()) -> prog)
+  . forAllParallelProgramC' generator' shrinker' precondition' transition' model'
   $ CE.property
   . monadic (ioProperty . runner')
   . predicate
@@ -286,6 +336,20 @@ runParallelProgram' n StateMachine{..} prog =
     hist <- run (executeParallelProgram semantics' prog)
     return (hist, linearise transition' postcondition' model' hist)
 
+runParallelProgram''
+  :: MonadBaseControl IO m
+  => Show1 (act Symbolic)
+  => HTraversable act
+  => Int -- ^ How many times to execute the parallel program.
+  -> StateMachine' model act m err
+     -- ^
+  -> ParallelProgram' act
+  -> PropertyM m [(History act err, Property)]
+runParallelProgram'' n StateMachine {..} prog =
+  replicateM n $ do
+    hist <- run (executeParallelProgram' semantics' prog)
+    return (hist, linearise transition' postcondition' model' hist)
+
 -- | Takes the output of a parallel program runs and pretty prints a
 --   counter example if any of the runs fail.
 prettyParallelProgram
@@ -297,3 +361,14 @@ prettyParallelProgram
 prettyParallelProgram prog
   = mapM_ (\(hist, prop) ->
               print (toBoxDrawings prog hist) `whenFailM` prop)
+
+prettyParallelProgram'
+  :: MonadIO m
+  => HFoldable act
+  => Show (Untyped act)
+  => ParallelProgram' act
+  -> [(History act err, Property)] -- ^ Output of 'runParallelProgram'.
+  -> PropertyM m ()
+prettyParallelProgram' prog
+  = mapM_ (\(hist, prop) ->
+              print (toBoxDrawings' prog hist) `whenFailM` prop)

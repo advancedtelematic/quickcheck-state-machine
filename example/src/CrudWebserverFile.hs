@@ -36,7 +36,8 @@
 module CrudWebserverFile
   ( prop_crudWebserverFile
   , prop_crudWebserverFileParallel
-  ) where
+  )
+  where
 
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar)
@@ -50,6 +51,10 @@ import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
+import           Data.Dynamic
+                   (cast)
+import           Data.Functor.Classes
+                   (Eq1)
 import           Data.Functor.Classes
                    (Show1, liftShowsPrec)
 import           Data.Map
@@ -68,8 +73,10 @@ import           Servant.Client
                    (BaseUrl(..), Client, ClientEnv(..), Scheme(..),
                    client, runClientM)
 import           Servant.Server
-                   (Server, serve)
+                   (Application, Server, serve)
 import qualified System.Directory            as Directory
+import           System.FileLock
+                   (SharedExclusive(..), lockFile, unlockFile)
 import           System.FilePath
                    ((</>))
 import           Test.QuickCheck
@@ -119,7 +126,7 @@ getFile dir file = liftIO (Text.readFile (dir </> file))
 
 -- | Handler for the `DeleteFile` endpoint
 deleteFile :: FilePath -> Server DeleteFile
-deleteFile dir file = liftIO (Directory.removeFile (dir </> file))
+deleteFile dir file = liftIO (Directory.removePathForcibly (dir </> file))
 
 -- | Handler for the entire REST `API`
 server :: FilePath -> Server API
@@ -128,14 +135,20 @@ server dir
   :<|> getFile dir
   :<|> deleteFile dir
 
+app :: FilePath -> Application
+app dir req respond = bracket
+  (lockFile (dir </> "lock") Exclusive)
+  unlockFile
+  (const (serve (Proxy :: Proxy API) (server dir) req respond))
+
 -- | Serve the `API` on port 8080
-runServer :: IO () -> IO ()
-runServer ready = do
+runServer :: Warp.Port -> IO () -> IO ()
+runServer port ready = do
   dir <- Directory.getTemporaryDirectory
-  Warp.runSettings settings (serve (Proxy :: Proxy API) (server dir))
+  Warp.runSettings settings (app dir)
   where
     settings
-      = Warp.setPort 8080
+      = Warp.setPort port
       . Warp.setBeforeMainLoop ready
       $ Warp.defaultSettings
 
@@ -154,6 +167,11 @@ data Action (v :: * -> *) :: * -> * where
   PutFile    :: FilePath -> Text -> Action v ()
   GetFile    :: FilePath ->         Action v Text
   DeleteFile :: FilePath ->         Action v ()
+
+deriving instance Eq1 v => Eq (Action v a)
+
+instance Eq (Untyped Action) where
+  Untyped a == Untyped b = cast a == Just b
 
 deriving instance Show1 v => Show (Action v resp)
 
@@ -231,13 +249,13 @@ instance Show (Untyped Action) where
 
 ------------------------------------------------------------------------
 
-burl :: BaseUrl
-burl = BaseUrl Http "localhost" 8080 ""
+burl :: Warp.Port -> BaseUrl
+burl port = BaseUrl Http "localhost" port ""
 
-setup :: MonadBaseControl IO m => m (Async ())
-setup = liftBaseWith $ \_ -> do
+setup :: MonadBaseControl IO m => Warp.Port -> m (Async ())
+setup port = liftBaseWith $ \_ -> do
   signal <- newEmptyMVar
-  aServer <- async (runServer (putMVar signal ()))
+  aServer <- async (runServer port (putMVar signal ()))
   aConfirm <- async (takeMVar signal)
   ok <- waitEither aServer aConfirm
   case ok of
@@ -246,27 +264,31 @@ setup = liftBaseWith $ \_ -> do
 
 -- Note that this will setup and tear down a server per generated
 -- program.
-runner :: ReaderT ClientEnv IO Property -> IO Property
-runner p =
-  bracket setup cancel $ \_ -> do
+runner :: Warp.Port -> ReaderT ClientEnv IO Property -> IO Property
+runner port p =
+  bracket (setup port) cancel $ \_ -> do
     mgr <- newManager defaultManagerSettings
-    runReaderT p (ClientEnv mgr burl)
+    runReaderT p (ClientEnv mgr (burl port))
 
 ------------------------------------------------------------------------
 
-sm :: StateMachine' Model Action (ReaderT ClientEnv IO) String
-sm = StateMachine
+sm :: Warp.Port -> StateMachine' Model Action (ReaderT ClientEnv IO) String
+sm port = StateMachine
   generator shrinker preconditions transitions
-  postconditions initModel semantics runner
+  postconditions initModel semantics (runner port)
 
 prop_crudWebserverFile :: Property
 prop_crudWebserverFile =
-  monadicSequential sm $ \prog -> do
-    (hist, _, res) <- runProgram sm prog
-    prettyProgram sm hist $
+  monadicSequential sm' $ \prog -> do
+    (hist, _, res) <- runProgram sm' prog
+    prettyProgram sm' hist $
       checkActionNames prog (res === Ok)
+  where
+  sm' = sm 8080
 
 prop_crudWebserverFileParallel :: Property
 prop_crudWebserverFileParallel =
-  monadicParallel sm $ \prog ->
-    prettyParallelProgram prog =<< runParallelProgram sm prog
+  monadicParallel' sm' $ \prog ->
+    prettyParallelProgram' prog =<< runParallelProgram'' 10 sm' prog
+  where
+  sm' = sm 8089

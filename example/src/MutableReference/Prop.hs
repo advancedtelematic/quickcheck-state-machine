@@ -24,10 +24,6 @@ import           Control.Monad
                    (void)
 import           Control.Monad.State
                    (evalStateT)
-import           Data.Dynamic
-                   (cast)
-import           Data.Functor.Classes
-                   (Eq1(..))
 import           Data.List
                    (isSubsequenceOf)
 import           Data.Monoid
@@ -37,11 +33,12 @@ import           Data.Tree
 import           Data.Void
                    (Void)
 import           Test.QuickCheck
-                   (Property, forAll, (===))
+                   (Property, forAll, (.||.), (===))
 
 import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality
-import           Test.StateMachine.Internal.Parallel
+import           Test.StateMachine.Internal.Parallel      hiding
+                   (possibleShrinks)
 import           Test.StateMachine.Internal.ScopeCheck
 import           Test.StateMachine.Internal.Sequential
                    (generateProgram)
@@ -119,7 +116,7 @@ prop_shrinkParallelScope = forAll
 
 prop_shrinkParallelMinimal :: Property
 prop_shrinkParallelMinimal =
-  shrinkPropertyHelperC (prop_referencesParallel RaceCondition) checkParallelProgram
+  shrinkPropertyHelperC' (prop_referencesParallel RaceCondition) checkParallelProgram'
 
 checkParallelProgram :: ParallelProgram Action -> Bool
 checkParallelProgram (ParallelProgram prog) =
@@ -169,9 +166,80 @@ checkParallelProgram (ParallelProgram prog) =
       , Internal (Inc   ref0)   (Symbolic var1)
       ]
 
-------------------------------------------------------------------------
+possibleShrinks' :: (a -> [a]) -> a -> Tree a
+possibleShrinks' shr = unfoldTree (id &&& shr)
 
-deriving instance Eq1 v => Eq (Action v resp)
+possibleShrinks :: ParallelProgram' Action -> Tree (ParallelProgram' Action)
+possibleShrinks = possibleShrinks'
+  (shrinkParallelProgram' shrinker precondition oktransition initModel)
 
-instance Eq (Untyped Action) where
-  Untyped act1 == Untyped act2 = cast act1 == Just act2
+checkParallelProgram' :: ParallelProgram' Action -> Property
+checkParallelProgram' pprog = hasMinimalShrink pprog .||. isMinimal pprog
+  where
+  hasMinimalShrink :: ParallelProgram' Action -> Bool
+  hasMinimalShrink
+    = anyTree isMinimal
+    . possibleShrinks
+    where
+    anyTree :: (a -> Bool) -> Tree a -> Bool
+    anyTree p = foldTree (\x ih -> p x || or ih)
+      where
+      -- `foldTree` is part of `Data.Tree` in later versions of `containers`.
+      foldTree :: (a -> [b] -> b) -> Tree a -> b
+      foldTree f = go where
+        go (Node x ts) = f x (map go ts)
+
+  isMinimal :: ParallelProgram' Action -> Bool
+  isMinimal xs = any (alphaEqParallel xs) minimal
+
+  minimal :: [ParallelProgram' Action]
+  minimal =
+    [ ParallelProgram' prefix
+        [ Program
+            [ iact (Write ref0 0) 1
+            , iact (Inc ref0)     2
+            , iact (Read ref0)    3
+            ]
+        ]
+    , ParallelProgram' prefix
+        [ Program
+            [ iact (Inc ref0)     1
+            , iact (Write ref0 0) 2
+            , iact (Read ref0)    3
+            ]
+        ]
+    , ParallelProgram' prefix
+        [ Program
+            [ iact (Inc ref0)  1
+            , iact (Inc ref0)  2
+            , iact (Read ref0) 3
+            ]
+        ]
+    , ParallelProgram' prefix
+        [ Program
+            [ iact (Inc ref0)  1
+            , iact (Inc ref0)  2
+            ]
+        , Program [ iact (Read ref0) 3 ]
+        ]
+    , ParallelProgram' prefix
+        [ Program
+            [ iact (Write ref0 0) 1
+            , iact (Inc ref0)     2
+            ]
+        , Program [ iact (Read ref0) 3 ]
+        ]
+    , ParallelProgram' prefix
+        [ Program
+            [ iact (Inc ref0)     1
+            , iact (Write ref0 0) 2
+            ]
+        , Program [ iact (Read ref0) 3 ]
+        ]
+    ]
+    where
+    iact act n = Internal act (Symbolic (Var n))
+
+    prefix = Program [iact New 0]
+    var0   = Var 0
+    ref0   = Reference (Symbolic var0)

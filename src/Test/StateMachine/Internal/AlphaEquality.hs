@@ -20,16 +20,19 @@
 module Test.StateMachine.Internal.AlphaEquality
   ( alphaEq
   , alphaEqFork
+  , alphaEqParallel
   ) where
 
+import           Control.Monad
+                   (foldM)
 import           Control.Monad.State
-                   (State, get, modify, evalState, runState)
+                   (State, evalState, get, modify, runState)
 import           Data.Map
                    (Map)
-import qualified Data.Map                    as M
+import qualified Data.Map                         as M
 
-import           Test.StateMachine.Types
 import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
@@ -69,3 +72,18 @@ canonicalFork (Fork l p r) = Fork (Program l') (Program p') (Program r')
   (p', m) = runState  (canonical' (unProgram p)) M.empty
   l'      = evalState (canonical' (unProgram l)) m
   r'      = evalState (canonical' (unProgram r)) m
+
+alphaEqParallel
+  :: (HFunctor act, Eq (Untyped act))
+  => ParallelProgram' act -> ParallelProgram' act -- ^ The two input programs.
+  -> Bool
+alphaEqParallel f1 f2 = canonicalParallel f1 == canonicalParallel f2
+
+canonicalParallel :: HFunctor act => ParallelProgram' act -> ParallelProgram' act
+canonicalParallel (ParallelProgram' prefix suffixes)
+  = ParallelProgram' (Program prefix') (map Program suffixes')
+  where
+  (prefix', m) = runState (canonical' (unProgram prefix)) M.empty
+  suffixes'    = evalState (go (map unProgram suffixes)) m
+    where
+    go = foldM (\ih iacts -> (:) <$> canonical' iacts <*> pure ih) []

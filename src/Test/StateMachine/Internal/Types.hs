@@ -23,6 +23,7 @@ module Test.StateMachine.Internal.Types
   ( Program(..)
   , programLength
   , ParallelProgram(..)
+  , ParallelProgram'(..)
   , Pid(..)
   , Fork(..)
   , Internal(..)
@@ -78,6 +79,12 @@ deriving instance Read (Untyped act) => Read (ParallelProgram act)
 -- | Forks are used to represent parallel programs.
 data Fork a = Fork a a a
   deriving (Eq, Functor, Show, Ord, Read)
+
+data ParallelProgram' act = ParallelProgram' (Program act) [Program act]
+
+deriving instance Eq   (Untyped act) => Eq   (ParallelProgram' act)
+deriving instance Show (Untyped act) => Show (ParallelProgram' act)
+deriving instance Read (Untyped act) => Read (ParallelProgram' act)
 
 ------------------------------------------------------------------------
 

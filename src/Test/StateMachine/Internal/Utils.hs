@@ -14,6 +14,10 @@
 
 module Test.StateMachine.Internal.Utils where
 
+import           Control.Concurrent.STM
+                   (atomically)
+import           Control.Concurrent.STM.TChan
+                   (TChan, tryReadTChan)
 import           Data.List
                    (group, sort)
 import           Test.QuickCheck
@@ -54,17 +58,17 @@ alwaysP n prop
 
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.
-shrinkPropertyHelperC :: PropertyOf a -> (a -> Bool) -> Property
+shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
 shrinkPropertyHelperC prop p = shrinkPropertyHelperC' prop (property . p)
 
 -- | Same as above, but using a property predicate.
-shrinkPropertyHelperC' :: PropertyOf a -> (a -> Property) -> Property
+shrinkPropertyHelperC' :: Show a => PropertyOf a -> (a -> Property) -> Property
 shrinkPropertyHelperC' prop p = monadicIO $ do
   ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
   case ce_ of
     Nothing -> return ()
     Just ce -> liftProperty $
-      counterexample ("shrinkPropertyHelper: failed.") $ p ce
+      counterexample ("shrinkPropertyHelper: " ++ show ce) $ p ce
 
 -- | Given shrinkers for the components of a pair we can shrink the pair.
 shrinkPair' :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])
@@ -110,3 +114,14 @@ dropLast n xs = zipWith const xs (drop n xs)
 -- | Indexing starting from the back of a list.
 toLast :: Int -> [a] -> a
 toLast n = last . dropLast n
+
+------------------------------------------------------------------------
+
+getChanContents :: TChan a -> IO [a]
+getChanContents chan = reverse <$> atomically (go [])
+  where
+  go acc = do
+    mx <- tryReadTChan chan
+    case mx of
+      Just x  -> go $ x : acc
+      Nothing -> return acc

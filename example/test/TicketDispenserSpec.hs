@@ -1,7 +1,7 @@
 module TicketDispenserSpec (spec) where
 
 import           Test.Hspec
-                   (Spec, around, describe, it)
+                   (Spec, around, describe, it, xit)
 import           Test.Hspec.QuickCheck
                    (modifyMaxSuccess)
 
@@ -30,5 +30,5 @@ spec = do
 
     around withDbLock $ modifyMaxSuccess (const 5) $
 
-      it "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared"
+      xit "`prop_ticketDispenserParallelBad`: counterexample is found when file locks are shared"
         prop_ticketDispenserParallelBad

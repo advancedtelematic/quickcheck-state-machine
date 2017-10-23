@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE QuasiQuotes                #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
@@ -13,7 +14,7 @@
 
 ------------------------------------------------------------------------
 -- |
--- Module      :  CrudWebserverDb
+-- Module      :  CrudWebserverDbRace
 -- Copyright   :  (C) 2016, James M.C. Haver II, Sönke Hahn;
 --                (C) 2017, Stevan Andjelkovic
 -- License     :  BSD-style (see the file LICENSE)
@@ -23,7 +24,7 @@
 -- Portability :  non-portable (GHC extensions)
 --
 -- This module contains the implementation and specification of a simple
--- CRUD webserver that uses a sqlite database to store data.
+-- CRUD webserver that uses a postgresql database to store data.
 --
 -- The implementation is based on Servant's
 -- <https://github.com/haskell-servant/example-servant-persistent example-servant-persistent>
@@ -37,21 +38,16 @@
 --
 ------------------------------------------------------------------------
 
-module CrudWebserverDb
-  ( prop_crudWebserverDb
-  , prop_crudWebserverDbParallel
-  , withCrudWebserverDb
-  , withCrudWebserverDbParallel
-  , UserId
-  )
-  where
+module CrudWebserverDbRace where
 
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar, threadDelay)
 import           Control.Concurrent.Async.Lifted
                    (Async, async, cancel, waitEither)
 import           Control.Exception
-                   (bracket)
+                   (SomeException, bracket)
+import           Control.Exception
+                   (catch)
 import           Control.Monad.IO.Class
                    (liftIO)
 import           Control.Monad.Logger
@@ -62,29 +58,37 @@ import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Control.Monad.Trans.Resource
                    (ResourceT)
+import qualified Data.ByteString.Char8                    as BS
 import           Data.Char
                    (isPrint)
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
                    (Eq1)
+import           Data.List
+                   (dropWhileEnd)
+import           Data.Monoid
+                   ((<>))
 import           Data.Proxy
                    (Proxy(Proxy))
 import           Data.String.Conversions
                    (cs)
 import           Data.Text
                    (Text)
-import qualified Data.Text                       as T
-import           Database.Persist.Sqlite
-                   (ConnectionPool, Key, SqlBackend, createSqlitePool,
-                   delete, get, insert, liftSqlPersistMPool,
-                   runMigration, runSqlPool, update, (+=.))
+import qualified Data.Text                                as T
+import           Database.Persist.Postgresql
+                   (ConnectionPool, ConnectionString, Key, SqlBackend,
+                   createPostgresqlPool, delete, get, getJust, insert,
+                   liftSqlPersistMPool, replace, runMigration,
+                   runSqlPool, update, (+=.))
 import           Database.Persist.TH
                    (mkMigrate, mkPersist, persistLowerCase, share,
                    sqlSettings)
+import           Network
+                   (PortID(PortNumber), connectTo)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp        as Warp
+import qualified Network.Wai.Handler.Warp                 as Warp
 import           Servant
                    ((:<|>)(..), (:>), Application, Capture, Get, JSON,
                    Post, ReqBody, Server, serve)
@@ -93,26 +97,32 @@ import           Servant.Client
                    client, runClientM)
 import           Servant.Server
                    (Handler)
-import           System.Directory
-                   (getTemporaryDirectory)
-import           System.FilePath
-                   ((</>))
+import           System.IO
+                   (Handle, hClose)
+import           System.Process
+                   (callProcess, readProcess)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
                    frequency, listOf, shrink, suchThat, (===))
+import           Test.QuickCheck.Counterexamples
+                   (PropertyOf)
 import           Test.QuickCheck.Instances
                    ()
 
 import           Test.StateMachine
+import           Test.StateMachine.Internal.AlphaEquality
+                   (alphaEqParallel)
+import           Test.StateMachine.Internal.Types
+                   (Internal(..), ParallelProgram'(..), Program(..))
+import           Test.StateMachine.Internal.Utils
+                   (shrinkPropertyHelperC)
 import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses)
 
+
 ------------------------------------------------------------------------
 
--- Our webserver deals with users that have a name and an age. The
--- following is the Persistent library's way of creating the datatype
--- and corresponding database table. The "json" keyword also makes it
--- possible to (un)marshall the datatype into JSON.
+-- * User datatype.
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 User json
@@ -121,25 +131,9 @@ User json
   deriving Eq Read Show
 |]
 
--- For testing we will also need to generate arbitrary users.
-
-instance Arbitrary User where
-  arbitrary = User <$> (T.pack <$> listOf (arbitrary `suchThat` isPrint))
-                   <*> arbitrary
-
--- Note that there's a constraint on the username that only allows
--- printable characters. We'll come back to why this is later.
-
 ------------------------------------------------------------------------
 
--- Servant let's us describe the API of the webserver as a datatype.
-
--- Our webserver will have an endpoint for creating a user, which takes
--- a JSON-encoded @User@ in the body of an POST request and returns a
--- unique id. The rest of the endpoints capture said id in the URL and
--- get the user associated with it, increment the age of the user, and
--- delete the user respectively. Finally we also have a health endpoint
--- which helps us determine if the webserver is up and running.
+-- * The API.
 
 type Api =
        "user" :> "add" :> ReqBody '[JSON] User     :> Post '[JSON] (Key User)
@@ -153,10 +147,12 @@ api = Proxy
 
 ------------------------------------------------------------------------
 
--- Next we describe how the endpoints are implemented.
+-- * Server implementation.
 
-server :: ConnectionPool -> Server Api
-server pool =
+data Bug = None | Logic | Race
+
+server :: Bug -> ConnectionPool -> Server Api
+server bug pool =
   userAdd :<|> userGet :<|> userBirthday :<|> userDelete :<|> health
   where
   userAdd :: User -> Handler (Key User)
@@ -166,7 +162,12 @@ server pool =
   userGet key = sql (get key)
 
   userBirthday :: Key User -> Handler ()
-  userBirthday key = sql (update key [UserAge +=. 1])
+  userBirthday key = sql $ case bug of
+    None  -> update key [UserAge +=. 1]
+    Logic -> update key [UserAge +=. 2]
+    Race  -> do
+      User name age <- getJust key
+      replace key (User name (age + 1))
 
   userDelete :: Key User -> Handler ()
   userDelete key = sql $ do
@@ -179,18 +180,22 @@ server pool =
   sql :: ReaderT SqlBackend (NoLoggingT (ResourceT IO)) a -> Handler a
   sql q = liftSqlPersistMPool q pool
 
-app :: ConnectionPool -> Application
-app pool = serve api (server pool)
+------------------------------------------------------------------------
 
-mkApp :: FilePath -> IO Application
-mkApp sqliteFile = do
-  pool <- runNoLoggingT (createSqlitePool (cs sqliteFile) 1)
+-- * How to run a server.
+
+app :: Bug -> ConnectionPool -> Application
+app bug pool = serve api (server bug pool)
+
+mkApp :: Bug -> ConnectionString -> IO Application
+mkApp bug conn = do
+  pool <- runNoLoggingT (createPostgresqlPool (cs conn) 10)
   runSqlPool (runMigration migrateAll) pool
-  return (app pool)
+  return (app bug pool)
 
-runServer :: FilePath -> Warp.Port -> IO () -> IO ()
-runServer sqliteFile port ready = do
-  app' <- mkApp sqliteFile
+runServer :: Bug -> ConnectionString -> Warp.Port -> IO () -> IO ()
+runServer bug conn port ready = do
+  app' <- mkApp bug conn
   Warp.runSettings settings app'
   where
     settings
@@ -200,7 +205,7 @@ runServer sqliteFile port ready = do
 
 ------------------------------------------------------------------------
 
--- We get the client bindings for free from the API datatype.
+-- * HTTP client for the API.
 
 postUserC    :: User     -> ClientM (Key User)
 getUserC     :: Key User -> ClientM (Maybe User)
@@ -213,12 +218,7 @@ postUserC :<|> getUserC :<|> incAgeUserC :<|> deleteUserC :<|> healthC
 
 ------------------------------------------------------------------------
 
--- We are now done with the implementation of the webserver, and we can
--- start with the specification and testing using the
--- <https://github.com/advancedtelematic/quickcheck-state-machine
--- quickcheck-state-machine> library.
-
--- We start by specifying what actions are allowed.
+-- * Implementation done, modelling starts.
 
 data Action (v :: * -> *) :: * -> * where
   PostUser   :: User                   -> Action v (Key User)
@@ -226,39 +226,21 @@ data Action (v :: * -> *) :: * -> * where
   IncAgeUser :: Reference v (Key User) -> Action v ()
   DeleteUser :: Reference v (Key User) -> Action v ()
 
-deriving instance Eq1 v => Eq (Action v a)
-
-instance Eq (Untyped Action) where
-  Untyped a == Untyped b = cast a == Just b
-
--- As you can see, the actions are similar to the client bindings,
--- except for the keys being wrapped in @Reference@ at the argument
--- positions. The reason for this is that when we generate arbitrary
--- actions we will not be able to generate arbitrary ids (these are
--- unique and come from the database, they are references to previously
--- created users.
-
-deriveShows ''Action
+deriving instance Eq1 v => Eq (Action v resp)
 
 ------------------------------------------------------------------------
 
--- Next we define the model, or reference implementation, that we want
--- to test our implementation against. It should intuitively capture the
--- requirements and be as simple as possible. We will use a map between
--- user ids and @User@s implemented using a list of pairs.
+-- * The model.
 
 newtype Model v = Model [(Reference v (Key User), User)]
   deriving Show
 
--- The initial model is just an empty list.
-
 initModel :: Model v
 initModel = Model []
 
--- Pre-conditions are used to determine in what context an action makes
--- sense. For example, it always makes sense to create a new user, but
--- we can only retrieve a user id that has been created (and thus a key
--- in the model).
+------------------------------------------------------------------------
+
+-- * The specification.
 
 preconditions :: Precondition Model Action
 preconditions _         (PostUser _)     = True
@@ -266,25 +248,16 @@ preconditions (Model m) (GetUser    key) = key `elem` map fst m
 preconditions (Model m) (IncAgeUser key) = key `elem` map fst m
 preconditions (Model m) (DeleteUser key) = key `elem` map fst m
 
--- The transition function determines how an action advances the model.
--- For example, when we create a new user we add they user id and the
--- user data to the model.
-
 transitions :: Transition Model Action
 transitions (Model m) (PostUser   user) key = Model (m ++ [(Reference key, user)])
 transitions m         (GetUser    _)    _   = m
 transitions (Model m) (IncAgeUser key)  _   = case lookup key m of
   Nothing              -> Model m
-  Just (User user age) -> Model (updateL key (User user (age + 1)) m)
-  where
-  updateL :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
-  updateL x y xys = (x, y) : filter ((/= x) . fst) xys
+  Just (User user age) -> Model (updateList key (User user (age + 1)) m)
+    where
+    updateList :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+    updateList x y xys = (x, y) : filter ((/= x) . fst) xys
 transitions (Model m) (DeleteUser key)  _   = Model (filter ((/= key) . fst) m)
-
--- The post-condition is what is actually checked after the execution of
--- an action against the webserver. For example, when we retrieve a user
--- then the @resp@onse we get back better be the same as if we lookup
--- the key in the model.
 
 postconditions :: Postcondition Model Action
 postconditions _         (PostUser _)   _    = True
@@ -294,13 +267,7 @@ postconditions _         (DeleteUser _) _    = True
 
 ------------------------------------------------------------------------
 
--- If the model is empty, then we generate an action that creates a
--- user. If it's non-empty, we pick one of the user ids and retrieve the
--- user, increement the users age, or delete the user. We generate
--- actions that retrieve users or increment the age with higher
--- probability than creating new users or deleting them.
---
--- Note that references are picked from the model.
+-- * How to generate and shrink programs.
 
 generator :: Generator Model Action
 generator (Model m)
@@ -309,11 +276,8 @@ generator (Model m)
       [ (1, Untyped . PostUser   <$> arbitrary)
       , (8, Untyped . GetUser    <$> elements (map fst m))
       , (8, Untyped . IncAgeUser <$> elements (map fst m))
-      , (1, Untyped . DeleteUser <$> elements (map fst m))
+      , (8, Untyped . DeleteUser <$> elements (map fst m))
       ]
-
--- There isn't much to shrink, only the username and age on user
--- creating actions.
 
 shrinker :: Shrinker Action
 shrinker (PostUser (User user age)) =
@@ -322,9 +286,7 @@ shrinker _                          = []
 
 ------------------------------------------------------------------------
 
--- The semantics of actions is given in terms of the API client
--- bindings. A @ClientEnv@ containing the URL and port to the server is
--- passed in using a reader monad.
+-- * The semantics.
 
 semantics :: Action Concrete resp -> ReaderT ClientEnv IO resp
 semantics act = do
@@ -340,35 +302,22 @@ semantics act = do
 
 ------------------------------------------------------------------------
 
--- In order for the library to deal with @Reference@s we need to explain
--- how to traverse them.
-
-deriveTestClasses ''Action
-
-------------------------------------------------------------------------
-
--- Finally we got all pieces needed to write a sequential and a parallel
--- property that asserts that the semantics respect the model in a
--- single-threaded and two-threaded context respectively.
-
 sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO)
 sm port = stateMachine
   generator shrinker preconditions transitions
   postconditions initModel semantics (runner port)
 
+connectionString :: String -> ConnectionString
+connectionString ip = "host=" <> BS.pack ip
+  <> " dbname=postgres user=postgres password=mysecretpassword port=5432"
 
 crudWebserverDbPort :: Int
-crudWebserverDbPort = 8081
+crudWebserverDbPort = 8083
 
-withCrudWebserverDb :: IO () -> IO ()
-withCrudWebserverDb =
-  bracketServer (setup "sqlite.db" crudWebserverDbPort)
+------------------------------------------------------------------------
 
--- Note that this property assumes that there is a server setup and
--- running. It can be checked, for example, as follows:
--- @withCrudWebserverDb (quickCheck prop_crudWebserverDb)@.
-prop_crudWebserverDb :: Property
-prop_crudWebserverDb =
+prop_crudWebserverDbRace :: Property
+prop_crudWebserverDbRace =
   monadicSequential sm' $ \prog -> do
     (hist, _, res) <- runProgram sm' prog
     prettyProgram sm' hist $
@@ -376,49 +325,92 @@ prop_crudWebserverDb =
   where
     sm' = sm crudWebserverDbPort
 
+withCrudWebserverDbRace :: Bug -> IO () -> IO ()
+withCrudWebserverDbRace bug run =
+  bracket
+    (setup bug connectionString crudWebserverDbPort)
+    cleanup
+    (const run)
+
+------------------------------------------------------------------------
+
+prop_crudWebserverDbRaceParallel :: PropertyOf (ParallelProgram' Action)
+prop_crudWebserverDbRaceParallel =
+  monadicParallelC' sm' $ \prog ->
+    prettyParallelProgram' prog =<< runParallelProgram'' 30 sm' prog
+  where
+  sm' = sm crudWebserverDbParallelPort
+
+prop_dbShrinkRace :: Property
+prop_dbShrinkRace = shrinkPropertyHelperC prop_crudWebserverDbRaceParallel $ \pprog ->
+  any (alphaEqParallel pprog)
+    [ ParallelProgram' prefix
+        [ Program
+            [ iact (IncAgeUser (Reference sym0)) 1
+            , iact (IncAgeUser (Reference sym0)) 2
+            , iact (GetUser    (Reference sym0)) 3
+            ]
+        ]
+    , ParallelProgram' prefix
+        [ Program
+            [ iact (IncAgeUser (Reference sym0)) 1
+            , iact (IncAgeUser (Reference sym0)) 2
+            ]
+        , Program
+            [ iact (GetUser    (Reference sym0)) 3 ]
+        ]
+    ]
+  where
+  prefix     = Program [ iact (PostUser (User "" 0)) 0 ]
+  iact act n = Internal act (Symbolic (Var n))
+  sym0       = Symbolic (Var 0)
+
+instance Eq (Untyped Action) where
+  Untyped act1 == Untyped act2 = cast act1 == Just act2
+
+withCrudWebserverDbRaceParallel :: Bug -> IO () -> IO ()
+withCrudWebserverDbRaceParallel bug run =
+  bracket
+    (setup bug connectionString crudWebserverDbParallelPort)
+    cleanup
+    (const run)
+
+------------------------------------------------------------------------
+
+
+
+
+
 
 crudWebserverDbParallelPort :: Int
-crudWebserverDbParallelPort = 8082
+crudWebserverDbParallelPort = 8084
 
-withCrudWebserverDbParallel :: IO () -> IO ()
-withCrudWebserverDbParallel =
-  bracketServer (setup "sqlite-parallel.db" crudWebserverDbParallelPort)
-
-bracketServer :: IO (Async ()) -> IO () -> IO ()
-bracketServer start run =
-  bracket start cancel (const run)
-
-prop_crudWebserverDbParallel :: Property
-prop_crudWebserverDbParallel =
-  monadicParallel' sm' $ \prog ->
-    prettyParallelProgram' prog =<< runParallelProgram'' 10 sm' prog
-  where
-    sm' = sm crudWebserverDbParallelPort
-
--- Where the URL of the server, how to run the reader monad that the
--- semantics live in, and how to setup the webserver is defined as
--- follows.
-
-burl :: Warp.Port -> BaseUrl
-burl port = BaseUrl Http "localhost" port ""
+instance Arbitrary User where
+  arbitrary = User <$> (T.pack <$> listOf (arbitrary `suchThat` isPrint))
+                   <*> arbitrary
 
 runner :: Warp.Port -> ReaderT ClientEnv IO Property -> IO Property
 runner port p = do
   mgr <- newManager defaultManagerSettings
   runReaderT p (ClientEnv mgr (burl port))
 
-setup :: MonadBaseControl IO m => FilePath -> Warp.Port -> m (Async ())
-setup sqliteFile port = liftBaseWith $ \_ -> do
-  signal <- newEmptyMVar
-  tmp <- getTemporaryDirectory
-  aServer <- async (runServer (tmp </> sqliteFile) port (putMVar signal ()))
+burl :: Warp.Port -> BaseUrl
+burl port = BaseUrl Http "localhost" port ""
+
+setup
+  :: MonadBaseControl IO m
+  => Bug -> (String -> ConnectionString) -> Warp.Port -> m (String, Async ())
+setup bug conn port = liftBaseWith $ \_ -> do
+  (pid, dbIp) <- setupDb
+  signal   <- newEmptyMVar
+  aServer  <- async (runServer bug (conn dbIp) port (putMVar signal ()))
   aConfirm <- async (takeMVar signal)
   ok <- waitEither aServer aConfirm
   case ok of
     Right () -> do
       mgr <- newManager defaultManagerSettings
       healthy mgr 10
-      return aServer
+      return (pid, aServer)
     Left () -> error "Server should not return"
   where
   healthy :: Manager -> Int -> IO ()
@@ -431,25 +423,46 @@ setup sqliteFile port = liftBaseWith $ \_ -> do
         healthy mgr (tries - 1)
       Right () -> return ()
 
-------------------------------------------------------------------------
+setupDb :: IO (String, String)
+setupDb = do
+  pid <- trim <$> readProcess "docker"
+    [ "run"
+    , "-d"
+    , "-e", "POSTGRES_PASSWORD=mysecretpassword"
+    , "postgres:10.1-alpine"
+    ] ""
+  ip <- trim <$> readProcess "docker"
+    [ "inspect"
+    , pid
+    , "--format"
+    , "'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"
+    ] ""
+  healthyDb ip
+  return (pid, ip)
+  where
+  trim :: String -> String
+  trim = dropWhileEnd isGarbage . dropWhile isGarbage
+    where
+    isGarbage = flip elem ['\'', '\n']
 
--- Despite being a simple webserver running the two properties revealed
--- two problems.
---
--- The sequential property found that arbitrary text can't be used as
--- username, in fact not even ASCII works. For example the username
--- "\NUL" causes sqlite to drop the name, as seen in the following
--- output:
---
---     *** Failed! Falsifiable (after 14 tests and 8 shrinks):
---     [ PostUser (User {userName = "\NUL", userAge = 0}) Var 9
---     , GetUser ((Var 9)) Var 10 ]
---     Just (User {userName = "\NUL", userAge = 0}) /=
---     Just (User {userName = "",     userAge = 0})
---
--- While the parallel property found that with the connection pool size
--- set to 5, as in the original implementation, concurrent writes cause
--- "SQLite3 returned ErrorBusy while attempting to perform step..."
--- errors. After some searching I found the following
--- <http://comments.gmane.org/gmane.comp.lang.haskell.yesod/1268 thread>
--- that suggested to set the pool size to 1 instead.
+  healthyDb :: String -> IO ()
+  healthyDb ip = do
+    handle <- go 10
+    hClose handle
+    where
+    go :: Int -> IO Handle
+    go 0 = error "healtyDb: db isn't healthy"
+    go n = do
+      connectTo ip (PortNumber 5432)
+        `catch` (\(_ :: SomeException) -> do
+                    threadDelay 1000000
+                    go (n - 1))
+
+
+cleanup :: (String, Async ()) -> IO ()
+cleanup (pid, aServer) = do
+  callProcess "docker" [ "rm", "-f", pid ]
+  cancel aServer
+
+deriveShows       ''Action
+deriveTestClasses ''Action

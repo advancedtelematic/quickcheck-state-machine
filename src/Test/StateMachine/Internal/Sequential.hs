@@ -20,9 +20,11 @@
 
 module Test.StateMachine.Internal.Sequential
   ( generateProgram
+  , generateProgram'
   , filterInvalid
   , getUsedVars
   , liftShrinkInternal
+  , validProgram
   , shrinkProgram
   , executeProgram
   )
@@ -31,7 +33,8 @@ module Test.StateMachine.Internal.Sequential
 import           Control.Monad
                    (filterM, when)
 import           Control.Monad.State
-                   (State, StateT, evalState, get, lift, put)
+                   (State, StateT, evalStateT, get, lift,
+                   put)
 import           Data.Dynamic
                    (toDyn)
 import           Data.Functor.Classes
@@ -76,6 +79,14 @@ generateProgram generator precondition transition index = do
     acts <- go (sz - 1) (ix + 1)
     return (Internal act sym : acts)
 
+generateProgram'
+  :: Generator    model act
+  -> Precondition model act
+  -> Transition'  model act err
+  -> model Symbolic
+  -> Gen (Program act)
+generateProgram' g p t = evalStateT (generateProgram g p t 0)
+
 -- | Filter out invalid actions from a program. An action is invalid if
 --   either its pre-condition doesn't hold, or it uses references that
 --   are not in scope.
@@ -107,6 +118,23 @@ liftShrinkInternal :: Shrinker act -> (Internal act -> [Internal act])
 liftShrinkInternal shrinker (Internal act sym) =
   [ Internal act' sym | act' <- shrinker act ]
 
+validProgram
+  :: forall act model err
+  .  HFoldable act
+  => Precondition model act
+  -> Transition' model act err
+  -> model Symbolic
+  -> Program act
+  -> Bool
+validProgram precondition transition model0 = go model0 S.empty . unProgram
+  where
+  go :: model Symbolic -> Set Var -> [Internal act] -> Bool
+  go _     _     []                                     = True
+  go model scope (Internal act sym@(Symbolic var) : is) =
+    valid && go (transition model act (Success sym)) (S.insert var scope) is
+    where
+    valid = precondition model act && getUsedVars act `S.isSubsetOf` scope
+
 -- | Shrink a program in a pre-condition and scope respecting way.
 shrinkProgram
   :: HFoldable act
@@ -117,10 +145,8 @@ shrinkProgram
   ->  Program act             -- ^ Program to shrink.
   -> [Program act]
 shrinkProgram shrinker precondition transition model
-  = map ( flip evalState (model, S.empty)
-        . filterInvalid precondition transition
-        . Program
-        )
+  = filter (validProgram precondition transition model)
+  . map Program
   . shrinkList (liftShrinkInternal shrinker)
   . unProgram
 

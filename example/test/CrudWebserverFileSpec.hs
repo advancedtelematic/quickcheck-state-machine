@@ -1,7 +1,7 @@
 module CrudWebserverFileSpec where
 
 import           Test.Hspec
-                   (Spec, describe, it, xit)
+                   (Spec, describe, xit)
 
 import           CrudWebserverFile
 
@@ -12,10 +12,10 @@ spec = do
 
   describe "Sequential property" $
 
-    it "`prop_crudWebserverFile`: sequential property holds"
+    xit "`prop_crudWebserverFile`: sequential property holds"
       prop_crudWebserverFile
 
   describe "Parallel property" $
 
-    xit "`prop_crudWebserverFileParallel`: parallel property fails, because of file handle's busy"
+    xit "`prop_crudWebserverFileParallel`: parallel property holds"
       prop_crudWebserverFileParallel

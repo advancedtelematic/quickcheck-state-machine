@@ -1,7 +1,7 @@
 module MutableReferenceSpec (spec) where
 
 import           Test.Hspec
-                   (Spec, describe, it)
+                   (Spec, describe, it, xit)
 import           Test.Hspec.QuickCheck
                    (modifyMaxSuccess)
 
@@ -51,5 +51,5 @@ spec = do
       it "`prop_referencesParallel None`: linearisation is possible when there are no race conditions" $
         prop_referencesParallel None
 
-      it "`prop_shrinkParallelMinimal`: the minimal counterexample is found when there's a race condition"
+      xit "`prop_shrinkParallelMinimal`: the minimal counterexample is found when there's a race condition"
         prop_shrinkParallelMinimal
