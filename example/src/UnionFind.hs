@@ -19,7 +19,10 @@
 --
 -----------------------------------------------------------------------------
 
-module UnionFind where
+module UnionFind
+  ( prop_unionFind
+  )
+  where
 
 import           Data.Functor.Classes
                    (Eq1(..), Show1(..))
