@@ -1,3 +1,9 @@
+#### ???
+
+  * Support for semantics that might fail was added;
+
+  * Pretty printing of counterexamples was improved.
+
 #### 0.2.0
 
   * Z-inspired definition of relations and associated operations were

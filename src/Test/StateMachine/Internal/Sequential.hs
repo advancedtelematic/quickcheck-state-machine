@@ -25,12 +25,11 @@ module Test.StateMachine.Internal.Sequential
   , liftShrinkInternal
   , shrinkProgram
   , executeProgram
-  , executeProgram'
   )
   where
 
 import           Control.Monad
-                   (filterM, foldM, when)
+                   (filterM, when)
 import           Control.Monad.State
                    (State, StateT, evalState, get, lift, put)
 import           Data.Dynamic
@@ -45,8 +44,7 @@ import qualified Data.Set                                     as S
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
-                   (Gen, Property, choose, counterexample, property,
-                   shrinkList, sized, suchThat, (.&&.))
+                   (Gen, choose, shrinkList, sized, suchThat)
 
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
@@ -57,10 +55,10 @@ import           Test.StateMachine.Types.History
 
 -- | Generate programs whose actions all respect their pre-conditions.
 generateProgram
-  :: forall model act
+  :: forall model act err
   .  Generator    model act
   -> Precondition model act
-  -> Transition   model act
+  -> Transition'  model act err
   -> Int                     -- ^ Name supply for symbolic variables.
   -> StateT (model Symbolic) Gen (Program act)
 generateProgram generator precondition transition index = do
@@ -74,7 +72,7 @@ generateProgram generator precondition transition index = do
     Untyped act <- lift (generator model `suchThat`
       \(Untyped act) -> precondition model act)
     let sym = Symbolic (Var ix)
-    put (transition model act sym)
+    put (transition model act (Success sym))
     acts <- go (sz - 1) (ix + 1)
     return (Internal act sym : acts)
 
@@ -84,7 +82,7 @@ generateProgram generator precondition transition index = do
 filterInvalid
   :: HFoldable act
   => Precondition model act
-  -> Transition   model act
+  -> Transition'  model act err
   -> Program act
   -> State (model Symbolic, Set Var) (Program act) -- ^ Where @Set Var@
                                                    --   is the scope.
@@ -96,7 +94,7 @@ filterInvalid precondition transition
   go (Internal act sym@(Symbolic var)) = do
     (model, scope) <- get
     let valid = precondition model act && getUsedVars act `S.isSubsetOf` scope
-    when valid (put (transition model act sym, S.insert var scope))
+    when valid (put (transition model act (Success sym), S.insert var scope))
     return valid
 
 -- | Returns the set of references an action uses.
@@ -114,7 +112,7 @@ shrinkProgram
   :: HFoldable act
   => Shrinker  act
   -> Precondition model act
-  -> Transition   model act
+  -> Transition'  model act err
   -> model Symbolic
   ->  Program act             -- ^ Program to shrink.
   -> [Program act]
@@ -126,81 +124,22 @@ shrinkProgram shrinker precondition transition model
   . shrinkList (liftShrinkInternal shrinker)
   . unProgram
 
--- | Execute a program and return a history, the final model and a property
---   which contains the information of whether the execution respects the state
+-- | Execute a program and return a history, the final model and a result which
+--   contains the information of whether the execution respects the state
 --   machine model or not.
 executeProgram
-  :: forall m act err model
-  .  Monad m
-  => Show (Untyped act)
-  => HTraversable act
-  => StateMachine' model act err m
-  -> Program act
-  -> m (History act err, model Concrete, Property)
-executeProgram StateMachine {..}
-  = fmap (\(hist, _, cmodel, _, prop) -> (hist, cmodel, prop))
-  . foldM go (mempty, model', model', emptyEnvironment, property True)
-  . unProgram
-  where
-  go :: (History act err, model Symbolic, model Concrete, Environment, Property)
-     -> Internal act
-     -> m (History act err, model Symbolic, model Concrete, Environment, Property)
-  go (hist, smodel, cmodel, env, prop) (Internal act sym@(Symbolic var)) =
-    if not (precondition' smodel act)
-    then
-      return ( hist
-             , smodel
-             , cmodel
-             , env
-             , counterexample ("precondition failed for: " ++ show (Untyped act)) prop
-             )
-    else
-      case reify env act of
-
-                      -- This means that the reference that the action uses
-                      -- failed to be created, so we do nothing.
-        Left _     -> return (hist, smodel, cmodel, env, prop)
-
-        Right cact -> do
-          mresp <- semantics' cact
-          case mresp of
-            Fail err -> do
-              let hist' = History
-                    [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
-                    , ResponseEvent (Fail err) "<fail>" (Pid 0)
-                    ]
-              return ( hist <> hist'
-                     , smodel
-                     , cmodel
-                     , env
-                     , prop .&&. postcondition' cmodel cact (Fail err)
-                     )
-            Success resp -> do
-              let cresp = Concrete resp
-                  hist' = History
-                    [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
-                    , ResponseEvent (Success (toDyn cresp)) (show resp) (Pid 0)
-                    ]
-              return ( hist <> hist'
-                     , transition' smodel act sym
-                     , transition' cmodel cact cresp
-                     , insertConcrete sym cresp env
-                     , prop .&&. postcondition' cmodel cact (Success resp)
-                     )
-
-executeProgram'
-  :: forall m act err model
+  :: forall m act model err
   .  Monad m
   => Typeable err
   => Show1 (act Symbolic)
   => Show err
   => HTraversable act
-  => StateMachine'' model act err m
+  => StateMachine' model act m err
   -> Program act
   -> m (History act err, model Concrete, Reason)
-executeProgram' StateMachine'' {..}
+executeProgram StateMachine{..}
   = fmap (\(hist, _, cmodel, _, reason) -> (hist, cmodel, reason))
-  . go (mempty, model'', model'', emptyEnvironment)
+  . go (mempty, model', model', emptyEnvironment)
   . unProgram
   where
   go :: (History act err, model Symbolic, model Concrete, Environment)
@@ -209,7 +148,7 @@ executeProgram' StateMachine'' {..}
   go (hist, smodel, cmodel, env)  []                                       =
     return (hist, smodel, cmodel, env, Ok)
   go (hist, smodel, cmodel, env)  (Internal act sym@(Symbolic var) : acts) =
-    if not (precondition'' smodel act)
+    if not (precondition' smodel act)
     then
       return ( hist
              , smodel
@@ -219,12 +158,12 @@ executeProgram' StateMachine'' {..}
              )
     else do
       let Right cact = reify env act
-      resp <- semantics'' cact
+      resp <- semantics' cact
       let hist' = hist <> History
             [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
-            , ResponseEvent (Success (toDyn resp)) (ppResult resp) (Pid 0)
+            , ResponseEvent (fmap toDyn resp) (ppResult resp) (Pid 0)
             ]
-      if not (postcondition'' cmodel cact resp)
+      if not (postcondition' cmodel cact resp)
       then
         return ( hist'
                , smodel
@@ -234,8 +173,8 @@ executeProgram' StateMachine'' {..}
                )
       else do
         go ( hist'
-           , transition'' smodel act (Success sym)
-           , transition'' cmodel cact (fmap Concrete resp)
+           , transition' smodel act (Success sym)
+           , transition' cmodel cact (fmap Concrete resp)
            , case resp of
                Success resp' -> insertConcrete sym (Concrete resp') env
                Fail    _     -> env

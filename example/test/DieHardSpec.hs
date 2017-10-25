@@ -96,3 +96,6 @@ deriving instance Eq (Action v a)
 
 instance Eq (Untyped Action) where
   Untyped a == Untyped b = cast a == Just b
+
+instance Show (Untyped Action) where
+  show (Untyped act) = show act

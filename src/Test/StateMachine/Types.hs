@@ -28,9 +28,10 @@ module Test.StateMachine.Types
     -- * Type aliases
   , StateMachine
   , stateMachine
+  , okTransition
+  , okPostcondition
+  , okSemantics
   , StateMachine'(..)
-  , StateMachine''(..)
-  , downStateMachine
   , Generator
   , Shrinker
   , Precondition
@@ -38,8 +39,6 @@ module Test.StateMachine.Types
   , Transition'
   , Postcondition
   , Postcondition'
-  , Postcondition''
-  , okPostcondition
   , InitialModel
   , Result(..)
   , ppResult
@@ -66,7 +65,7 @@ import           Data.Typeable
 import           Data.Void
                    (Void, absurd)
 import           Test.QuickCheck
-                   (Gen, Property, property)
+                   (Gen, Property)
 
 import           Test.StateMachine.Types.Generics
 import           Test.StateMachine.Types.HFunctor
@@ -88,37 +87,19 @@ data Untyped (act :: (* -> *) -> * -> *) where
 
 -- | A (non-failing) state machine record bundles up all functionality
 --   needed to perform our tests.
-type StateMachine model act m = StateMachine' model act Void m
+type StateMachine model act m = StateMachine' model act m Void
 
 -- | Same as above, but with possibly failing semantics.
-data StateMachine' model act err m = StateMachine
+data StateMachine' model act m err = StateMachine
   { generator'     :: Generator model act
   , shrinker'      :: Shrinker  act
   , precondition'  :: Precondition model act
-  , transition'    :: Transition   model act
-  , postcondition' :: Postcondition' model err act
+  , transition'    :: Transition' model act err
+  , postcondition' :: Postcondition' model act err
   , model'         :: InitialModel model
-  , semantics'     :: Semantics' act err m
+  , semantics'     :: Semantics' act m err
   , runner'        :: Runner m
   }
-
-data StateMachine'' model act err m = StateMachine''
-  { generator''     :: Generator model act
-  , shrinker''      :: Shrinker  act
-  , precondition''  :: Precondition model act
-  , transition''    :: Transition' model act err
-  , postcondition'' :: Postcondition'' model act err
-  , model''         :: InitialModel model
-  , semantics''     :: Semantics' act err m
-  , runner''        :: Runner m
-  }
-
-downStateMachine :: Functor m => StateMachine'' model act err m -> StateMachine' model act err m
-downStateMachine StateMachine''{..} =
-  StateMachine generator'' shrinker'' precondition''
-  (\model act vresp -> transition'' model act (Success vresp))
-  (\model act resp -> property (postcondition'' model act resp))
-  model'' semantics'' runner''
 
 -- | Helper for lifting non-failing semantics to a possibly failing
 --   state machine record.
@@ -133,13 +114,21 @@ stateMachine
   -> InitialModel model
   -> Semantics act m
   -> Runner m
-  -> StateMachine' model act Void m
+  -> StateMachine' model act m Void
 stateMachine gen shr precond trans post model sem run =
-  StateMachine gen shr precond trans post' model (fmap Success . sem) run
-  where
-  post' :: Postcondition' model Void act
-  post' m act (Success resp) = post m act resp
-  post' _ _   (Fail false)   = absurd false
+  StateMachine gen shr precond (okTransition trans)
+    (okPostcondition post) model (okSemantics sem) run
+
+okTransition :: Transition model act -> Transition' model act Void
+okTransition transition model act (Success resp) = transition model act resp
+okTransition _          _     _   (Fail false)   = absurd false
+
+okPostcondition :: Postcondition model act -> Postcondition' model act Void
+okPostcondition postcondition model act (Success resp) = postcondition model act resp
+okPostcondition _             _     _   (Fail false)   = absurd false
+
+okSemantics :: Functor m => Semantics act m -> Semantics' act m Void
+okSemantics sem = fmap Success . sem
 
 -- | When generating actions we have access to a model containing
 --   symbolic references.
@@ -165,16 +154,10 @@ type Transition' model act err = forall resp v. Ord1 v =>
 -- | Post-conditions are checked after the actions have been executed
 --   and we got a response.
 type Postcondition model act = forall resp.
-  model Concrete -> act Concrete resp -> resp -> Property
+  model Concrete -> act Concrete resp -> resp -> Bool
 
-type Postcondition' model err act = forall resp.
-  model Concrete -> act Concrete resp -> Result err resp -> Property
-
-type Postcondition'' model act err = forall resp.
+type Postcondition' model act err = forall resp.
   model Concrete -> act Concrete resp -> Result err resp -> Bool
-
-okPostcondition :: Postcondition' model err act -> Postcondition model act
-okPostcondition postcondition model act resp = postcondition model act (Success resp)
 
 -- | The initial model is polymorphic in the type of references it uses,
 --   so that it can be used both in the pre- and the post-condition
@@ -192,7 +175,7 @@ ppResult :: (Show err, Show resp) => Result err resp -> String
 ppResult (Success resp) = show resp
 ppResult (Fail err)     = show err
 
-type Semantics' act err m = forall resp. act Concrete resp -> m (Result err resp)
+type Semantics' act m err = forall resp. act Concrete resp -> m (Result err resp)
 
 -- | How to run the monad used by the semantics.
 type Runner m = m Property -> IO Property

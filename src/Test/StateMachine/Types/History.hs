@@ -24,7 +24,6 @@ module Test.StateMachine.Types.History
   ( History(..)
   , History'
   , ppHistory
-  , ppHistory'
   , HistoryEvent(..)
   , getProcessIdEvent
   , UntypedConcrete(..)
@@ -65,19 +64,12 @@ data UntypedConcrete (act :: (* -> *) -> * -> *) where
     act Concrete resp -> UntypedConcrete act
 
 -- | Pretty print a history.
-ppHistory :: History act err -> String
-ppHistory = foldr go "" . unHistory
-  where
-  go :: HistoryEvent (UntypedConcrete act) err -> String -> String
-  go (InvocationEvent _ str _ _) ih = " " ++ str ++ " ==> " ++ ih
-  go (ResponseEvent   _ str   _) ih =        str ++ "\n"    ++ ih
-
-ppHistory'
+ppHistory
   :: forall model act err
   .  Show (model Concrete)
   => Show err
   => model Concrete -> Transition' model act err -> History act err -> String
-ppHistory' model0 transition
+ppHistory model0 transition
   = showsPrec 10 model0
   . go model0
   . makeOperations
@@ -85,12 +77,11 @@ ppHistory' model0 transition
   where
   go :: model Concrete -> [Operation act err] -> String
   go _     []                                                 = "\n"
-  go model (Operation act astr resp@(Success _) rstr _ : ops) =
-    let model1 = transition model act resp in
-    "\n\n    " ++ astr ++ " --> " ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
-  go model (Operation act astr resp@(Fail err)  _    _ : ops) =
-    let model1 = transition model act resp in
-    "\n\n    " ++ astr ++ " -/-> " ++ show err ++ "\n\n" ++ show model1 ++ go model1 ops
+  go model (Operation act astr resp rstr _ : ops) =
+    let model1 = transition model act (fmap Concrete resp) in
+    "\n\n    " ++ astr ++ (case resp of
+        Success _ -> " --> "
+        Fail _    -> " -/-> ") ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
 
 -- | Get the process id of an event.
 getProcessIdEvent :: HistoryEvent act err -> Pid
@@ -113,16 +104,18 @@ findCorrespondingResp pid (e : es) =
 -- | An operation packs up an invocation event with its corresponding
 --   response event.
 data Operation act err = forall resp. Typeable resp =>
-  Operation (act Concrete resp) String (Result err (Concrete resp)) String Pid
+  Operation (act Concrete resp) String (Result err resp) String Pid
+
+dynResp :: forall err resp. Typeable resp => Result err Dynamic -> Result err resp
+dynResp (Success resp) = Success
+  (either (error . show) (\(Concrete resp') -> resp') (reifyDynamic resp))
+dynResp (Fail err)     = Fail err
 
 makeOperations :: History' act err -> [Operation act err]
 makeOperations [] = []
 makeOperations (InvocationEvent (UntypedConcrete act) astr _ pid :
                 ResponseEvent resp rstr _ : hist) =
   Operation act astr (dynResp resp) rstr pid : makeOperations hist
-  where
-  dynResp (Success resp') = Success (either (error . show) id (reifyDynamic resp'))
-  dynResp (Fail err)      = Fail err
 makeOperations _ = error "makeOperations: impossible."
 
 -- | Given a history, return all possible interleavings of invocations
@@ -135,9 +128,6 @@ linearTree es =
   , (resp, es')  <- findCorrespondingResp pid $ filter1 (not . matchInv pid) es
   ]
   where
-  dynResp (Success resp) = Success (either (error . show) id (reifyDynamic resp))
-  dynResp (Fail err)     = Fail err
-
   filter1 :: (a -> Bool) -> [a] -> [a]
   filter1 _ []                   = []
   filter1 p (x : xs) | p x       = x : filter1 p xs

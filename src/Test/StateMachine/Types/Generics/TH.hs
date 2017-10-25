@@ -58,7 +58,7 @@ deriveShows = (liftA2 . liftA2) (++) deriveShow deriveShowUntyped
 -- @
 -- 'deriveShow' ''Action
 -- ===>
--- deriving instance 'Show1' v => 'Show' (Action v a)@.
+-- deriving instance 'Show1' v => 'Show' (Action v a).
 -- @
 deriveShow :: Name -> Q [Dec]
 deriveShow = reifyDatatype >=> deriveShow'

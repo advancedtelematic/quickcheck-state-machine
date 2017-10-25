@@ -51,7 +51,7 @@ import           Control.Monad.Reader
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Functor.Classes
-                   (Show1)
+                   (Show1, liftShowsPrec)
 import           Data.Map
                    (Map)
 import qualified Data.Map                    as Map
@@ -74,11 +74,9 @@ import           System.FilePath
                    ((</>))
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
-                   property, shrink, (===))
+                   shrink, (===))
 import           Test.QuickCheck.Instances
                    ()
-import           Test.QuickCheck.Property
-                   (failed, reason)
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
@@ -159,6 +157,9 @@ data Action (v :: * -> *) :: * -> * where
 
 deriving instance Show1 v => Show (Action v resp)
 
+instance Show1 (Action Symbolic) where
+  liftShowsPrec _ _ _ act _ = show act
+
 ------------------------------------------------------------------------
 
 newtype Model (v :: * -> *) = Model (Map FilePath Text)
@@ -173,20 +174,21 @@ preconditions (Model m) act = case act of
   GetFile    file -> Map.member file m
   DeleteFile file -> Map.member file m
 
-transitions :: Transition Model Action
-transitions (Model m) act _ = Model $ case act of
+transitions :: Transition' Model Action String
+transitions m         _   (Fail _)    = m
+transitions (Model m) act (Success _) = Model $ case act of
   PutFile    file content -> Map.insert file content m
   GetFile    _            -> m
   DeleteFile file         -> Map.delete file m
 
-postconditions :: Postcondition' Model String Action
-postconditions _         _   (Fail err)     = property (failed { reason = err })
+postconditions :: Postcondition' Model Action String
+postconditions _         _   (Fail _)       = False
 postconditions (Model m) act (Success resp) =
-  let Model m' = transitions (Model m) act (Concrete resp)
+  let Model m' = transitions (Model m) act (Success (Concrete resp))
   in case act of
-    PutFile    file content -> Map.lookup file m' === Just content
-    GetFile    file         -> Map.lookup file m  === Just resp
-    DeleteFile file         -> Map.lookup file m' === Nothing
+    PutFile    file content -> Map.lookup file m' == Just content
+    GetFile    file         -> Map.lookup file m  == Just resp
+    DeleteFile file         -> Map.lookup file m' == Nothing
 
 ------------------------------------------------------------------------
 
@@ -209,7 +211,7 @@ shrinker _                       = []
 
 ------------------------------------------------------------------------
 
-semantics :: Semantics' Action String (ReaderT ClientEnv IO)
+semantics :: Semantics' Action (ReaderT ClientEnv IO) String
 semantics act = do
   env <- ask
   res <- liftIO $ flip runClientM env $ case act of
@@ -252,7 +254,7 @@ runner p =
 
 ------------------------------------------------------------------------
 
-sm :: StateMachine' Model Action String (ReaderT ClientEnv IO)
+sm :: StateMachine' Model Action (ReaderT ClientEnv IO) String
 sm = StateMachine
   generator shrinker preconditions transitions
   postconditions initModel semantics runner
@@ -260,9 +262,9 @@ sm = StateMachine
 prop_crudWebserverFile :: Property
 prop_crudWebserverFile =
   monadicSequential sm $ \prog -> do
-    (hist, model, prop) <- runProgram sm prog
-    prettyProgram prog hist model $
-      checkActionNames prog prop
+    (hist, _, res) <- runProgram sm prog
+    prettyProgram sm hist $
+      checkActionNames prog (res === Ok)
 
 prop_crudWebserverFileParallel :: Property
 prop_crudWebserverFileParallel =

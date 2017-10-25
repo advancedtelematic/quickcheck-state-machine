@@ -1,8 +1,8 @@
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE Rank2Types                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -44,6 +44,8 @@ import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Dynamic
                    (toDyn)
+import           Data.Functor.Classes
+                   (Show1, showsPrec1)
 import           Data.List
                    (partition)
 import           Data.Set
@@ -72,7 +74,7 @@ import           Test.StateMachine.Types.History
 generateParallelProgram
   :: Generator    model act
   -> Precondition model act
-  -> Transition   model act
+  -> Transition'  model act err
   -> model Symbolic
   -> Gen (ParallelProgram act)
 generateParallelProgram generator precondition transition model = do
@@ -90,7 +92,7 @@ shrinkParallelProgram
   :: HFoldable act
   => Shrinker act
   -> Precondition model act
-  -> Transition model act
+  -> Transition' model act err
   -> model Symbolic
   -> (ParallelProgram act -> [ParallelProgram act])
 shrinkParallelProgram shrinker precondition transition model
@@ -123,15 +125,15 @@ executeParallelProgram
   :: forall m act err
   .  MonadBaseControl IO m
   => HTraversable act
-  => Show (Untyped act)
-  => Semantics' act err m
+  => Show1 (act Symbolic)
+  => Semantics' act m err
   -> ParallelProgram act
   -> m (History act err)
 executeParallelProgram semantics = liftSemFork . unParallelProgram
   where
   liftSemFork
     :: HTraversable act
-    => Show (Untyped act)
+    => Show1 (act Symbolic)
     => Fork (Program act)
     -> m (History act err)
   liftSemFork (Fork left prefix right) = do
@@ -154,7 +156,7 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
 
   runMany
     :: HTraversable act
-    => Show (Untyped act)
+    => Show1 (act Symbolic)
     => TChan (HistoryEvent (UntypedConcrete act) err)
     -> Pid
     -> [Internal act]
@@ -166,7 +168,7 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
                               -- create.
       Right cact -> do
         liftBaseWith $ const $ atomically $ writeTChan hchan $
-          InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var pid
+          InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
         mresp <- lift (semantics cact)
         threadDelay 10
         case mresp of
@@ -185,8 +187,8 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
 --   concurrent objects* paper linked to from the README for more info.
 linearise
   :: forall model act err
-  .  Transition    model act
-  -> Postcondition' model err act
+  .  Transition'    model act err
+  -> Postcondition' model act err
   -> InitialModel model
   -> History act err
   -> Property
@@ -197,12 +199,9 @@ linearise transition postcondition model0 = go . unHistory
   go es = anyP (step model0) (linearTree es)
 
   step :: model Concrete -> Tree (Operation act err) -> Property
-  step model (Node (Operation act _ (Fail err)                _ _) roses) =
-    postcondition model act (Fail err) .&&.
-    anyP' (step model) roses
-  step model (Node (Operation act _ (Success (Concrete resp)) _ _) roses) =
-    postcondition model act (Success resp) .&&.
-    anyP' (step (transition model act (Concrete resp))) roses
+  step model (Node (Operation act _ resp _ _) roses) =
+    postcondition model act resp .&&.
+    anyP' (step (transition model act (fmap Concrete resp))) roses
 
 anyP' :: (a -> Property) -> [a] -> Property
 anyP' _ [] = property True

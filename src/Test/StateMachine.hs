@@ -28,9 +28,7 @@ module Test.StateMachine
   , forAllProgram
   , monadicSequential
   , runProgram
-  , runProgram'
   , prettyProgram
-  , prettyProgram'
   , actionNames
   , checkActionNames
 
@@ -73,7 +71,7 @@ import           Test.QuickCheck
                    (Property, collect, cover, ioProperty, property)
 import qualified Test.QuickCheck
 import           Test.QuickCheck.Counterexamples
-                   ((:&:)(..), PropertyOf, forAllShrink)
+                   ((:&:)(..), PropertyOf)
 import qualified Test.QuickCheck.Counterexamples       as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM, monadic, run)
@@ -94,7 +92,7 @@ forAllProgram
   => Generator model act
   -> Shrinker act
   -> Precondition model act
-  -> Transition   model act
+  -> Transition' model act err
   -> InitialModel model
   -> (Program act -> Property)  -- ^ Predicate that should hold for all
                                 --   programs.
@@ -111,7 +109,7 @@ forAllProgramC
   => Generator model act
   -> Shrinker act
   -> Precondition model act
-  -> Transition   model act
+  -> Transition' model act err
   -> InitialModel model
   -> (Program act -> PropertyOf a)  -- ^ Predicate that should hold for all
                                     --   programs.
@@ -127,7 +125,7 @@ forAllProgramC generator shrinker precondition transition model =
 monadicSequential
   :: Monad m
   => HFoldable act
-  => StateMachine' model act err m
+  => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
   -> Property
@@ -137,7 +135,7 @@ monadicSequential sm = property . monadicSequentialC sm
 monadicSequentialC
   :: Monad m
   => HFoldable act
-  => StateMachine' model act err m
+  => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
   -> PropertyOf (Program act)
@@ -152,49 +150,28 @@ monadicSequentialC StateMachine {..} predicate
 -- 'StateMachine' specification.
 runProgram
   :: Monad m
-  => Show (Untyped act)
-  => HTraversable act
-  => StateMachine' model act err m
-     -- ^
-  -> Program act
-  -> PropertyM m (History act err, model Concrete, Property)
-runProgram sm = run . executeProgram sm
-
-runProgram'
-  :: Monad m
   => Show1 (act Symbolic)
   => Show err
   => Typeable err
   => HTraversable act
-  => StateMachine'' model act err m
+  => StateMachine' model act m err
      -- ^
   -> Program act
   -> PropertyM m (History act err, model Concrete, Reason)
-runProgram' sm = run . executeProgram' sm
+runProgram sm = run . executeProgram sm
 
 -- | Takes the output of running a program and pretty prints a
 --   counterexample if the run failed.
 prettyProgram
   :: MonadIO m
-  => Program act
-  -> History act err
-  -> model Concrete
-  -> Property
-  -> PropertyM m ()
-prettyProgram _ hist _ prop = putStrLn (ppHistory hist) `whenFailM` prop
-
-prettyProgram'
-  :: MonadIO m
   => Show (model Concrete)
   => Show err
-  => Program act
+  => StateMachine' model act m err
   -> History act err
-  -> model Concrete
-  -> Transition' model act err
   -> Property
   -> PropertyM m ()
-prettyProgram' _prog hist model transition prop =
-  putStrLn (ppHistory' model transition hist) `whenFailM` prop
+prettyProgram StateMachine{..} hist prop =
+  putStrLn (ppHistory model' transition' hist) `whenFailM` prop
 
 -- | Print distribution of actions and fail if some actions have not been
 --   executed.
@@ -217,12 +194,12 @@ actionNames = M.toList . foldl go M.empty . unProgram
 
 -- | This function is like a 'forAllShrink' for parallel programs.
 forAllParallelProgram
-  :: Show (Untyped act)
+  :: Show1 (act Symbolic)
   => HFoldable act
   => Generator model act
   -> Shrinker act
   -> Precondition model act
-  -> Transition   model act
+  -> Transition'  model act err
   -> InitialModel model
   -> (ParallelProgram act -> Property) -- ^ Predicate that should hold
                                        --   for all parallel programs.
@@ -235,28 +212,29 @@ forAllParallelProgram generator shrinker precondition transition model =
 -- | Variant of 'forAllParallelProgram' which returns the generated and shrunk
 --   program if the property fails.
 forAllParallelProgramC
-  :: Show (Untyped act)
+  :: Show1 (act Symbolic)
   => HFoldable act
   => Generator model act
   -> Shrinker act
   -> Precondition model act
-  -> Transition   model act
+  -> Transition' model act err
   -> InitialModel model
   -> (ParallelProgram act -> PropertyOf a) -- ^ Predicate that should hold
                                            --   for all parallel programs.
   -> PropertyOf (ParallelProgram act :&: a)
 forAllParallelProgramC generator shrinker precondition transition model =
-  forAllShrink
+  forAllShrinkShowC
     (generateParallelProgram generator precondition transition model)
     (shrinkParallelProgram shrinker precondition transition model)
+    (const "")
 
 -- | Wrapper around 'forAllParallelProgram' using the 'StateMachine'
 -- specification to generate and shrink parallel programs.
 monadicParallel
   :: MonadBaseControl IO m
-  => Show (Untyped act)
+  => Show1 (act Symbolic)
   => HFoldable act
-  => StateMachine' model act err m
+  => StateMachine' model act m err
   -> (ParallelProgram act -> PropertyM m ())
      -- ^ Predicate that should hold for all parallel programs.
   -> Property
@@ -265,9 +243,9 @@ monadicParallel sm = property . monadicParallelC sm
 -- | Variant of 'monadicParallel' with counterexamples.
 monadicParallelC
   :: MonadBaseControl IO m
-  => Show (Untyped act)
+  => Show1 (act Symbolic)
   => HFoldable act
-  => StateMachine' model act err m
+  => StateMachine' model act m err
   -> (ParallelProgram act -> PropertyM m ())
      -- ^ Predicate that should hold for all parallel programs.
   -> PropertyOf (ParallelProgram act)
@@ -282,9 +260,9 @@ monadicParallelC StateMachine {..} predicate
 --   'StateMachine' specification.
 runParallelProgram
   :: MonadBaseControl IO m
-  => Show (Untyped act)
+  => Show1 (act Symbolic)
   => HTraversable act
-  => StateMachine' model act err m
+  => StateMachine' model act m err
      -- ^
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
@@ -296,14 +274,14 @@ runParallelProgram = runParallelProgram' 10
 --   likely we will find a bug, but it also takes longer.
 runParallelProgram'
   :: MonadBaseControl IO m
-  => Show (Untyped act)
+  => Show1 (act Symbolic)
   => HTraversable act
   => Int -- ^ How many times to execute the parallel program.
-  -> StateMachine' model act err m
+  -> StateMachine' model act m err
      -- ^
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
-runParallelProgram' n StateMachine {..} prog =
+runParallelProgram' n StateMachine{..} prog =
   replicateM n $ do
     hist <- run (executeParallelProgram semantics' prog)
     return (hist, linearise transition' postcondition' model' hist)
