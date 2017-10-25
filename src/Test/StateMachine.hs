@@ -28,7 +28,9 @@ module Test.StateMachine
   , forAllProgram
   , monadicSequential
   , runProgram
+  , runProgram'
   , prettyProgram
+  , prettyProgram'
   , actionNames
   , checkActionNames
 
@@ -60,9 +62,13 @@ import           Control.Monad.State
                    (evalStateT, replicateM)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl)
+import           Data.Functor.Classes
+                   (Show1)
 import           Data.Map
                    (Map)
 import qualified Data.Map                              as M
+import           Data.Typeable
+                   (Typeable)
 import           Test.QuickCheck
                    (Property, collect, cover, ioProperty, property)
 import qualified Test.QuickCheck
@@ -76,7 +82,7 @@ import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (whenFailM)
+                   (forAllShrinkShowC, whenFailM)
 import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
@@ -84,8 +90,7 @@ import           Test.StateMachine.Types.History
 
 -- | This function is like a 'forAllShrink' for sequential programs.
 forAllProgram
-  :: Show (Untyped act)
-  => HFoldable act
+  :: HFoldable act
   => Generator model act
   -> Shrinker act
   -> Precondition model act
@@ -102,8 +107,7 @@ forAllProgram generator shrinker precondition transition model =
 -- | Variant of 'forAllProgram' which returns the generated and shrunk
 -- program if the property fails.
 forAllProgramC
-  :: Show (Untyped act)
-  => HFoldable act
+  :: HFoldable act
   => Generator model act
   -> Shrinker act
   -> Precondition model act
@@ -113,15 +117,15 @@ forAllProgramC
                                     --   programs.
   -> PropertyOf (Program act :&: a)
 forAllProgramC generator shrinker precondition transition model =
-  forAllShrink
+  forAllShrinkShowC
     (evalStateT (generateProgram generator precondition transition 0) model)
     (shrinkProgram shrinker precondition transition model)
+    (const "")
 
 -- | Wrapper around 'forAllProgram' using the 'StateMachine' specification
 -- to generate and shrink sequential programs.
 monadicSequential
   :: Monad m
-  => Show (Untyped act)
   => HFoldable act
   => StateMachine' model act err m
   -> (Program act -> PropertyM m a)
@@ -132,7 +136,6 @@ monadicSequential sm = property . monadicSequentialC sm
 -- | Variant of 'monadicSequential' with counterexamples.
 monadicSequentialC
   :: Monad m
-  => Show (Untyped act)
   => HFoldable act
   => StateMachine' model act err m
   -> (Program act -> PropertyM m a)
@@ -148,8 +151,7 @@ monadicSequentialC StateMachine {..} predicate
 -- | Testable property of sequential programs derived from a
 -- 'StateMachine' specification.
 runProgram
-  :: forall m act err model
-  .  Monad m
+  :: Monad m
   => Show (Untyped act)
   => HTraversable act
   => StateMachine' model act err m
@@ -157,6 +159,18 @@ runProgram
   -> Program act
   -> PropertyM m (History act err, model Concrete, Property)
 runProgram sm = run . executeProgram sm
+
+runProgram'
+  :: Monad m
+  => Show1 (act Symbolic)
+  => Show err
+  => Typeable err
+  => HTraversable act
+  => StateMachine'' model act err m
+     -- ^
+  -> Program act
+  -> PropertyM m (History act err, model Concrete, Reason)
+runProgram' sm = run . executeProgram' sm
 
 -- | Takes the output of running a program and pretty prints a
 --   counterexample if the run failed.
@@ -168,6 +182,19 @@ prettyProgram
   -> Property
   -> PropertyM m ()
 prettyProgram _ hist _ prop = putStrLn (ppHistory hist) `whenFailM` prop
+
+prettyProgram'
+  :: MonadIO m
+  => Show (model Concrete)
+  => Show err
+  => Program act
+  -> History act err
+  -> model Concrete
+  -> Transition' model act err
+  -> Property
+  -> PropertyM m ()
+prettyProgram' _prog hist model transition prop =
+  putStrLn (ppHistory' model transition hist) `whenFailM` prop
 
 -- | Print distribution of actions and fail if some actions have not been
 --   executed.

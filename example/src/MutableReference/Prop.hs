@@ -123,10 +123,10 @@ checkParallelProgram (ParallelProgram prog) =
   hasMinimalShrink :: Fork (Program Action) -> Bool
   hasMinimalShrink
     = anyTree isMinimal
-    . unfoldTree (id &&& shrinker'')
+    . unfoldTree (id &&& forkShrinker)
     where
-    shrinker'' :: Fork (Program Action) -> [Fork (Program Action)]
-    shrinker''
+    forkShrinker :: Fork (Program Action) -> [Fork (Program Action)]
+    forkShrinker
       = map unParallelProgram
       . shrinkParallelProgram shrinker precondition transition initModel
       . ParallelProgram

@@ -25,6 +25,7 @@ module Test.StateMachine.Internal.Sequential
   , liftShrinkInternal
   , shrinkProgram
   , executeProgram
+  , executeProgram'
   )
   where
 
@@ -34,11 +35,15 @@ import           Control.Monad.State
                    (State, StateT, evalState, get, lift, put)
 import           Data.Dynamic
                    (toDyn)
+import           Data.Functor.Classes
+                   (Show1, showsPrec1)
 import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
+import           Data.Typeable
+                   (Typeable)
 import           Test.QuickCheck
                    (Gen, Property, choose, counterexample, property,
                    shrinkList, sized, suchThat, (.&&.))
@@ -170,15 +175,69 @@ executeProgram StateMachine {..}
                      , env
                      , prop .&&. postcondition' cmodel cact (Fail err)
                      )
-            Ok resp  -> do
+            Success resp -> do
               let cresp = Concrete resp
                   hist' = History
                     [ InvocationEvent (UntypedConcrete cact) (show (Untyped act)) var (Pid 0)
-                    , ResponseEvent (Ok (toDyn cresp)) (show resp) (Pid 0)
+                    , ResponseEvent (Success (toDyn cresp)) (show resp) (Pid 0)
                     ]
               return ( hist <> hist'
                      , transition' smodel act sym
                      , transition' cmodel cact cresp
                      , insertConcrete sym cresp env
-                     , prop .&&. postcondition' cmodel cact (Ok resp)
+                     , prop .&&. postcondition' cmodel cact (Success resp)
                      )
+
+executeProgram'
+  :: forall m act err model
+  .  Monad m
+  => Typeable err
+  => Show1 (act Symbolic)
+  => Show err
+  => HTraversable act
+  => StateMachine'' model act err m
+  -> Program act
+  -> m (History act err, model Concrete, Reason)
+executeProgram' StateMachine'' {..}
+  = fmap (\(hist, _, cmodel, _, reason) -> (hist, cmodel, reason))
+  . go (mempty, model'', model'', emptyEnvironment)
+  . unProgram
+  where
+  go :: (History act err, model Symbolic, model Concrete, Environment)
+     -> [Internal act]
+     -> m (History act err, model Symbolic, model Concrete, Environment, Reason)
+  go (hist, smodel, cmodel, env)  []                                       =
+    return (hist, smodel, cmodel, env, Ok)
+  go (hist, smodel, cmodel, env)  (Internal act sym@(Symbolic var) : acts) =
+    if not (precondition'' smodel act)
+    then
+      return ( hist
+             , smodel
+             , cmodel
+             , env
+             , PreconditionFailed
+             )
+    else do
+      let Right cact = reify env act
+      resp <- semantics'' cact
+      let hist' = hist <> History
+            [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
+            , ResponseEvent (Success (toDyn resp)) (ppResult resp) (Pid 0)
+            ]
+      if not (postcondition'' cmodel cact resp)
+      then
+        return ( hist'
+               , smodel
+               , cmodel
+               , env
+               , PostconditionFailed
+               )
+      else do
+        go ( hist'
+           , transition'' smodel act (Success sym)
+           , transition'' cmodel cact (fmap Concrete resp)
+           , case resp of
+               Success resp' -> insertConcrete sym (Concrete resp') env
+               Fail    _     -> env
+           )
+           acts
