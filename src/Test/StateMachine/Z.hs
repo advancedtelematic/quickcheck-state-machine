@@ -1,3 +1,6 @@
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE TypeOperators   #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Test.StateMachine.Z
@@ -20,42 +23,89 @@ import qualified Data.List as List
 
 ------------------------------------------------------------------------
 
-union :: Eq a => [a] -> [a] -> [a]
-union = List.union
+infixr 1 ==>
 
-intersect :: Eq a => [a] -> [a] -> [a]
-intersect = List.intersect
+-- | Logical implication.
+(==>) :: Bool -> Bool -> Bool
+True  ==> p  = p
+False ==> _  = True
 
-isSubsetOf :: Eq a => [a] -> [a] -> Bool
-r `isSubsetOf` s = r == r `intersect` s
+infix 0 <==>
 
+-- | Logical equivalence.
+(<==>) :: Bool -> Bool -> Bool
+p <==> q = p ==> q && q ==> p
+
+forall :: [a] -> (a -> Bool) -> Bool
+forall = flip all
+
+exists :: [a] -> (a -> Bool) -> Bool
+exists = flip any
+
+------------------------------------------------------------------------
+
+-- | Power set.
+type Pow a = [a]
+
+-- | Union.
+(\/) :: Eq a => [a] -> [a] -> [a]
+(\/) = List.union
+
+unions :: Eq a => [[a]] -> [a]
+unions = foldr (\xs ih -> xs \/ ih) []
+
+union :: Eq b => [a] -> (a -> [b]) -> [b]
+union xs f = unions [ f x | x <- xs ]
+
+-- | Intersection.
+(/\) :: Eq a => [a] -> [a] -> [a]
+(/\) = List.intersect
+
+-- | Cartesian product.
+x :: [a] -> [b] -> Rel a b
+xs `x` ys = [ (x, y)
+            | x <- xs
+            , y <- ys
+            ]
+
+-- | Subset.
+(<:) :: Eq a => [a] -> [a] -> Bool
+r <: s = r == r /\ s
+
+-- | Set equality.
 (~=) :: Eq a => [a] -> [a] -> Bool
-xs ~= ys = xs `isSubsetOf` ys && ys `isSubsetOf` xs
+xs ~= ys = xs <: ys && ys <: xs
 
 ------------------------------------------------------------------------
 
--- | Relations.
-type Rel a b = [(a, b)]
+type Finite a = (Bounded a, Enum a, Eq a)
 
--- | (Partial) functions.
-type Fun a b = Rel a b
+universe :: Finite a => [a]
+universe = enumFrom minBound
 
 ------------------------------------------------------------------------
 
-empty :: Rel a b
-empty = []
+-- * Pairs and binary relations.
 
-identity :: [a] -> Rel a a
-identity xs = [ (x, x) | x <- xs ]
+-- | Maplet.
+(|->) :: a -> b -> (a, b)
+x |-> y = (x, y)
 
-singleton :: a -> b -> Rel a b
-singleton x y = [(x, y)]
+-- | Binary relations.
+type Rel a b = Pow (a, b)
+type a <-> b = Rel a b
 
 domain :: Rel a b -> [a]
 domain xys = [ x | (x, _) <- xys ]
 
 codomain :: Rel a b -> [b]
 codomain xys = [ y | (_, y) <- xys ]
+
+singleton :: a -> b -> Rel a b
+singleton x y = [x |-> y]
+
+identity :: [a] -> Rel a a
+identity xs = [ (x, x) | x <- xs ]
 
 compose :: Eq b => Rel b c -> Rel a b -> Rel a c
 compose yzs xys =
@@ -70,12 +120,6 @@ fcompose r s = compose s r
 
 inverse :: Rel a b -> Rel b a
 inverse xys = [ (y, x) | (x, y) <- xys ]
-
-lookupDom :: Eq a => a -> Rel a b -> [b]
-lookupDom x xys = xys >>= \(x', y) -> [ y | x == x' ]
-
-lookupCod :: Eq b => b -> Rel a b -> [a]
-lookupCod y xys = xys >>= \(x, y') -> [ x | y == y' ]
 
 ------------------------------------------------------------------------
 
@@ -97,19 +141,19 @@ xys |> ys = [ (x, y) | (x, y) <- xys, y `elem` ys ]
 
 -- | Domain substraction.
 --
--- >>> ['a'] <-| [ ('a', "apa"), ('b', "bepa") ]
+-- >>> ['a'] <<| [ ('a', "apa"), ('b', "bepa") ]
 -- [('b',"bepa")]
 --
-(<-|) :: Eq a => [a] -> Rel a b -> Rel a b
-xs <-| xys = [ (x, y) | (x, y) <- xys, x `notElem` xs ]
+(<<|) :: Eq a => [a] -> Rel a b -> Rel a b
+xs <<| xys = [ (x, y) | (x, y) <- xys, x `notElem` xs ]
 
 -- | Codomain substraction.
 --
--- >>> [ ('a', "apa"), ('b', "bepa") ] |-> ["apa"]
+-- >>> [ ('a', "apa"), ('b', "bepa") ] |>> ["apa"]
 -- [('b',"bepa")]
 --
-(|->) :: Eq b => Rel a b -> [b] -> Rel a b
-xys |-> ys = [ (x, y) | (x, y) <- xys, y `notElem` ys ]
+(|>>) :: Eq b => Rel a b -> [b] -> Rel a b
+xys |>> ys = [ (x, y) | (x, y) <- xys, y `notElem` ys ]
 
 -- | The image of a relation.
 image :: Eq a => Rel a b -> [a] -> [b]
@@ -124,11 +168,11 @@ image r xs = codomain (xs <| r)
 -- [('a',"apa"),('b',"bepa")]
 --
 (<+) :: (Eq a, Eq b) => Rel a b -> Rel a b -> Rel a b
-r <+ s  = domain s <-| r `union` s
+r <+ s  = domain s <<| r \/ s
 
 -- | Direct product.
-(<**>) :: Eq a => Rel a b -> Rel a c -> Rel a (b, c)
-xys <**> xzs =
+(><) :: Eq a => Rel a b -> Rel a c -> Rel a (b, c)
+xys >< xzs =
   [ (x, (y, z))
   | (x , y) <- xys
   , (x', z) <- xzs
@@ -136,12 +180,73 @@ xys <**> xzs =
   ]
 
 -- | Parallel product.
+--
+-- >>> [(1, 2), (3, 4)] <||> [(5, 6), (7, 8), (9, 10)]
+-- [((1,5),(2,6)),((1,7),(2,8)),((1,9),(2,10)),((3,5),(4,6)),((3,7),(4,8)),((3,9),(4,10))]
+--
 (<||>) :: Rel a c -> Rel b d -> Rel (a, b) (c, d)
 acs <||> bds =
   [ ((a, b), (c, d))
   | (a, c) <- acs
   , (b, d) <- bds
   ]
+
+-- | Division.
+(-:-) :: Rel a b -> [b] -> [a]
+r -:- xs = undefined
+
+------------------------------------------------------------------------
+
+-- | (Partial) functions.
+type Fun a b = Rel a b
+
+-- | Application.
+(!) :: Eq a => Rel a b -> a -> Maybe b
+xys ! x = lookup x xys
+
+(.!) :: Rel a b -> a -> (Rel a b, a)
+f .! x = (f, x)
+
+-- | Assignment.
+--
+-- >>> singleton 'a' "apa" .! 'a' .= "bepa"
+-- [('a',"bepa")]
+--
+-- >>> singleton 'a' "apa" .! 'b' .= "bepa"
+-- [('a',"apa"),('b',"bepa")]
+--
+(.=) :: (Eq a, Eq b) => (Rel a b, a) -> b -> Rel a b
+(f, x) .= y = f <+ singleton x y
+
+------------------------------------------------------------------------
+
+-- * Closure.
+
+-- | Reflexive closure.
+rcl :: Eq a => Rel a a -> [a] -> Rel a a
+rcl r xs = r \/ identity xs
+
+rcl' :: Finite a => Rel a a -> Rel a a
+rcl' r = rcl r universe
+
+-- | Symmetric closure.
+scl :: Eq a => Rel a a -> Rel a a
+scl r = r \/ inverse r
+
+-- | Iteration.
+iter :: Eq a => Int -> Rel a a -> [a] -> Rel a a
+iter 0 _ xs         = identity xs
+iter 1 r _          = r
+iter n r xs | n > 1 = r `fcompose` iter (n - 1) r xs
+            | n < 0 = iter n (inverse r) xs
+
+-- | Transitive closure.
+plus :: Eq a => Rel a a -> Rel a a
+plus r = union [1..] (\n -> iter n r [])
+
+-- | Reflexive transitive closure.
+star :: Eq a => Rel a a -> [a] -> Rel a a
+star r xs = plus r \/ identity xs
 
 ------------------------------------------------------------------------
 
@@ -182,19 +287,5 @@ f ! x = maybe (error "!: lookup failed.") id (lookup x f)
 (.%) :: (Eq a, Eq b) => (Fun a b, a) -> (b -> b) -> Fun a b
 (f, x) .% g = f .! x .= g (f ! x)
 
-------------------------------------------------------------------------
-
-
-(.!) :: Rel a b -> a -> (Rel a b, a)
-f .! x = (f, x)
-
--- | Assignment.
---
--- >>> singleton 'a' "apa" .! 'a' .= "bepa"
--- [('a',"bepa")]
---
--- >>> singleton 'a' "apa" .! 'b' .= "bepa"
--- [('a',"apa"),('b',"bepa")]
---
-(.=) :: (Eq a, Eq b) => (Rel a b, a) -> b -> Rel a b
-(f, x) .= y = f <+ singleton x y
+select :: (a -> b -> Bool) -> Rel a b -> Rel a b
+select p = filter (uncurry p)
