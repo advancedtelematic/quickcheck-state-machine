@@ -119,11 +119,11 @@ Post-conditions are checked after we executed an action and got access to the
 result.
 
 ```haskell
-postcondition :: Model Concrete -> Action Concrete resp -> resp -> Property
-postcondition _         New         _    = property True
-postcondition (Model m) (Read ref)  resp = lookup ref m === Just resp
-postcondition _         (Write _ _) _    = property True
-postcondition _         (Inc _)     _    = property True
+postcondition :: Model Concrete -> Action Concrete resp -> resp -> Bool
+postcondition _         New         _    = True
+postcondition (Model m) (Read ref)  resp = lookup ref m == Just resp
+postcondition _         (Write _ _) _    = True
+postcondition _         (Inc _)     _    = True
 ```
 
 Finally, we have to explain how to generate and shrink actions.
@@ -149,7 +149,7 @@ record.
 
 ```haskell
 sm :: Problem -> StateMachine Model Action IO
-sm prb = StateMachine
+sm prb = stateMachine
   generator shrinker precondition transition
   postcondition initModel (semantics prb) id
 ```
@@ -157,11 +157,13 @@ sm prb = StateMachine
 We can now define a sequential property as follows.
 
 ```haskell
-prop_references :: Problem -> Property
-prop_references prb = monadicSequential (sm prb) $ \prog -> do
-  (hist, model, prop) <- runProgram (sm prb) prog
-  prettyProgram prog hist model $
-    checkActionNames prog prop
+prop_references :: Problem -> PropertyOf (Program Action)
+prop_references prb = monadicSequentialC sm' $ \prog -> do
+  (hist, _, res) <- runProgram sm' prog
+  prettyProgram sm' hist $
+    checkActionNames prog (res === Ok)
+  where
+  sm' = sm prb
 ```
 
 If we run the sequential property without introducing any problems to the
@@ -171,9 +173,23 @@ minimal counterexample:
 
 ```
 > quickCheck (prop_references Bug)
-*** Failed! Falsifiable (after 16 tests and 4 shrinks):
-[New (Var 0),Write (Var 0) 5 (Var 2),Read (Var 0) (Var 3)]
-Just 5 /= Just 6
+*** Failed! Falsifiable (after 19 tests and 3 shrinks):
+
+Model []
+
+    New --> Opaque
+
+Model [(Reference Concrete Opaque,0)]
+
+    Write (Reference (Symbolic (Var 0))) 5 --> ()
+
+Model [(Reference Concrete Opaque,5)]
+
+    Read (Reference (Symbolic (Var 0))) --> 6
+
+Model [(Reference Concrete Opaque,5)]
+
+PostconditionFailed /= Ok
 ```
 
 Recall that the bug problem causes the write of values ``i `elem` [5..10]`` to

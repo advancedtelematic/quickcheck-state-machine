@@ -28,9 +28,9 @@ module DieHard
   ) where
 
 import           Data.Functor.Classes
-                   (Show1)
+                   (Show1, liftShowsPrec)
 import           Test.QuickCheck
-                   (elements, property)
+                   (elements, (===))
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
@@ -55,6 +55,9 @@ data Action (v :: * -> *) :: * -> * where
   BigIntoSmall :: Action v ()
 
 deriving instance Show1 v => Show (Action v resp)
+
+instance Show1 (Action Symbolic) where
+  liftShowsPrec _ _ _ act _ = show act
 
 ------------------------------------------------------------------------
 
@@ -103,7 +106,7 @@ transitions (Model big small) BigIntoSmall _ =
 -- be presented -- this will be our solution.
 
 postconditions :: Postcondition Model Action
-postconditions s c r = property (bigJug (transitions s c (Concrete r)) /= 4)
+postconditions s c r = bigJug (transitions s c (Concrete r)) /= 4
 
 ------------------------------------------------------------------------
 
@@ -140,9 +143,6 @@ semantics BigIntoSmall = return ()
 
 ------------------------------------------------------------------------
 
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
-
 deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
@@ -159,9 +159,9 @@ sm = stateMachine
 
 prop_dieHard :: PropertyOf (Program Action)
 prop_dieHard = monadicSequentialC sm $ \prog -> do
-  (hist, model, prop) <- runProgram sm prog
-  prettyProgram prog hist model $
-    checkActionNames prog prop
+  (hist, _, res) <- runProgram sm prog
+  prettyProgram sm hist $
+    checkActionNames prog (res === Ok)
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --

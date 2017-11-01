@@ -29,7 +29,7 @@ module TicketDispenser
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
-                   (Eq1(..), Show1)
+                   (Eq1(..), Show1, liftShowsPrec)
 import           Prelude                                  hiding
                    (readFile)
 import           System.Directory
@@ -44,7 +44,7 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Property, frequency, property, (===))
+                   (Property, frequency, (===))
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
@@ -69,8 +69,8 @@ deriving instance Show1 v => Show (Action v resp)
 -- Which correspond to taking a ticket and getting the next number, and
 -- resetting the number counter of the dispenser.
 
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
+instance Show1 (Action Symbolic) where
+  liftShowsPrec _ _ _ x _ = show x
 
 ------------------------------------------------------------------------
 
@@ -94,8 +94,8 @@ transitions (Model m) cmd _ = case cmd of
 
 postconditions :: Postcondition Model Action
 postconditions (Model m) cmd resp = case cmd of
-  TakeTicket -> Just resp === (succ <$> m)
-  Reset      -> property True
+  TakeTicket -> Just resp == (succ <$> m)
+  Reset      -> True
 
 ------------------------------------------------------------------------
 
@@ -178,18 +178,18 @@ sm se files = stateMachine
 
 prop_ticketDispenser :: DbLock -> Property
 prop_ticketDispenser files = monadicSequential sm' $ \prog -> do
-  (hist, model, prop) <- runProgram sm' prog
-  prettyProgram prog hist model $
-    checkActionNames prog prop
+  (hist, _, res) <- runProgram sm' prog
+  prettyProgram sm' hist $
+    checkActionNames prog (res === Ok)
   where
-    sm' = sm Shared files
+  sm' = sm Shared files
 
 prop_ticketDispenserParallel :: SharedExclusive -> DbLock -> PropertyOf (ParallelProgram Action)
 prop_ticketDispenserParallel se files =
   monadicParallelC sm' $ \prog ->
     prettyParallelProgram prog =<< runParallelProgram' 100 sm' prog
   where
-    sm' = sm se files
+  sm' = sm se files
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.

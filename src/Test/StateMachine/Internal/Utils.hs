@@ -54,17 +54,17 @@ alwaysP n prop
 
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.
-shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
+shrinkPropertyHelperC :: PropertyOf a -> (a -> Bool) -> Property
 shrinkPropertyHelperC prop p = shrinkPropertyHelperC' prop (property . p)
 
 -- | Same as above, but using a property predicate.
-shrinkPropertyHelperC' :: Show a => PropertyOf a -> (a -> Property) -> Property
+shrinkPropertyHelperC' :: PropertyOf a -> (a -> Property) -> Property
 shrinkPropertyHelperC' prop p = monadicIO $ do
   ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
   case ce_ of
     Nothing -> return ()
     Just ce -> liftProperty $
-      counterexample ("failed: " ++ show ce) $ p ce
+      counterexample ("shrinkPropertyHelper: failed.") $ p ce
 
 -- | Given shrinkers for the components of a pair we can shrink the pair.
 shrinkPair' :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])

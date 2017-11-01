@@ -29,7 +29,7 @@ import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
-                   frequency, property, shrink, (.&&.), (.||.), (===))
+                   frequency, shrink, (===))
 
 import           Test.StateMachine
 import           Test.StateMachine.TH
@@ -105,6 +105,9 @@ data Action a (v :: * -> *) :: * -> * where
 
 deriving instance (Show a, Show1 v) => Show (Action a v resp)
 
+instance Show a => Show1 (Action a Symbolic) where
+  liftShowsPrec _ _ _ x _ = show x
+
 type Ref a v = Reference v (Opaque (Element a))
 
 ------------------------------------------------------------------------
@@ -113,7 +116,7 @@ type Ref a v = Reference v (Opaque (Element a))
 -- in section 12 of the paper.
 
 newtype Model a (v :: * -> *) = Model [(Ref a v, Ref a v)]
-  deriving Eq
+  deriving (Eq, Show)
 
 initModel :: Model a v
 initModel = Model []
@@ -144,13 +147,13 @@ transitions m act resp = case act of
 
 postconditions :: (Eq a, Show a) => Postcondition (Model a) (Action a)
 postconditions m act resp = case act of
-  New   _         -> property True
-  Find  ref       -> opaque (m ! ref) === unOpaque resp .&&. m == m'
+  New   _         -> True
+  Find  ref       -> opaque (m ! ref) == unOpaque resp && m == m'
     where
     m' = transitions m act (Concrete resp)
   Union ref1 ref2 ->
     let z = m' ! ref1
-    in property ((z === m ! ref1 .||. z === m ! ref2) .&&. z === m' ! ref2)
+    in (z == m ! ref1 || z == m ! ref2) && z == m' ! ref2
     where
     m' = transitions m act (Concrete resp)
 
@@ -182,11 +185,6 @@ semantics (Union ref1 ref2) = unionElements (opaque ref1) (opaque ref2)
 
 deriveTestClasses ''Action
 
-instance Show a => Show (Untyped (Action a)) where
-  show (Untyped act) = show act
-
-------------------------------------------------------------------------
-
 sm :: StateMachine (Model Int) (Action Int) IO
 sm = stateMachine
   generator shrinker preconditions transitions
@@ -194,6 +192,6 @@ sm = stateMachine
 
 prop_unionFind :: Property
 prop_unionFind = monadicSequential sm $ \prog -> do
-  (hist, model, prop) <- runProgram sm prog
-  prettyProgram prog hist model $
-    checkActionNames prog prop
+  (hist, _, res) <- runProgram sm prog
+  prettyProgram sm hist $
+    checkActionNames prog (res === Ok)

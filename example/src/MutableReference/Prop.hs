@@ -34,6 +34,8 @@ import           Data.Monoid
                    ((<>))
 import           Data.Tree
                    (Tree(Node), unfoldTree)
+import           Data.Void
+                   (Void)
 import           Test.QuickCheck
                    (Property, forAll, (===))
 
@@ -50,19 +52,22 @@ import           MutableReference
 
 ------------------------------------------------------------------------
 
+oktransition :: Transition' Model Action Void
+oktransition = okTransition transition
+
 prop_genScope :: Property
 prop_genScope = forAll
-  (evalStateT (generateProgram generator precondition transition 0) initModel)
+  (evalStateT (generateProgram generator precondition oktransition 0) initModel)
   scopeCheck
 
 prop_genParallelScope :: Property
 prop_genParallelScope = forAll
-  (generateParallelProgram generator precondition transition initModel)
+  (generateParallelProgram generator precondition oktransition initModel)
   scopeCheckParallel
 
 prop_genParallelSequence :: Property
 prop_genParallelSequence = forAll
-  (generateParallelProgram generator precondition transition initModel)
+  (generateParallelProgram generator precondition oktransition initModel)
   go
   where
   go :: ParallelProgram Action -> Property
@@ -97,18 +102,18 @@ cheat = ParallelProgram . fmap go . unParallelProgram
 
 prop_shrinkParallelSubseq :: Property
 prop_shrinkParallelSubseq = forAll
-  (generateParallelProgram generator precondition transition initModel)
+  (generateParallelProgram generator precondition oktransition initModel)
   $ \prog@(ParallelProgram (Fork l p r)) ->
     all (\(ParallelProgram (Fork l' p' r')) ->
            void (unProgram l') `isSubsequenceOf` void (unProgram l) &&
            void (unProgram p') `isSubsequenceOf` void (unProgram p) &&
            void (unProgram r') `isSubsequenceOf` void (unProgram r))
-        (shrinkParallelProgram shrinker precondition transition initModel (cheat prog))
+        (shrinkParallelProgram shrinker precondition oktransition initModel (cheat prog))
 
 prop_shrinkParallelScope :: Property
 prop_shrinkParallelScope = forAll
-  (generateParallelProgram generator precondition transition initModel) $ \p ->
-    all scopeCheckParallel (shrinkParallelProgram shrinker precondition transition initModel p)
+  (generateParallelProgram generator precondition oktransition initModel) $ \p ->
+    all scopeCheckParallel (shrinkParallelProgram shrinker precondition oktransition initModel p)
 
 ------------------------------------------------------------------------
 
@@ -128,7 +133,7 @@ checkParallelProgram (ParallelProgram prog) =
     forkShrinker :: Fork (Program Action) -> [Fork (Program Action)]
     forkShrinker
       = map unParallelProgram
-      . shrinkParallelProgram shrinker precondition transition initModel
+      . shrinkParallelProgram shrinker precondition oktransition initModel
       . ParallelProgram
 
     anyTree :: (a -> Bool) -> Tree a -> Bool

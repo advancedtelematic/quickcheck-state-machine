@@ -58,7 +58,7 @@ import           Control.Monad.Trans.Resource
 import           Data.Char
                    (isPrint)
 import           Data.Functor.Classes
-                   (Show1)
+                   (Show1, liftShowsPrec)
 import           Data.Proxy
                    (Proxy(Proxy))
 import           Data.String.Conversions
@@ -90,8 +90,7 @@ import           System.FilePath
                    ((</>))
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
-                   frequency, listOf, property, shrink, suchThat,
-                   (===))
+                   frequency, listOf, shrink, suchThat, (===))
 import           Test.QuickCheck.Instances
                    ()
 
@@ -223,6 +222,11 @@ data Action (v :: * -> *) :: * -> * where
 -- unique and come from the database, they are references to previously
 -- created users.
 
+deriving instance Show1 v => Show (Action v resp)
+
+instance Show1 (Action Symbolic) where
+  liftShowsPrec _ _ _ act _ = show act
+
 ------------------------------------------------------------------------
 
 -- Next we define the model, or reference implementation, that we want
@@ -231,6 +235,7 @@ data Action (v :: * -> *) :: * -> * where
 -- user ids and @User@s implemented using a list of pairs.
 
 newtype Model v = Model [(Reference v (Key User), User)]
+  deriving Show
 
 -- The initial model is just an empty list.
 
@@ -269,10 +274,10 @@ transitions (Model m) (DeleteUser key)  _   = Model (filter ((/= key) . fst) m)
 -- the key in the model.
 
 postconditions :: Postcondition Model Action
-postconditions _         (PostUser _)   _    = property True
-postconditions (Model m) (GetUser key)  resp = lookup key m === resp
-postconditions _         (IncAgeUser _) _    = property True
-postconditions _         (DeleteUser _) _    = property True
+postconditions _         (PostUser _)   _    = True
+postconditions (Model m) (GetUser key)  resp = lookup key m == resp
+postconditions _         (IncAgeUser _) _    = True
+postconditions _         (DeleteUser _) _    = True
 
 ------------------------------------------------------------------------
 
@@ -322,16 +327,8 @@ semantics act = do
 
 ------------------------------------------------------------------------
 
--- In order to display counterexamples we need a couple of boring show
--- instances.
-
-deriving instance Show1 v => Show (Action v resp)
-
-instance Show (Untyped Action) where
-  show (Untyped act) = show act
-
--- And in order for the library to deal with @Reference@s we need to
--- explain how to traverse them.
+-- In order for the library to deal with @Reference@s we need to explain
+-- how to traverse them.
 
 deriveTestClasses ''Action
 
@@ -360,9 +357,9 @@ withCrudWebserverDb =
 prop_crudWebserverDb :: Property
 prop_crudWebserverDb =
   monadicSequential sm' $ \prog -> do
-    (hist, model, prop) <- runProgram sm' prog
-    prettyProgram prog hist model $
-      checkActionNames prog prop
+    (hist, _, res) <- runProgram sm' prog
+    prettyProgram sm' hist $
+      checkActionNames prog (res === Ok)
   where
     sm' = sm crudWebserverDbPort
 

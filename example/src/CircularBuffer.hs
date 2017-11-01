@@ -30,6 +30,8 @@ import           Control.Monad
                    (guard)
 import           Data.Function
                    (on)
+import           Data.Functor.Classes
+                   (Show1, liftShowsPrec)
 import           Data.IORef
 import           Data.Maybe
                    (isJust)
@@ -38,7 +40,7 @@ import           Data.Vector.Unboxed.Mutable
 import qualified Data.Vector.Unboxed.Mutable as V
 import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
-                   frequency, oneof, property, (===))
+                   frequency, oneof, (===))
 import           Test.StateMachine
 import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses, mkShrinker)
@@ -133,6 +135,9 @@ data Action (v :: * -> *) :: * -> * where
 deriveShows ''Action
 deriveTestClasses ''Action
 
+instance Show1 (Action Symbolic) where
+  liftShowsPrec _ _ _ act _ = show act
+
 ------------------------------------------------------------------------
 
 -- | A simple, persistent, inefficient buffer.
@@ -158,6 +163,7 @@ removeSpecBuffer (SpecBuffer n xs) = (last xs, SpecBuffer n (init xs))
 
 -- | The model is a map from buffer references to their values.
 newtype Model v = Model [(Reference v (Opaque Buffer), SpecBuffer)]
+  deriving Show
 
 -- | Initially, there are no references to buffers.
 initModel :: Model v
@@ -190,16 +196,16 @@ update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 update ref i m = (ref, i) : filter ((/= ref) . fst) m
 
 postcondition :: Postcondition Model Action
-postcondition _         (New _)      _ = property True
-postcondition _         (Put _ _)    _ = property True
+postcondition _         (New _)      _ = True
+postcondition _         (Put _ _)    _ = True
 postcondition (Model m) (Get buffer) y = case lookup buffer m of
-  Nothing -> property False
+  Nothing         -> False
   Just specBuffer ->
     let (y', _) = removeSpecBuffer specBuffer
-    in y === y'
+    in y == y'
 postcondition (Model m) (Len buffer) k = case lookup buffer m of
-  Nothing         -> property False
-  Just specBuffer -> k === length (specContents specBuffer)
+  Nothing         -> False
+  Just specBuffer -> k == length (specContents specBuffer)
 
 ------------------------------------------------------------------------
 
@@ -248,9 +254,9 @@ sm version bugs = stateMachine
 prepropcircularBuffer :: Version -> Bugs -> Property
 prepropcircularBuffer version bugs =
   monadicSequential sm' $ \prog -> do
-    (hist, model, prop) <- runProgram sm' prog
-    prettyProgram prog hist model $
-      checkActionNames prog prop
+    (hist, _, res) <- runProgram sm' prog
+    prettyProgram sm' hist $
+      checkActionNames prog (res === Ok)
   where
   sm' = sm version bugs
 
