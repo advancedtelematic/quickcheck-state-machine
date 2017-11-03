@@ -38,6 +38,8 @@ import           Data.Tree
                    (Tree(Node))
 import           Data.Typeable
                    (Typeable)
+import           Text.Show
+                   (showString)
 
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
@@ -70,7 +72,7 @@ ppHistory
   => Show err
   => model Concrete -> Transition' model act err -> History act err -> String
 ppHistory model0 transition
-  = showsPrec 10 model0
+  = showString (ppModel model0)
   . go model0
   . makeOperations
   . unHistory
@@ -81,7 +83,21 @@ ppHistory model0 transition
     let model1 = transition model act (fmap Concrete resp) in
     "\n\n    " ++ astr ++ (case resp of
         Success _ -> " --> "
-        Fail _    -> " -/-> ") ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
+        Fail _    -> " -/-> ") ++ rstr ++ "\n\n" ++ ppModel model1 ++ go model1 ops
+
+ppModel :: Show (model Concrete) => model Concrete -> String
+ppModel
+  = unwords
+  . concat
+  . replace [("[(Reference", ["["]), ("Concrete", [])]
+  . words
+  . show
+  where
+  replace :: [(String, [String])] -> [String] -> [[String]]
+  replace _    []       = [[]]
+  replace dict (x : xs) = case lookup x dict of
+    Just x' -> x'  : replace dict xs
+    Nothing -> [x] : replace dict xs
 
 -- | Get the process id of an event.
 getProcessIdEvent :: HistoryEvent act err -> Pid

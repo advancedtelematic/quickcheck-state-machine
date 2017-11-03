@@ -45,7 +45,7 @@ import           Control.Monad.Trans.Control
 import           Data.Dynamic
                    (toDyn)
 import           Data.Functor.Classes
-                   (Show1, showsPrec1)
+                   (Show1)
 import           Data.List
                    (partition)
 import           Data.Set
@@ -168,7 +168,7 @@ executeParallelProgram semantics = liftSemFork . unParallelProgram
                               -- create.
       Right cact -> do
         liftBaseWith $ const $ atomically $ writeTChan hchan $
-          InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
+          InvocationEvent (UntypedConcrete cact) (ppAct act) var pid
         mresp <- lift (semantics cact)
         threadDelay 10
         case mresp of

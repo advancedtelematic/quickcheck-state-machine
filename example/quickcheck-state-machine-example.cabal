@@ -10,6 +10,7 @@ library
   exposed-modules:     Bank
                      , CircularBuffer
                      , CrudWebserverDb
+                     , CrudWebserverDbRace
                      , CrudWebserverFile
                      , DieHard
                      , MutableReference
@@ -29,6 +30,7 @@ library
                      , monad-logger
                      , mtl
                      , persistent
+                     , persistent-postgresql
                      , persistent-sqlite
                      , persistent-template
                      , QuickCheck

@@ -25,6 +25,7 @@ module Test.StateMachine.Internal.Sequential
   , liftShrinkInternal
   , shrinkProgram
   , executeProgram
+  , ppAct
   )
   where
 
@@ -160,7 +161,7 @@ executeProgram StateMachine{..}
       let Right cact = reify env act
       resp <- semantics' cact
       let hist' = hist <> History
-            [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
+            [ InvocationEvent (UntypedConcrete cact) (ppAct act) var (Pid 0)
             , ResponseEvent (fmap toDyn resp) (ppResult resp) (Pid 0)
             ]
       if not (postcondition' cmodel cact resp)
@@ -180,3 +181,15 @@ executeProgram StateMachine{..}
                Fail    _     -> env
            )
            acts
+
+ppAct :: (Show1 (act Symbolic), Show resp) => act Symbolic resp -> String
+ppAct act
+  = removeTrailingParens
+  . unwords
+  . filter (\w -> not (w == "(Reference" || w == "(Symbolic"))
+  . words
+  $ showsPrec1 10 act ""
+  where
+  removeTrailingParens cs = case reverse cs of
+    (')' : ')' : cs') -> reverse cs'
+    _                 -> cs
