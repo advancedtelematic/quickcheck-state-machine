@@ -23,13 +23,13 @@ module Test.StateMachine.Types.Generics.TH
   ) where
 
 import           Control.Applicative
-                   (liftA2)
+                   (liftA3)
 import           Control.Monad
                    (filterM, (>=>))
 import           Data.Foldable
                    (asum, foldl')
 import           Data.Functor.Classes
-                   (Show1)
+                   (Show1, liftShowsPrec)
 import           Data.Maybe
                    (maybeToList)
 import           Language.Haskell.TH
@@ -40,18 +40,19 @@ import           Test.QuickCheck
 import           Test.StateMachine.Internal.Utils
                    (dropLast, nub, toLast)
 import           Test.StateMachine.Types
-                   (Untyped)
+                   (Untyped, Symbolic)
 import           Test.StateMachine.Types.Generics
 import           Test.StateMachine.Types.References
                    (Reference)
 
 -- * Show of actions
 
--- | Given a name @''Action@,
--- derive 'Show' for @(Action v a)@ and @('Untyped' Action)@.
--- See 'deriveShow' and 'deriveShowUntyped'.
+-- | Given a name @''Action@, derive 'Show' for @(Action v a)@ and @('Untyped'
+-- Action)@, and 'Show1' @(Action Symbolic)@. See 'deriveShow',
+-- 'deriveShowUntyped', and 'deriveShow1'.
 deriveShows :: Name -> Q [Dec]
-deriveShows = (liftA2 . liftA2) (++) deriveShow deriveShowUntyped
+deriveShows = (liftA3 . liftA3)
+  (\xs ys zs -> xs ++ ys ++ zs) deriveShow deriveShowUntyped deriveShow1
 
 -- |
 --
@@ -92,6 +93,34 @@ deriveShowUntyped' info = do
           (ConT ''Untyped)
           (foldl' AppT (ConT (datatypeName info)) (dropLast 2 (datatypeVars info))))
   return [StandaloneDerivD cxt_ instanceHead_]
+
+-- |
+-- @ 'derivingShow1' ''Action
+-- ===>
+-- instance Show1 (Action Symbolic) where
+--   liftShowsPrec _ _ _ act _ = show act
+-- @
+deriveShow1 :: Name -> Q [Dec]
+deriveShow1 = (fmap . fmap) deriveShow1' reifyDatatype
+
+deriveShow1' :: DatatypeInfo -> [Dec]
+deriveShow1' info0 = pure $
+  InstanceD Nothing [] (instanceHead' info0)
+    [ deriveLiftShows ]
+  where
+  instanceHead' :: DatatypeInfo -> Type
+  instanceHead' info =
+    ConT ''Show1 `AppT`
+      (ConT (datatypeName info) `AppT` ConT ''Symbolic)
+
+  deriveLiftShows :: Dec
+  deriveLiftShows =
+    let
+      act  = mkName "act"
+      body = VarE 'show `AppE` VarE act
+    in
+      FunD 'liftShowsPrec
+        [Clause [WildP, WildP, WildP, VarP act, WildP] (NormalB body) []]
 
 -- | Gather types of fields with parametric types to form @Show@ constraints
 -- for a derived instance.

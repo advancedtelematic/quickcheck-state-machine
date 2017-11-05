@@ -30,8 +30,6 @@ import           Control.Monad
                    (guard)
 import           Data.Function
                    (on)
-import           Data.Functor.Classes
-                   (Show1, liftShowsPrec)
 import           Data.IORef
 import           Data.Maybe
                    (isJust)
@@ -134,9 +132,6 @@ data Action (v :: * -> *) :: * -> * where
 
 deriveShows ''Action
 deriveTestClasses ''Action
-
-instance Show1 (Action Symbolic) where
-  liftShowsPrec _ _ _ act _ = show act
 
 ------------------------------------------------------------------------
 
