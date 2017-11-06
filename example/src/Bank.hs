@@ -278,12 +278,6 @@ instance (HTraversable act0, HTraversable act1) => HTraversable (Plus act0 act1)
 instance Show (Product Model0 Model1 Concrete) where
   show (Pair model0 model1) = show model0 ++ "\n" ++ show model1
 
-instance Show1 (Action0 Symbolic) where
-  liftShowsPrec _ _ _ x _ = show x
-
-instance Show1 (Action1 Symbolic) where
-  liftShowsPrec _ _ _ x _ = show x
-
 instance Show1 (Plus Action0 Action1 Symbolic) where
   liftShowsPrec _ _ _ (Inl act) _ = show act
   liftShowsPrec _ _ _ (Inr act) _ = show act

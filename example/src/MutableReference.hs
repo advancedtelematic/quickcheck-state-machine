@@ -33,8 +33,6 @@ module MutableReference
 
 import           Control.Concurrent
                    (threadDelay)
-import           Data.Functor.Classes
-                   (Show1, liftShowsPrec)
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -143,9 +141,6 @@ semantics prb (Inc   ref)   =
 
 deriveShows ''Action
 deriveTestClasses ''Action
-
-instance Show1 (Action Symbolic) where
-  liftShowsPrec _ _ _ act _ = show act
 
 ------------------------------------------------------------------------
 
