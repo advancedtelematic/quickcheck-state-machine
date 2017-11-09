@@ -37,7 +37,14 @@
 --
 ------------------------------------------------------------------------
 
-module CrudWebserverDb where
+module CrudWebserverDb
+  ( prop_crudWebserverDb
+  , prop_crudWebserverDbParallel
+  , withCrudWebserverDb
+  , withCrudWebserverDbParallel
+  , UserId
+  )
+  where
 
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar, threadDelay)

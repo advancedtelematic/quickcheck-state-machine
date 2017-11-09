@@ -25,6 +25,7 @@ module Test.StateMachine.Internal.Parallel
   , executeParallelProgram
   , linearise
   , toBoxDrawings
+  , splitProgram
   ) where
 
 import           Control.Concurrent.Async.Lifted
@@ -47,7 +48,7 @@ import           Data.Dynamic
 import           Data.Functor.Classes
                    (Show1, showsPrec1)
 import           Data.List
-                   (partition)
+                   (partition, permutations)
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
@@ -239,3 +240,36 @@ toBoxDrawings prog = toBoxDrawings' allVars
 
       evT :: [(EventType, Pid)]
       evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
+
+------------------------------------------------------------------------
+
+splitProgram
+  :: model Symbolic
+  -> Precondition model act
+  -> Transition model act
+  -> Program act
+  -> [Program act]
+splitProgram model0 precondition transition = go model0 [] . unProgram
+  where
+  go _     acc []    = reverse acc
+  go model acc iacts = go (advance model safe) (Program safe : acc) rest
+    where
+    (safe, rest) = spanSafe model [] iacts
+
+  spanSafe _     safe []                          = (reverse safe, [])
+  spanSafe model safe (iact@(Internal _ _) : iacts)
+    | length safe <= 5 && allowed model iact safe = spanSafe model (iact : safe) iacts
+    | otherwise                                   = (reverse safe, iact : iacts)
+
+  allowed model iact
+    = and
+    . map (preconditionsHold model True)
+    . permutations
+    . (iact :)
+
+  preconditionsHold _     acc []                         = acc
+  preconditionsHold model acc (Internal act sym : iacts) =
+    preconditionsHold (transition model act sym) (acc && precondition model act) iacts
+
+  advance model []                         = model
+  advance model (Internal act sym : iacts) = advance (transition model act sym) iacts

@@ -34,9 +34,10 @@
 ------------------------------------------------------------------------
 
 module CrudWebserverFile
-  ( prop_crudWebserverFile
-  , prop_crudWebserverFileParallel
-  ) where
+ --  ( prop_crudWebserverFile
+ --  , prop_crudWebserverFileParallel
+ --  )
+  where
 
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar)
@@ -81,6 +82,12 @@ import           Test.QuickCheck.Instances
 import           Test.StateMachine
 import           Test.StateMachine.TH
                    (deriveTestClasses)
+
+-- XXX:
+import           Test.QuickCheck (sample')
+import           Control.Monad.State
+import           Test.StateMachine.Internal.Sequential
+import           Test.StateMachine.Internal.Parallel
 
 ------------------------------------------------------------------------
 
@@ -270,3 +277,11 @@ prop_crudWebserverFileParallel :: Property
 prop_crudWebserverFileParallel =
   monadicParallel sm $ \prog ->
     prettyParallelProgram prog =<< runParallelProgram sm prog
+
+------------------------------------------------------------------------
+
+test :: IO ()
+test = do
+  progs <- sample' $ flip evalStateT initModel $ generateProgram generator preconditions transitions 0
+  let prog = progs !! 10
+  mapM_ print (splitProgram initModel preconditions transitions prog)
