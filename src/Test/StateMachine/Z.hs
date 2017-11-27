@@ -176,10 +176,12 @@ isBijection :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
 isBijection r xs ys = isTotalInj r xs && isTotalSurj r xs ys
 
 -- | Application.
-(!) :: Eq a => Fun a b -> a -> b
-f ! x = maybe (error "!: lookup failed.") id (lookup x f)
+(!) :: (Eq a, Show a, Show b) => Fun a b -> a -> b
+f ! x = maybe (error msg) Prelude.id (lookup x f)
+  where
+  msg = "!: failed to lookup `" ++ show x ++ "' in `" ++ show f ++ "'"
 
-(.%) :: (Eq a, Eq b) => (Fun a b, a) -> (b -> b) -> Fun a b
+(.%) :: (Eq a, Eq b, Show a, Show b) => (Fun a b, a) -> (b -> b) -> Fun a b
 (f, x) .% g = f .! x .= g (f ! x)
 
 ------------------------------------------------------------------------
