@@ -1,9 +1,9 @@
-{-# LANGUAGE DeriveFunctor        #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE Rank2Types           #-}
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE Rank2Types          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -59,7 +59,7 @@ module Test.StateMachine.Types
   where
 
 import           Data.Functor.Classes
-                   (Ord1)
+                   (Ord1, Show1)
 import           Data.Typeable
                    (Typeable)
 import           Data.Void
@@ -145,10 +145,10 @@ type Precondition model act = forall resp.
 
 -- | The transition function must be polymorphic in the type of
 --   variables used, as it is used both while generating and executing.
-type Transition model act = forall resp v. Ord1 v =>
+type Transition model act = forall resp v. (Ord1 v, Show1 v) =>
   model v -> act v resp -> v resp -> model v
 
-type Transition' model act err = forall resp v. Ord1 v =>
+type Transition' model act err = forall resp v. (Ord1 v, Show1 v) =>
   model v -> act v resp -> Result err (v resp) -> model v
 
 -- | Post-conditions are checked after the actions have been executed
