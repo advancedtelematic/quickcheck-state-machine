@@ -15,7 +15,7 @@
 -- Portability :  non-portable (GHC extensions)
 --
 -- This module contains a solution to the water jug puzzle featured in
--- /Die Hard 2/.
+-- /Die Hard 3/.
 --
 -----------------------------------------------------------------------------
 

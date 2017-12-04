@@ -308,7 +308,7 @@ could have happend on a single thread.
 
 Here are some more examples to get you started:
 
-  * The water jug problem from *Die Hard 2* -- this is a
+  * The water jug problem from *Die Hard 3* -- this is a
     simple
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/DieHard.hs) of
     a specification where we use the sequential property to find a solution
