@@ -171,12 +171,21 @@ executeProgram StateMachine{..}
                , env
                , PostconditionFailed
                )
-      else do
-        go ( hist'
-           , transition' smodel act (Success sym)
-           , transition' cmodel cact (fmap Concrete resp)
-           , case resp of
-               Success resp' -> insertConcrete sym (Concrete resp') env
-               Fail    _     -> env
-           )
-           acts
+      else
+        case resp of
+
+          Fail    err   ->
+            go ( hist'
+               , transition' smodel  act (Fail err)
+               , transition' cmodel cact (Fail err)
+               , env
+               )
+               acts
+
+          Success resp' ->
+            go ( hist'
+               , transition' smodel  act (Success sym)
+               , transition' cmodel cact (fmap Concrete resp)
+               , insertConcrete sym (Concrete resp') env
+               )
+               acts
