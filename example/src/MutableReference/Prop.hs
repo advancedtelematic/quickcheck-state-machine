@@ -37,8 +37,7 @@ import           Test.QuickCheck
 
 import           Test.StateMachine
 import           Test.StateMachine.Internal.AlphaEquality
-import           Test.StateMachine.Internal.Parallel      hiding
-                   (possibleShrinks)
+import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.ScopeCheck
 import           Test.StateMachine.Internal.Sequential
                    (generateProgram)

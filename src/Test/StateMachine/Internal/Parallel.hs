@@ -24,8 +24,6 @@ module Test.StateMachine.Internal.Parallel
   , generateParallelProgram'
   , shrinkParallelProgram
   , shrinkParallelProgram'
-  , shrinkParallelModel
-  , possibleShrinks
   , executeParallelProgram
   , executeParallelProgram'
   , linearise
@@ -35,7 +33,7 @@ module Test.StateMachine.Internal.Parallel
   ) where
 
 import           Control.Arrow
-                   ((&&&))
+                   ((***))
 import           Control.Concurrent.Async.Lifted
                    (concurrently)
 import           Control.Concurrent.Lifted
@@ -58,17 +56,17 @@ import           Data.Dynamic
 import           Data.Functor.Classes
                    (Show1, showsPrec1)
 import           Data.List
-                   (partition, permutations, subsequences, (\\))
+                   (partition, permutations)
+import           Data.Monoid
+                   ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
 import           Data.Tree
-                   (Tree(..), flatten, unfoldTree)
-import           Data.Tree
                    (Tree(Node))
 import           Test.QuickCheck
-                   (Gen, Property, choose, property, shrinkIntegral,
-                   shrinkList, sized, (.&&.))
+                   (Gen, Property, choose, property, shrinkList, sized,
+                   (.&&.))
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 
@@ -142,40 +140,23 @@ shrinkParallelProgram'
   -> (ParallelProgram' act -> [ParallelProgram' act])
 shrinkParallelProgram' shrinker precondition transition model (ParallelProgram' prefix suffixes)
   = filter (validParallelProgram precondition transition model)
-      [ ParallelProgram' (Program (prefix' ++ subSuffix)) (map Program suffixes')
-        --(map Program (remove i subSuffix suffixes'))
+      [ ParallelProgram' (Program prefix') (map Program suffixes')
       | (prefix', suffixes') <- shrinkPair'
                                   (shrinkList (liftShrinkInternal shrinker))
                                   (shrinkList (shrinkList (liftShrinkInternal shrinker)))
                                   (unProgram prefix, map unProgram suffixes)
-      -- , (i, suffix) <- zip [0..] suffixes'
-      , suffix    <-  suffixes'
-      , subSuffix   <- subsequences suffix
-      ]
+      ] ++
+      case map unProgram suffixes of
+        []                   -> []
+        (suffix : suffixes') ->
+          [ ParallelProgram' (prefix <> Program [prefix']) (Program suffix' : map Program suffixes')
+          | (prefix', suffix') <- pickOneReturnRest suffix
+          ]
 
-remove :: Eq a => Int -> [a] -> [[a]] -> [[a]]
-remove _ _  []         = error "remove: can't remove index from empty list."
-remove 0 xs (ys : yss) = (ys \\ xs) :                   yss
-remove n xs (ys : yss) = ys         : remove (n - 1) xs yss
-
-possibleShrinks :: Ord a => (a -> [a]) -> a -> [a]
-possibleShrinks shr = flatten . unfoldTree (id &&& shr)
-
-shrinkParallelModel :: ([Int], [[Int]]) -> [([Int], [[Int]])]
-shrinkParallelModel (prefix, suffixes) =
-  [ (prefix' ++ subSuffix, remove i subSuffix suffixes')
-  | (prefix', suffixes') <- shrinkPair'
-                              (shrinkList shrinkIntegral)
-                              (shrinkList (shrinkList shrinkIntegral))
-                              (prefix, suffixes)
-  , (i, suffix) <- zip [0..] suffixes'
-  , subSuffix   <- subsequences suffix
-  ] ++
-  [ (prefix' ++ subSuffix, remove i subSuffix suffixes)
-  | prefix' <- shrinkList shrinkIntegral prefix
-  , (i, suffix) <- zip [0..] suffixes
-  , subSuffix   <- subsequences suffix
-  ]
+  where
+  pickOneReturnRest :: [a] -> [(a, [a])]
+  pickOneReturnRest []       = []
+  pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
 
 validParallelProgram
   :: HFoldable act
