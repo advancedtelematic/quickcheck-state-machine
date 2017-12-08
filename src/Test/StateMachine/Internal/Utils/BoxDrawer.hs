@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Test.StateMachine.Internal.Parallel
@@ -15,6 +17,7 @@
 
 module Test.StateMachine.Internal.Utils.BoxDrawer
   ( EventType(..)
+  , Fork(..)
   , exec
   ) where
 
@@ -22,7 +25,7 @@ import           Text.PrettyPrint.ANSI.Leijen
                    (Doc, text, vsep)
 
 import           Test.StateMachine.Internal.Types
-                   (Fork(Fork), Pid(..))
+                   (Pid(..))
 
 ------------------------------------------------------------------------
 
@@ -89,6 +92,9 @@ compilePrefix :: [String] -> [Cmd]
 compilePrefix [] = []
 compilePrefix (cmd:res:prefix) = Top : Start cmd : Ret res : Bottom : compilePrefix prefix
 compilePrefix [cmd] = error $ "compilePrefix: doesn't have response for cmd: " ++ cmd
+
+data Fork a = Fork a a a
+  deriving Functor
 
 -- | Given a history, and output from processes generate Doc with boxes
 exec :: [(EventType, Pid)] -> Fork [String] -> Doc

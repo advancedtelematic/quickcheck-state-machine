@@ -19,9 +19,7 @@ tested-with:         GHC == 8.0.2
 library
   hs-source-dirs:      src
   exposed-modules:     Test.StateMachine
-                     , Test.StateMachine.Internal.AlphaEquality
                      , Test.StateMachine.Internal.Parallel
-                     , Test.StateMachine.Internal.ScopeCheck
                      , Test.StateMachine.Internal.Sequential
                      , Test.StateMachine.Internal.Types
                      , Test.StateMachine.Internal.Types.Environment

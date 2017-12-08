@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeOperators    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -26,7 +26,7 @@ import           Test.QuickCheck
                    whenFail)
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), Counterexample, PropertyOf)
-import qualified Test.QuickCheck.Counterexamples as CE
+import qualified Test.QuickCheck.Counterexamples  as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), monadicIO, run)
 import           Test.QuickCheck.Property

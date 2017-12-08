@@ -28,17 +28,13 @@ module TicketDispenser
   -- )
   where
 
-import           Control.Arrow
-                   ((&&&))
 import           Control.Exception
                    (SomeException, catch)
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
                    (Eq1(..))
-import           Data.Tree
-                   (Tree(..), unfoldTree)
-import           Prelude                                  hiding
+import           Prelude                             hiding
                    (readFile)
 import           System.Directory
                    (createDirectoryIfMissing, getTemporaryDirectory,
@@ -57,14 +53,10 @@ import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.AlphaEquality
-import           Test.StateMachine.Internal.Parallel
-                   (shrinkParallelProgram')
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Utils
-                   (shrinkPropertyHelperC)
 import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses)
+import           Utils
 
 ------------------------------------------------------------------------
 
@@ -194,16 +186,16 @@ prop_ticketDispenser files = monadicSequential sm' $ \prog -> do
   sm' = sm Shared files
 
 prop_ticketDispenserParallel
-  :: SharedExclusive -> DbLock -> PropertyOf (ParallelProgram' Action)
+  :: SharedExclusive -> DbLock -> PropertyOf (ParallelProgram Action)
 prop_ticketDispenserParallel se files =
-  monadicParallelC' sm' $ \prog ->
-    prettyParallelProgram' prog =<< runParallelProgram'' 100 sm' prog
+  monadicParallelC sm' $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram' 100 sm' prog
   where
   sm' = sm se files
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.
-prop_ticketDispenserParallelOK :: DbLock -> PropertyOf (ParallelProgram' Action)
+prop_ticketDispenserParallelOK :: DbLock -> PropertyOf (ParallelProgram Action)
 prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 
 -- If we allow file locks to be shared, then we get race conditions as
@@ -211,45 +203,20 @@ prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 -- counterexamples are found.
 prop_ticketDispenserParallelBad :: DbLock -> Property
 prop_ticketDispenserParallelBad files =
-  shrinkPropertyHelperC (prop_ticketDispenserParallel Shared files) $ \pprog ->
-    hasMinimalShrink pprog || isMinimal pprog
+  minimalShrinkHelper
+    shrinker preconditions (okTransition transitions) initModel
+    (prop_ticketDispenserParallel Shared files)
+    isMinimal
   where
-  hasMinimalShrink :: ParallelProgram' Action -> Bool
-  hasMinimalShrink
-    = anyTree isMinimal
-    . possibleShrinks
-    where
-    anyTree :: (a -> Bool) -> Tree a -> Bool
-    anyTree p = foldTree (\x ih -> p x || or ih)
-      where
-      -- `foldTree` is part of `Data.Tree` in later versions of `containers`.
-      foldTree :: (a -> [b] -> b) -> Tree a -> b
-      foldTree f = go where
-        go (Node x ts) = f x (map go ts)
-
-  isMinimal :: ParallelProgram' Action -> Bool
-  isMinimal xs = any (alphaEqParallel xs) minimal
-
-  minimal :: [ParallelProgram' Action]
-  minimal =
-    [ ParallelProgram' (Program [])
-        [Program [iact Reset 0, iact Reset 1]]
-    , ParallelProgram' (Program [iact Reset 1])
-        [Program [iact TakeTicket 0, iact TakeTicket 2]]
-    , ParallelProgram' (Program [iact Reset 1])
-        [Program [iact Reset 0, iact TakeTicket 2]]
-    , ParallelProgram' (Program [iact Reset 1])
-        [Program [iact TakeTicket 0, iact Reset 2]]
-    ]
-    where
-    iact act n = Internal act (Symbolic (Var n))
-
-possibleShrinks' :: (a -> [a]) -> a -> Tree a
-possibleShrinks' shr = unfoldTree (id &&& shr)
-
-possibleShrinks :: ParallelProgram' Action -> Tree (ParallelProgram' Action)
-possibleShrinks = possibleShrinks'
-  (shrinkParallelProgram' shrinker preconditions (okTransition transitions) initModel)
+  isMinimal :: ParallelProgram Action -> Bool
+  isMinimal pprog
+    =  parallelProgramLength pprog `elem` [2, 3]
+    && (structuralSubset
+          [ Untyped Reset ] [ Untyped TakeTicket, Untyped TakeTicket ] pprog ||
+        structuralSubset
+          [ Untyped Reset ] [ Untyped TakeTicket, Untyped Reset ] pprog ||
+        structuralSubset
+          [] [ Untyped Reset, Untyped Reset ] pprog)
 
 ------------------------------------------------------------------------
 

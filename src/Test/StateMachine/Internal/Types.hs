@@ -23,9 +23,8 @@ module Test.StateMachine.Internal.Types
   ( Program(..)
   , programLength
   , ParallelProgram(..)
-  , ParallelProgram'(..)
+  , parallelProgramLength
   , Pid(..)
-  , Fork(..)
   , Internal(..)
   ) where
 
@@ -64,27 +63,15 @@ programLength = length . unProgram
 
 ------------------------------------------------------------------------
 
--- | A parallel program is an abstract datatype that represents three
---   sequences of actions; a sequential prefix and two parallel
---   suffixes. Analogous to the sequential case, the user shows how to
---   generate, shrink, execute and modelcheck individual actions, and
---   then the below combinators lift those things to whole parallel
---   programs.
-newtype ParallelProgram act = ParallelProgram
-  { unParallelProgram :: Fork (Program act) }
+data ParallelProgram act = ParallelProgram (Program act) [Program act]
 
+deriving instance Eq   (Untyped act) => Eq   (ParallelProgram act)
 deriving instance Show (Untyped act) => Show (ParallelProgram act)
 deriving instance Read (Untyped act) => Read (ParallelProgram act)
 
--- | Forks are used to represent parallel programs.
-data Fork a = Fork a a a
-  deriving (Eq, Functor, Show, Ord, Read)
-
-data ParallelProgram' act = ParallelProgram' (Program act) [Program act]
-
-deriving instance Eq   (Untyped act) => Eq   (ParallelProgram' act)
-deriving instance Show (Untyped act) => Show (ParallelProgram' act)
-deriving instance Read (Untyped act) => Read (ParallelProgram' act)
+parallelProgramLength :: ParallelProgram act -> Int
+parallelProgramLength (ParallelProgram prefix suffixes) =
+  programLength prefix + programLength (mconcat suffixes)
 
 ------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 module CrudWebserverDbRaceSpec where
 
 import           Test.Hspec
-                   (Spec, around_, describe, it, xit)
+                   (Spec, around_, describe, it)
 import           Test.Hspec.QuickCheck
                    (modifyMaxSuccess)
 
@@ -19,9 +19,9 @@ spec = do
       it "`prop_crudWebserverDbRace`: sequential property holds"
         prop_crudWebserverDbRace
 
-  around_ (withCrudWebserverDbRaceParallel Race) $ modifyMaxSuccess (const 3) $
+  around_ (withCrudWebserverDbRaceParallel Race) $ modifyMaxSuccess (const 5) $
 
     describe "Parallel property" $
 
-      xit "`prop_dbShrinkRace`: shrinking finds minimal counterexample" $
+      it "`prop_dbShrinkRace`: shrinking finds minimal counterexample" $
         prop_dbShrinkRace

@@ -11,12 +11,12 @@ library
                      , CircularBuffer
                      , CrudWebserverDb
                      , CrudWebserverDbRace
-                     , CrudWebserverFile
                      , DieHard
                      , MutableReference
                      , MutableReference.Prop
                      , TicketDispenser
                      , UnionFind
+                     , Utils
   build-depends:       aeson
                      , async
                      , base >= 4.7 && < 5
@@ -60,7 +60,6 @@ test-suite quickcheck-state-machine-example-test
   other-modules:       CircularBufferSpec
                      , CrudWebserverDbSpec
                      , CrudWebserverDbRaceSpec
-                     , CrudWebserverFileSpec
                      , DieHardSpec
                      , HspecInstance
                      , MutableReferenceSpec

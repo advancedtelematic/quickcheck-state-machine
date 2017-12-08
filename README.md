@@ -363,14 +363,6 @@ Here are some more examples to get you started:
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
     [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)] papers;
 
-  * CRUD
-    webserver
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverFile.hs) --
-    create, read, update and delete files on a webserver using an API written
-    using [Servant](https://github.com/haskell-servant/servant). The
-    specification uses two fixed file names for the tests, and the webserver is
-    setup and torn down for every generated program;
-
   * CRUD webserver where create returns unique
     ids
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverDb.hs) --

@@ -58,7 +58,7 @@ import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Control.Monad.Trans.Resource
                    (ResourceT)
-import qualified Data.ByteString.Char8                    as BS
+import qualified Data.ByteString.Char8            as BS
 import           Data.Char
                    (isPrint)
 import           Data.Dynamic
@@ -75,7 +75,7 @@ import           Data.String.Conversions
                    (cs)
 import           Data.Text
                    (Text)
-import qualified Data.Text                                as T
+import qualified Data.Text                        as T
 import           Database.Persist.Postgresql
                    (ConnectionPool, ConnectionString, Key, SqlBackend,
                    createPostgresqlPool, delete, get, getJust, insert,
@@ -88,7 +88,7 @@ import           Network
                    (PortID(PortNumber), connectTo)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp                 as Warp
+import qualified Network.Wai.Handler.Warp         as Warp
 import           Servant
                    ((:<|>)(..), (:>), Application, Capture, Get, JSON,
                    Post, ReqBody, Server, serve)
@@ -110,15 +110,12 @@ import           Test.QuickCheck.Instances
                    ()
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.AlphaEquality
-                   (alphaEqParallel)
 import           Test.StateMachine.Internal.Types
-                   (Internal(..), ParallelProgram'(..), Program(..))
-import           Test.StateMachine.Internal.Utils
-                   (shrinkPropertyHelperC)
+                   (ParallelProgram(..), parallelProgramLength)
 import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses)
-
+import           Utils
+                   (minimalShrinkHelper, structuralSubset)
 
 ------------------------------------------------------------------------
 
@@ -334,36 +331,30 @@ withCrudWebserverDbRace bug run =
 
 ------------------------------------------------------------------------
 
-prop_crudWebserverDbRaceParallel :: PropertyOf (ParallelProgram' Action)
+prop_crudWebserverDbRaceParallel :: PropertyOf (ParallelProgram Action)
 prop_crudWebserverDbRaceParallel =
-  monadicParallelC' sm' $ \prog ->
-    prettyParallelProgram' prog =<< runParallelProgram'' 30 sm' prog
+  monadicParallelC sm' $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram' 30 sm' prog
   where
   sm' = sm crudWebserverDbParallelPort
 
 prop_dbShrinkRace :: Property
-prop_dbShrinkRace = shrinkPropertyHelperC prop_crudWebserverDbRaceParallel $ \pprog ->
-  any (alphaEqParallel pprog)
-    [ ParallelProgram' prefix
-        [ Program
-            [ iact (IncAgeUser (Reference sym0)) 1
-            , iact (IncAgeUser (Reference sym0)) 2
-            , iact (GetUser    (Reference sym0)) 3
-            ]
-        ]
-    , ParallelProgram' prefix
-        [ Program
-            [ iact (IncAgeUser (Reference sym0)) 1
-            , iact (IncAgeUser (Reference sym0)) 2
-            ]
-        , Program
-            [ iact (GetUser    (Reference sym0)) 3 ]
-        ]
-    ]
+prop_dbShrinkRace =
+  minimalShrinkHelper
+    shrinker preconditions (okTransition transitions) initModel
+    prop_crudWebserverDbRaceParallel
+    isMinimal
   where
-  prefix     = Program [ iact (PostUser (User "" 0)) 0 ]
-  iact act n = Internal act (Symbolic (Var n))
-  sym0       = Symbolic (Var 0)
+  isMinimal pprog =
+    parallelProgramLength pprog == 4 &&
+    structuralSubset
+      [ Untyped (PostUser (User "" 0)) ]
+      [ Untyped (IncAgeUser ref0)
+      , Untyped (IncAgeUser ref0)
+      , Untyped (GetUser    ref0)
+      ] pprog
+    where
+    ref0   = Reference (Symbolic (Var 0))
 
 instance Eq (Untyped Action) where
   Untyped act1 == Untyped act2 = cast act1 == Just act2

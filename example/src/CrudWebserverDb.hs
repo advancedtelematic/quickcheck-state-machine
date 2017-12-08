@@ -390,8 +390,8 @@ bracketServer start run =
 
 prop_crudWebserverDbParallel :: Property
 prop_crudWebserverDbParallel =
-  monadicParallel' sm' $ \prog ->
-    prettyParallelProgram' prog =<< runParallelProgram'' 10 sm' prog
+  monadicParallel sm' $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram' 10 sm' prog
   where
     sm' = sm crudWebserverDbParallelPort
 
