@@ -24,10 +24,18 @@ module Test.StateMachine.Internal.Types
   , programLength
   , ParallelProgram(..)
   , parallelProgramLength
+  , parallelProgramToList
+  , parallelProgramFromList
+  , parallelProgramAsList
+  , flattenParallelProgram
   , Pid(..)
   , Internal(..)
   ) where
 
+import           Data.Bifunctor
+                   (bimap)
+import           Data.Monoid
+                   ((<>))
 import           Data.Typeable
                    (Typeable)
 import           Text.Read
@@ -63,7 +71,8 @@ programLength = length . unProgram
 
 ------------------------------------------------------------------------
 
-data ParallelProgram act = ParallelProgram (Program act) [Program act]
+data ParallelProgram act
+  = ParallelProgram (Program act) [(Program act, Program act)]
 
 deriving instance Eq   (Untyped act) => Eq   (ParallelProgram act)
 deriving instance Show (Untyped act) => Show (ParallelProgram act)
@@ -71,7 +80,26 @@ deriving instance Read (Untyped act) => Read (ParallelProgram act)
 
 parallelProgramLength :: ParallelProgram act -> Int
 parallelProgramLength (ParallelProgram prefix suffixes) =
-  programLength prefix + programLength (mconcat suffixes)
+  programLength prefix +
+  programLength (mconcat (parallelProgramToList suffixes))
+
+parallelProgramFromList :: [Program act] -> [(Program act, Program act)]
+parallelProgramFromList
+  = map (\prog -> bimap Program Program
+                        (splitAt (programLength prog `div` 2) (unProgram prog)))
+
+parallelProgramToList :: [(Program act, Program act)] -> [Program act]
+parallelProgramToList = concatMap (\(prog1, prog2) -> [prog1, prog2])
+
+parallelProgramAsList
+  :: ([Program act] -> [Program act])
+  -> [(Program act, Program act)]
+  -> [(Program act, Program act)]
+parallelProgramAsList f = parallelProgramFromList . f . parallelProgramToList
+
+flattenParallelProgram :: ParallelProgram act -> Program act
+flattenParallelProgram (ParallelProgram prefix suffixes)
+  = prefix <> mconcat (parallelProgramToList suffixes)
 
 ------------------------------------------------------------------------
 

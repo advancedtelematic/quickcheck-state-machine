@@ -94,7 +94,8 @@ generateParallelProgram generator precondition transition model = do
 -- | Shrink a parallel program in a pre-condition and scope respecting
 --   way.
 shrinkParallelProgram
-  :: HFoldable act
+  :: forall act model err
+  .  HFoldable act
   => Eq (Untyped act)
   => Shrinker act
   -> Precondition model act
@@ -102,21 +103,33 @@ shrinkParallelProgram
   -> model Symbolic
   -> (ParallelProgram act -> [ParallelProgram act])
 shrinkParallelProgram shrinker precondition transition model (ParallelProgram prefix suffixes)
-  = filter (validParallelProgram precondition transition model)
-      [ ParallelProgram (Program prefix') (map Program suffixes')
-      | (prefix', suffixes') <- shrinkPair'
-                                  (shrinkList (liftShrinkInternal shrinker))
-                                  (shrinkList (shrinkList (liftShrinkInternal shrinker)))
-                                  (unProgram prefix, map unProgram suffixes)
-      ] ++
-      case map unProgram suffixes of
-        []                   -> []
-        (suffix : suffixes') ->
-          [ ParallelProgram (prefix <> Program [prefix']) (Program suffix' : map Program suffixes')
-          | (prefix', suffix') <- pickOneReturnRest suffix
-          ]
-
+  = filter (validParallelProgram precondition transition model) $
+      [ ParallelProgram prefix' suffixes'
+      | (prefix', suffixes') <- shrinkPair' shrinkProgram' shrinkSuffixes (prefix, suffixes)
+      ]
+      ++
+      shrinkMoveSuffixToPrefix
   where
+  shrinkProgram' :: Program act -> [Program act]
+  shrinkProgram'
+    = map Program
+    . shrinkList (liftShrinkInternal shrinker)
+    . unProgram
+
+  shrinkSuffixes :: [(Program act, Program act)] -> [[(Program act, Program act)]]
+  shrinkSuffixes = shrinkList (shrinkPair shrinkProgram')
+
+  shrinkMoveSuffixToPrefix :: [ParallelProgram act]
+  shrinkMoveSuffixToPrefix = case suffixes of
+    []                   -> []
+    (suffix : suffixes') ->
+      [ ParallelProgram (prefix <> Program [prefix'])
+                        (bimap Program Program
+                              (splitAt (length suffix' `div` 2) suffix') : suffixes')
+      | (prefix', suffix') <- pickOneReturnRest (unProgram (fst suffix) ++
+                                                 unProgram (snd suffix))
+      ]
+
   pickOneReturnRest :: [a] -> [(a, [a])]
   pickOneReturnRest []       = []
   pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
@@ -130,7 +143,7 @@ validParallelProgram
   -> Bool
 validParallelProgram precondition transition model (ParallelProgram prefix suffixes)
   =  validProgram precondition transition model prefix
-  && validSuffixes precondition transition prefixModel prefixScope suffixes
+  && validSuffixes precondition transition prefixModel prefixScope (parallelProgramToList suffixes)
   where
   prefixModel = advanceModel transition model prefix
   prefixScope = boundVars prefix
@@ -211,11 +224,10 @@ executeParallelProgram semantics (ParallelProgram prefix suffixes) = do
   env   <- execStateT
              (runMany semantics hchan (Pid 0) (unProgram prefix))
              emptyEnvironment
-  forM_ (map unProgram suffixes) $ \iacts -> do
-    let (left, right) = splitAt (length iacts `div` 2) iacts
+  forM_ suffixes $ \(prog1, prog2) -> do
     _ <- concurrently
-      (evalStateT (runMany semantics hchan (Pid 1) left)  env)
-      (evalStateT (runMany semantics hchan (Pid 2) right) env)
+      (evalStateT (runMany semantics hchan (Pid 1) (unProgram prog1)) env)
+      (evalStateT (runMany semantics hchan (Pid 2) (unProgram prog2)) env)
     return ()
 
   History <$> liftBaseWith (const (getChanContents hchan))
@@ -254,7 +266,7 @@ anyP' p xs = anyP p xs
 toBoxDrawings :: HFoldable act => ParallelProgram act -> History act err -> Doc
 toBoxDrawings (ParallelProgram prefix suffixes) = toBoxDrawings'' allVars
   where
-  allVars = usedVars prefix `S.union` foldMap usedVars suffixes
+  allVars = usedVars prefix `S.union` foldMap usedVars (parallelProgramToList suffixes)
 
   toBoxDrawings'' :: Set Var -> History act err -> Doc
   toBoxDrawings'' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
@@ -285,13 +297,16 @@ splitProgram
   -> Transition'  model act err
   -> model Symbolic
   -> Program act
-  -> [Program act]
+  -> [(Program act, Program act)]
 splitProgram precondition transition model0 = go model0 [] . unProgram
   where
   go _     acc []    = reverse acc
-  go model acc iacts = go (advanceModel transition model (Program safe)) (Program safe : acc) rest
+  go model acc iacts = go (advanceModel transition model (Program safe))
+                          ((Program safe1, Program safe2) : acc)
+                          rest
     where
-    (safe, rest) = spanSafe model [] iacts
+    (safe, rest)   = spanSafe model [] iacts
+    (safe1, safe2) = splitAt (length safe `div` 2) safe
 
   spanSafe _     safe []                            = (reverse safe, [])
   spanSafe model safe (iact@(Internal _ _) : iacts)

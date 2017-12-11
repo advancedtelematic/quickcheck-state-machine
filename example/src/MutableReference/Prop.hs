@@ -22,8 +22,6 @@ import           Control.Monad.State
                    (evalStateT)
 import           Data.List
                    (isSubsequenceOf)
-import           Data.Monoid
-                   ((<>))
 import           Data.Void
                    (Void)
 import           Test.QuickCheck
@@ -61,10 +59,9 @@ prop_genParallelSequence = forAll
   go
   where
   go :: ParallelProgram Action -> Property
-  go (ParallelProgram prefix suffixes) =
-    vars prog === [0 .. length (unProgram prog) - 1]
+  go pprog = vars prog === [0 .. length (unProgram prog) - 1]
     where
-    prog = prefix <> mconcat suffixes
+    prog = flattenParallelProgram pprog
 
     vars :: Program Action -> [Int]
     vars = map (\(Internal _ (Symbolic (Var i))) -> i) . unProgram
@@ -82,7 +79,8 @@ prop_sequentialShrink =
     ]
 
 cheat :: ParallelProgram Action -> ParallelProgram Action
-cheat (ParallelProgram prefix suffixes) = ParallelProgram (go prefix) (map go suffixes)
+cheat (ParallelProgram prefix suffixes)
+  = ParallelProgram (go prefix) (parallelProgramAsList (map go) suffixes)
   where
   go = Program
      . map (\iact -> case iact of
@@ -92,12 +90,11 @@ cheat (ParallelProgram prefix suffixes) = ParallelProgram (go prefix) (map go su
 
 prop_shrinkParallelSubseq :: Property
 prop_shrinkParallelSubseq = forAll
-  (generateParallelProgram generator precondition oktransition initModel)
-  $ \prog@(ParallelProgram prefix  suffixes) ->
-    all (\(ParallelProgram prefix' suffixes') ->
-           void (unProgram (prefix' <> mconcat suffixes'))
-             `isSubsequenceOf` void (unProgram (prefix <> mconcat suffixes)))
-        (shrinkParallelProgram shrinker precondition oktransition initModel (cheat prog))
+  (generateParallelProgram generator precondition oktransition initModel) $ \pprog ->
+    all (\pprog' -> void (unProgram (flattenParallelProgram pprog'))
+                      `isSubsequenceOf`
+                    void (unProgram (flattenParallelProgram pprog)))
+        (shrinkParallelProgram shrinker precondition oktransition initModel (cheat pprog))
 
 prop_shrinkParallelScope :: Property
 prop_shrinkParallelScope = forAll
