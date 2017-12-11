@@ -103,7 +103,7 @@ shrinkParallelProgram
   -> model Symbolic
   -> (ParallelProgram act -> [ParallelProgram act])
 shrinkParallelProgram shrinker precondition transition model (ParallelProgram prefix suffixes)
-  = filter (validParallelProgram precondition transition model) $
+  = filter (validParallelProgram precondition transition model)
       [ ParallelProgram prefix' suffixes'
       | (prefix', suffixes') <- shrinkPair' shrinkProgram' shrinkSuffixes (prefix, suffixes)
       ]
@@ -124,15 +124,19 @@ shrinkParallelProgram shrinker precondition transition model (ParallelProgram pr
     []                   -> []
     (suffix : suffixes') ->
       [ ParallelProgram (prefix <> Program [prefix'])
-                        (bimap Program Program
-                              (splitAt (length suffix' `div` 2) suffix') : suffixes')
-      | (prefix', suffix') <- pickOneReturnRest (unProgram (fst suffix) ++
-                                                 unProgram (snd suffix))
+                        (bimap Program Program suffix' : suffixes')
+      | (prefix', suffix') <- pickOneReturnRest2 (unProgram (fst suffix),
+                                                  unProgram (snd suffix))
       ]
 
   pickOneReturnRest :: [a] -> [(a, [a])]
   pickOneReturnRest []       = []
   pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
+
+  pickOneReturnRest2 :: ([a], [a]) -> [(a, ([a],[a]))]
+  pickOneReturnRest2 (xs, ys) =
+    map (id *** flip (,) ys) (pickOneReturnRest xs) ++
+    map (id ***      (,) xs) (pickOneReturnRest ys)
 
 validParallelProgram
   :: HFoldable act
