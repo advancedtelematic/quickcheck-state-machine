@@ -89,7 +89,7 @@ parallelProgramFromList
                         (splitAt (programLength prog `div` 2) (unProgram prog)))
 
 parallelProgramToList :: [(Program act, Program act)] -> [Program act]
-parallelProgramToList = concatMap (\(prog1, prog2) -> [prog1, prog2])
+parallelProgramToList = map (\(prog1, prog2) -> prog1 <> prog2)
 
 parallelProgramAsList
   :: ([Program act] -> [Program act])
