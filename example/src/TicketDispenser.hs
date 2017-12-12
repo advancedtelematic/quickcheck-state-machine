@@ -32,10 +32,10 @@ module TicketDispenser
 
 import           Control.Exception
                    (SomeException, catch)
-import           Data.Dynamic
-                   (cast)
 import           Data.Functor.Classes
                    (Eq1(..))
+import           Data.Typeable
+                   (cast)
 import           Prelude                             hiding
                    (readFile)
 import           System.Directory
@@ -50,13 +50,13 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Property, frequency, (===), forAll)
+                   (Property, forAll, frequency, (===))
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Parallel
+import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses)
 import           Utils

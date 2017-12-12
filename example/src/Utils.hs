@@ -99,7 +99,7 @@ possibleShrinks' shr = unfoldTree (id &&& shr)
 -- | Check if two lists of actions are equal modulo
 --   \(\alpha\)-conversion.
 alphaEq
-  :: (HFunctor act, Eq (Program act))
+  :: (HFunctor act, Eq (Untyped act))
   => Program act -> Program act     -- ^ The two input programs.
   -> Bool
 alphaEq acts1 acts2 = canonical acts1 == canonical acts2

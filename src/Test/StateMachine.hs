@@ -66,7 +66,8 @@ import qualified Data.Map                              as M
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
-                   (Property, collect, cover, ioProperty, property)
+                   (Property, Testable, collect, cover, ioProperty,
+                   property)
 import qualified Test.QuickCheck
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), PropertyOf)
@@ -123,6 +124,7 @@ forAllProgramC generator shrinker precondition transition model =
 monadicSequential
   :: Monad m
   => HFoldable act
+  => Testable a
   => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
@@ -133,6 +135,7 @@ monadicSequential sm = property . monadicSequentialC sm
 monadicSequentialC
   :: Monad m
   => HFoldable act
+  => Testable a
   => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.

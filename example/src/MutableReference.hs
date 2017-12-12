@@ -33,13 +33,13 @@ module MutableReference
 
 import           Control.Concurrent
                    (threadDelay)
-import           Data.Dynamic
-                   (cast)
 import           Data.Functor.Classes
                    (Eq1)
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
+import           Data.Typeable
+                   (cast)
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck

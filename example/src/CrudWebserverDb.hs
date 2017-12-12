@@ -64,8 +64,6 @@ import           Control.Monad.Trans.Resource
                    (ResourceT)
 import           Data.Char
                    (isPrint)
-import           Data.Dynamic
-                   (cast)
 import           Data.Functor.Classes
                    (Eq1)
 import           Data.Proxy
@@ -75,6 +73,8 @@ import           Data.String.Conversions
 import           Data.Text
                    (Text)
 import qualified Data.Text                       as T
+import           Data.Typeable
+                   (cast)
 import           Database.Persist.Sqlite
                    (ConnectionPool, Key, SqlBackend, createSqlitePool,
                    delete, get, insert, liftSqlPersistMPool,
