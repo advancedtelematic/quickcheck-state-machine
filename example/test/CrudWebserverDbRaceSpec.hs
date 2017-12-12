@@ -12,14 +12,14 @@ import           CrudWebserverDbRace
 spec :: Spec
 spec = do
 
-  around_ (withCrudWebserverDbRace None) $ modifyMaxSuccess (const 10) $
+  around_ (withCrudWebserverDbRace None) $ modifyMaxSuccess (const 5) $
 
     describe "Sequential property" $
 
       it "`prop_crudWebserverDbRace`: sequential property holds"
         prop_crudWebserverDbRace
 
-  around_ (withCrudWebserverDbRaceParallel Race) $ modifyMaxSuccess (const 5) $
+  around_ (withCrudWebserverDbRaceParallel Race) $ modifyMaxSuccess (const 2) $
 
     describe "Parallel property" $
 
