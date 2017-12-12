@@ -1,8 +1,9 @@
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -23,14 +24,19 @@ module TicketDispenser
   , prop_ticketDispenserParallel
   , prop_ticketDispenserParallelOK
   , prop_ticketDispenserParallelBad
+  , prop_ticketGenParallelValid
+  , prop_ticketShrinkParallelValid
   , withDbLock
-  ) where
+  )
+  where
 
+import           Control.Exception
+                   (SomeException, catch)
 import           Data.Dynamic
                    (cast)
 import           Data.Functor.Classes
-                   (Eq1(..), Show1, liftShowsPrec)
-import           Prelude                                  hiding
+                   (Eq1(..))
+import           Prelude                             hiding
                    (readFile)
 import           System.Directory
                    (createDirectoryIfMissing, getTemporaryDirectory,
@@ -44,17 +50,16 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Property, frequency, (===))
+                   (Property, frequency, (===), forAll)
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.AlphaEquality
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Utils
-                   (shrinkPropertyHelperC)
+import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.TH
-                   (deriveTestClasses)
+                   (deriveShows, deriveTestClasses)
+import           Utils
 
 ------------------------------------------------------------------------
 
@@ -64,13 +69,8 @@ data Action (v :: * -> *) :: * -> * where
   TakeTicket :: Action v Int
   Reset      :: Action v ()
 
-deriving instance Show1 v => Show (Action v resp)
-
 -- Which correspond to taking a ticket and getting the next number, and
 -- resetting the number counter of the dispenser.
-
-instance Show1 (Action Symbolic) where
-  liftShowsPrec _ _ _ x _ = show x
 
 ------------------------------------------------------------------------
 
@@ -139,16 +139,20 @@ semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
     lock <- lockFile tlock se
     i <- read <$> readFile tdb
+      `catch` (\(_ :: SomeException) -> return "-1")
     writeFile tdb (show (i + 1))
+      `catch` (\(_ :: SomeException) -> return ())
     unlockFile lock
     return (i + 1)
   Reset      -> do
     lock <- lockFile tlock se
     writeFile tdb (show (0 :: Integer))
+      `catch` (\(_ :: SomeException) -> return ())
     unlockFile lock
 
 ------------------------------------------------------------------------
 
+deriveShows       ''Action
 deriveTestClasses ''Action
 
 ------------------------------------------------------------------------
@@ -184,7 +188,8 @@ prop_ticketDispenser files = monadicSequential sm' $ \prog -> do
   where
   sm' = sm Shared files
 
-prop_ticketDispenserParallel :: SharedExclusive -> DbLock -> PropertyOf (ParallelProgram Action)
+prop_ticketDispenserParallel
+  :: SharedExclusive -> DbLock -> PropertyOf (ParallelProgram Action)
 prop_ticketDispenserParallel se files =
   monadicParallelC sm' $ \prog ->
     prettyParallelProgram prog =<< runParallelProgram' 100 sm' prog
@@ -201,16 +206,31 @@ prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 -- counterexamples are found.
 prop_ticketDispenserParallelBad :: DbLock -> Property
 prop_ticketDispenserParallelBad files =
-  shrinkPropertyHelperC (prop_ticketDispenserParallel Shared files) $ \(ParallelProgram f) ->
-    any (alphaEqFork f)
-      [ fork [iact Reset 0]      []             [iact Reset 1]
-      , fork [iact TakeTicket 0] [iact Reset 1] [iact TakeTicket 2]
-      , fork [iact Reset 0]      [iact Reset 1] [iact TakeTicket 2]
-      , fork [iact TakeTicket 0] [iact Reset 1] [iact Reset 2]
-      ]
-    where
-    fork l p r = Fork (Program l) (Program p) (Program r)
-    iact act n = Internal act (Symbolic (Var n))
+  minimalShrinkHelper
+    shrinker preconditions (okTransition transitions) initModel
+    (prop_ticketDispenserParallel Shared files)
+    isMinimal
+  where
+  isMinimal :: ParallelProgram Action -> Bool
+  isMinimal pprog
+    =  parallelProgramLength pprog `elem` [2, 3]
+    && (structuralSubset
+          [ Untyped Reset ] [ Untyped TakeTicket, Untyped TakeTicket ] pprog ||
+        structuralSubset
+          [ Untyped Reset ] [ Untyped TakeTicket, Untyped Reset ] pprog ||
+        structuralSubset
+          [] [ Untyped Reset, Untyped Reset ] pprog)
+
+prop_ticketGenParallelValid :: Property
+prop_ticketGenParallelValid = forAll
+  (generateParallelProgram generator preconditions (okTransition transitions) initModel)
+  (validParallelProgram preconditions (okTransition transitions) initModel)
+
+prop_ticketShrinkParallelValid :: Property
+prop_ticketShrinkParallelValid = forAll
+  (generateParallelProgram generator preconditions (okTransition transitions) initModel) $ \p ->
+    all (validParallelProgram preconditions (okTransition transitions) initModel)
+        (shrinkParallelProgram shrinker preconditions (okTransition transitions) initModel p)
 
 ------------------------------------------------------------------------
 

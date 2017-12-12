@@ -10,15 +10,17 @@ library
   exposed-modules:     Bank
                      , CircularBuffer
                      , CrudWebserverDb
-                     , CrudWebserverFile
+                     , CrudWebserverDbRace
                      , DieHard
                      , MutableReference
                      , MutableReference.Prop
                      , TicketDispenser
                      , UnionFind
+                     , Utils
   build-depends:       aeson
                      , async
                      , base >= 4.7 && < 5
+                     , bytestring
                      , containers
                      , directory
                      , filelock
@@ -28,9 +30,12 @@ library
                      , monad-control
                      , monad-logger
                      , mtl
+                     , network
                      , persistent
+                     , persistent-postgresql
                      , persistent-sqlite
                      , persistent-template
+                     , process
                      , QuickCheck
                      , quickcheck-instances
                      , quickcheck-with-counterexamples
@@ -54,7 +59,7 @@ test-suite quickcheck-state-machine-example-test
   main-is:             Main.hs
   other-modules:       CircularBufferSpec
                      , CrudWebserverDbSpec
-                     , CrudWebserverFileSpec
+                     , CrudWebserverDbRaceSpec
                      , DieHardSpec
                      , HspecInstance
                      , MutableReferenceSpec

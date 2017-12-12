@@ -33,6 +33,10 @@ module MutableReference
 
 import           Control.Concurrent
                    (threadDelay)
+import           Data.Dynamic
+                   (cast)
+import           Data.Functor.Classes
+                   (Eq1)
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -57,6 +61,11 @@ data Action (v :: * -> *) :: * -> * where
   Read  :: Reference v (Opaque (IORef Int)) -> Action v Int
   Write :: Reference v (Opaque (IORef Int)) -> Int -> Action v ()
   Inc   :: Reference v (Opaque (IORef Int)) -> Action v ()
+
+deriving instance Eq1 v => Eq (Action v a)
+
+instance Eq (Untyped Action) where
+  Untyped a == Untyped b = cast a == Just b
 
 ------------------------------------------------------------------------
 
@@ -169,4 +178,4 @@ prop_references prb = monadicSequentialC sm' $ \prog -> do
 
 prop_referencesParallel :: Problem -> PropertyOf (ParallelProgram Action)
 prop_referencesParallel prb = monadicParallelC (sm prb) $ \prog ->
-  prettyParallelProgram prog =<< runParallelProgram (sm prb) prog
+  prettyParallelProgram prog =<< runParallelProgram' 10 (sm prb) prog

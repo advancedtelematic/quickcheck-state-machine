@@ -22,39 +22,47 @@
 module Test.StateMachine.Internal.Parallel
   ( generateParallelProgram
   , shrinkParallelProgram
+  , validParallelProgram
   , executeParallelProgram
   , linearise
   , toBoxDrawings
   ) where
 
+import           Control.Arrow
+                   ((***))
 import           Control.Concurrent.Async.Lifted
                    (concurrently)
 import           Control.Concurrent.Lifted
                    (threadDelay)
 import           Control.Concurrent.STM
-                   (STM, atomically)
+                   (atomically)
 import           Control.Concurrent.STM.TChan
-                   (TChan, newTChanIO, tryReadTChan, writeTChan)
+                   (TChan, newTChanIO, writeTChan)
 import           Control.Monad
-                   (foldM)
+                   (foldM, forM_)
 import           Control.Monad.State
-                   (StateT, evalState, evalStateT, execStateT, get,
-                   lift, modify, runState, runStateT)
+                   (StateT, evalStateT, execStateT, get,
+                   lift, modify)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
+import           Data.Bifunctor
+                   (bimap)
 import           Data.Dynamic
                    (toDyn)
 import           Data.Functor.Classes
                    (Show1, showsPrec1)
 import           Data.List
-                   (partition)
+                   (partition, permutations)
+import           Data.Monoid
+                   ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
 import           Data.Tree
                    (Tree(Node))
 import           Test.QuickCheck
-                   (Gen, Property, property, shrinkList, (.&&.))
+                   (Gen, Property, choose, property, shrinkList, sized,
+                   (.&&.))
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 
@@ -78,45 +86,132 @@ generateParallelProgram
   -> model Symbolic
   -> Gen (ParallelProgram act)
 generateParallelProgram generator precondition transition model = do
-  let generate     =  generateProgram generator precondition transition
-  (prefix, model') <- runStateT  (generate 0) model
-  let offset       =  length (unProgram prefix)
-  left             <- evalStateT (generate offset) model'
-  let offset'      =  offset + length (unProgram left)
-  right            <- evalStateT (generate offset') model'
-  return (ParallelProgram (Fork left prefix right))
+  Program is         <- generateProgram' generator precondition transition model
+  prefixLength       <- sized (\k -> choose (0, k `div` 3))
+  let (prefix, rest) =  bimap Program Program (splitAt prefixLength is)
+  return (ParallelProgram prefix
+    (splitProgram precondition transition (advanceModel transition model prefix) rest))
 
 -- | Shrink a parallel program in a pre-condition and scope respecting
 --   way.
 shrinkParallelProgram
-  :: HFoldable act
+  :: forall act model err
+  .  HFoldable act
+  => Eq (Untyped act)
   => Shrinker act
   -> Precondition model act
   -> Transition' model act err
   -> model Symbolic
   -> (ParallelProgram act -> [ParallelProgram act])
-shrinkParallelProgram shrinker precondition transition model
-  = fmap ParallelProgram
-  . go
-  . unParallelProgram
+shrinkParallelProgram shrinker precondition transition model (ParallelProgram prefix suffixes)
+  = filter (validParallelProgram precondition transition model)
+      [ ParallelProgram prefix' suffixes'
+      | (prefix', suffixes') <- shrinkPair' shrinkProgram' shrinkSuffixes (prefix, suffixes)
+      ]
+      ++
+      shrinkMoveSuffixToPrefix
   where
-  go (Fork l p r) = map forkFilterInvalid
-    [ Fork l' p' r'
-    | (p', (l', r')) <- shrinkPair' shrinker' (shrinkPair shrinker') (p, (l, r))
-    ]
-    where
-    shrinker'
-      = map Program
-      . shrinkList (liftShrinkInternal shrinker)
-      . unProgram
+  shrinkProgram' :: Program act -> [Program act]
+  shrinkProgram'
+    = map Program
+    . shrinkList (liftShrinkInternal shrinker)
+    . unProgram
 
-  forkFilterInvalid (Fork l p r) =
-    let
-      filterProgram         = filterInvalid precondition transition
-      (p', (model', scope)) = runState  (filterProgram p) (model, S.empty)
-      l'                    = evalState (filterProgram l) (model', scope)
-      r'                    = evalState (filterProgram r) (model', scope)
-    in Fork l' p' r'
+  shrinkSuffixes :: [(Program act, Program act)] -> [[(Program act, Program act)]]
+  shrinkSuffixes = shrinkList (shrinkPair shrinkProgram')
+
+  shrinkMoveSuffixToPrefix :: [ParallelProgram act]
+  shrinkMoveSuffixToPrefix = case suffixes of
+    []                   -> []
+    (suffix : suffixes') ->
+      [ ParallelProgram (prefix <> Program [prefix'])
+                        (bimap Program Program suffix' : suffixes')
+      | (prefix', suffix') <- pickOneReturnRest2 (unProgram (fst suffix),
+                                                  unProgram (snd suffix))
+      ]
+
+  pickOneReturnRest :: [a] -> [(a, [a])]
+  pickOneReturnRest []       = []
+  pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
+
+  pickOneReturnRest2 :: ([a], [a]) -> [(a, ([a],[a]))]
+  pickOneReturnRest2 (xs, ys) =
+    map (id *** flip (,) ys) (pickOneReturnRest xs) ++
+    map (id ***      (,) xs) (pickOneReturnRest ys)
+
+validParallelProgram
+  :: HFoldable act
+  => Precondition model act
+  -> Transition' model act err
+  -> model Symbolic
+  -> ParallelProgram act
+  -> Bool
+validParallelProgram precondition transition model (ParallelProgram prefix suffixes)
+  =  validProgram  precondition transition model prefix
+  && validSuffixes precondition transition prefixModel prefixScope (parallelProgramToList suffixes)
+  where
+  prefixModel = advanceModel transition model prefix
+  prefixScope = boundVars prefix
+
+boundVars :: Program act -> Set Var
+boundVars
+  = foldMap (\(Internal _ (Symbolic var)) -> S.singleton var)
+  . unProgram
+
+usedVars :: HFoldable act => Program act -> Set Var
+usedVars
+  = foldMap (\(Internal act _) -> hfoldMap (\(Symbolic var) -> S.singleton var) act)
+  . unProgram
+
+validSuffixes
+  :: forall act model err
+  .  HFoldable act
+  => Precondition model act
+  -> Transition' model act err
+  -> model Symbolic
+  -> Set Var
+  -> [Program act]
+  -> Bool
+validSuffixes precondition transition model0 scope0 = go model0 scope0
+  where
+  go :: model Symbolic -> Set Var -> [Program act] -> Bool
+  go _     _     []             = True
+  go model scope (prog : progs)
+    =  usedVars prog `S.isSubsetOf` scope' -- This assumes that variables
+                                           -- are bound before used in a
+                                           -- program.
+    && parallelSafe precondition transition model prog
+    && go (advanceModel transition model prog) scope' progs
+    where
+    scope' = boundVars prog `S.union` scope
+
+runMany
+  :: MonadBaseControl IO  m
+  => HTraversable act
+  => Show1 (act Symbolic)
+  => Semantics' act m err
+  -> TChan (HistoryEvent (UntypedConcrete act) err)
+  -> Pid
+  -> [Internal act]
+  -> StateT Environment m ()
+runMany semantics hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
+  env <- get
+  case reify env act of
+    Left  _    -> return () -- The reference that the action uses failed to
+                            -- create.
+    Right cact -> do
+      liftBaseWith $ const $ atomically $ writeTChan hchan $
+        InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
+      mresp <- lift (semantics cact)
+      threadDelay 10
+      case mresp of
+        Fail err ->
+          liftBaseWith $ const $
+            atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
+        Success resp -> do
+          modify (insertConcrete sym (Concrete resp))
+          liftBaseWith $ const $
+            atomically $ writeTChan hchan $ ResponseEvent (Success (toDyn resp)) (show resp) pid
 
 -- | Run a parallel program, by first executing the prefix sequentially
 --   and then the suffixes in parallel, and return the history (or
@@ -129,56 +224,18 @@ executeParallelProgram
   => Semantics' act m err
   -> ParallelProgram act
   -> m (History act err)
-executeParallelProgram semantics = liftSemFork . unParallelProgram
-  where
-  liftSemFork
-    :: HTraversable act
-    => Show1 (act Symbolic)
-    => Fork (Program act)
-    -> m (History act err)
-  liftSemFork (Fork left prefix right) = do
-    hchan <- liftBaseWith (const newTChanIO)
-    env   <- execStateT (runMany hchan (Pid 0) (unProgram prefix)) emptyEnvironment
-    _     <- concurrently
-      (evalStateT (runMany hchan (Pid 1) (unProgram left))  env)
-      (evalStateT (runMany hchan (Pid 2) (unProgram right)) env)
-    History <$> liftBaseWith (const (getChanContents hchan))
-    where
-    getChanContents :: forall a. TChan a -> IO [a]
-    getChanContents chan = reverse <$> atomically (go [])
-      where
-      go :: [a] -> STM [a]
-      go acc = do
-        mx <- tryReadTChan chan
-        case mx of
-          Just x  -> go $ x : acc
-          Nothing -> return acc
+executeParallelProgram semantics (ParallelProgram prefix suffixes) = do
+  hchan <- liftBaseWith (const newTChanIO)
+  env   <- execStateT
+             (runMany semantics hchan (Pid 0) (unProgram prefix))
+             emptyEnvironment
+  forM_ suffixes $ \(prog1, prog2) -> do
+    _ <- concurrently
+      (evalStateT (runMany semantics hchan (Pid 1) (unProgram prog1)) env)
+      (evalStateT (runMany semantics hchan (Pid 2) (unProgram prog2)) env)
+    return ()
 
-  runMany
-    :: HTraversable act
-    => Show1 (act Symbolic)
-    => TChan (HistoryEvent (UntypedConcrete act) err)
-    -> Pid
-    -> [Internal act]
-    -> StateT Environment m ()
-  runMany hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
-    env <- get
-    case reify env act of
-      Left  _    -> return () -- The reference that the action uses failed to
-                              -- create.
-      Right cact -> do
-        liftBaseWith $ const $ atomically $ writeTChan hchan $
-          InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
-        mresp <- lift (semantics cact)
-        threadDelay 10
-        case mresp of
-          Fail err ->
-            liftBaseWith $ const $
-              atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
-          Success resp -> do
-            modify (insertConcrete sym (Concrete resp))
-            liftBaseWith $ const $
-              atomically $ writeTChan hchan $ ResponseEvent (Success (toDyn resp)) (show resp) pid
+  History <$> liftBaseWith (const (getChanContents hchan))
 
 ------------------------------------------------------------------------
 
@@ -212,14 +269,12 @@ anyP' p xs = anyP p xs
 -- | Draw an ASCII diagram of the history of a parallel program. Useful for
 --   seeing how a race condition might have occured.
 toBoxDrawings :: HFoldable act => ParallelProgram act -> History act err -> Doc
-toBoxDrawings prog = toBoxDrawings' allVars
+toBoxDrawings (ParallelProgram prefix suffixes) = toBoxDrawings'' allVars
   where
-  allVars       = S.unions [l0, p0, r0]
-  Fork l0 p0 r0 = fmap (S.unions . vars . unProgram) (unParallelProgram prog)
-  vars xs       = [ getUsedVars x | Internal x _ <- xs]
+  allVars = usedVars prefix `S.union` foldMap usedVars (parallelProgramToList suffixes)
 
-  toBoxDrawings' :: Set Var -> History act err -> Doc
-  toBoxDrawings' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
+  toBoxDrawings'' :: Set Var -> History act err -> Doc
+  toBoxDrawings'' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
     where
       (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
       (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
@@ -239,3 +294,56 @@ toBoxDrawings prog = toBoxDrawings' allVars
 
       evT :: [(EventType, Pid)]
       evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
+
+------------------------------------------------------------------------
+
+splitProgram
+  :: Precondition model act
+  -> Transition'  model act err
+  -> model Symbolic
+  -> Program act
+  -> [(Program act, Program act)]
+splitProgram precondition transition model0 = go model0 [] . unProgram
+  where
+  go _     acc []    = reverse acc
+  go model acc iacts = go (advanceModel transition model (Program safe))
+                          ((Program safe1, Program safe2) : acc)
+                          rest
+    where
+    (safe, rest)   = spanSafe model [] iacts
+    (safe1, safe2) = splitAt (length safe `div` 2) safe
+
+  spanSafe _     safe []                            = (reverse safe, [])
+  spanSafe model safe (iact@(Internal _ _) : iacts)
+    | length safe <= 5 && parallelSafe precondition transition model (Program (iact : safe))
+        = spanSafe model (iact : safe) iacts
+    | otherwise
+        = (reverse safe, iact : iacts)
+
+parallelSafe
+  :: Precondition model act
+  -> Transition' model act err
+  -> model Symbolic
+  -> Program act
+  -> Bool
+parallelSafe precondition transition model0
+  = and
+  . map (preconditionsHold model0)
+  . permutations
+  . unProgram
+  where
+  preconditionsHold _     []                         = True
+  preconditionsHold model (Internal act sym : iacts)
+    =  precondition model act
+    && preconditionsHold (transition model act (Success sym)) iacts
+
+advanceModel
+  :: Transition' model act err
+  -> model Symbolic
+  -> Program act
+  -> model Symbolic
+advanceModel transition model0 = go model0 . unProgram
+  where
+  go model []                         = model
+  go model (Internal act sym : iacts) =
+    go (transition model act (Success sym)) iacts
