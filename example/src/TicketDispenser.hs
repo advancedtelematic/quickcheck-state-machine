@@ -20,12 +20,14 @@
 -----------------------------------------------------------------------------
 
 module TicketDispenser
-  -- ( prop_ticketDispenser
-  -- , prop_ticketDispenserParallel
-  -- , prop_ticketDispenserParallelOK
-  -- , prop_ticketDispenserParallelBad
-  -- , withDbLock
-  -- )
+  ( prop_ticketDispenser
+  , prop_ticketDispenserParallel
+  , prop_ticketDispenserParallelOK
+  , prop_ticketDispenserParallelBad
+  , prop_ticketGenParallelValid
+  , prop_ticketShrinkParallelValid
+  , withDbLock
+  )
   where
 
 import           Control.Exception
@@ -48,12 +50,13 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Property, frequency, (===))
+                   (Property, frequency, (===), forAll)
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 
 import           Test.StateMachine
 import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses)
 import           Utils
@@ -217,6 +220,17 @@ prop_ticketDispenserParallelBad files =
           [ Untyped Reset ] [ Untyped TakeTicket, Untyped Reset ] pprog ||
         structuralSubset
           [] [ Untyped Reset, Untyped Reset ] pprog)
+
+prop_ticketGenParallelValid :: Property
+prop_ticketGenParallelValid = forAll
+  (generateParallelProgram generator preconditions (okTransition transitions) initModel)
+  (validParallelProgram preconditions (okTransition transitions) initModel)
+
+prop_ticketShrinkParallelValid :: Property
+prop_ticketShrinkParallelValid = forAll
+  (generateParallelProgram generator preconditions (okTransition transitions) initModel) $ \p ->
+    all (validParallelProgram preconditions (okTransition transitions) initModel)
+        (shrinkParallelProgram shrinker preconditions (okTransition transitions) initModel p)
 
 ------------------------------------------------------------------------
 

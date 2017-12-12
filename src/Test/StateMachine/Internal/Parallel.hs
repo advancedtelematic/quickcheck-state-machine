@@ -22,6 +22,7 @@
 module Test.StateMachine.Internal.Parallel
   ( generateParallelProgram
   , shrinkParallelProgram
+  , validParallelProgram
   , executeParallelProgram
   , linearise
   , toBoxDrawings
@@ -146,7 +147,7 @@ validParallelProgram
   -> ParallelProgram act
   -> Bool
 validParallelProgram precondition transition model (ParallelProgram prefix suffixes)
-  =  validProgram precondition transition model prefix
+  =  validProgram  precondition transition model prefix
   && validSuffixes precondition transition prefixModel prefixScope (parallelProgramToList suffixes)
   where
   prefixModel = advanceModel transition model prefix

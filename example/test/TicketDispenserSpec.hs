@@ -23,6 +23,12 @@ spec = do
 
   describe "Parallel property" $ do
 
+    it "prop_ticketGenParallelValid: generated parallel programs are valid"
+      prop_ticketGenParallelValid
+
+    it "prop_ticketShrinkParallelValid: shrinked parallel programs are valid"
+      prop_ticketShrinkParallelValid
+
     around withDbLock $ modifyMaxSuccess (const 5) $
 
       it "`prop_ticketDispenserParallelOK`: works with exclusive file locks"

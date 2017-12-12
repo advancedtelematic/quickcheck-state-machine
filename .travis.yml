@@ -38,7 +38,7 @@ install:
 
 script:
 # Build the package, its tests, and its docs and run the tests
-- travis_retry travis_wait 15 stack --stack-yaml=example/stack.yaml test --pedantic --haddock --no-haddock-deps --test-arguments "--color"
+- travis_retry travis_wait 25 stack --stack-yaml=example/stack.yaml test --pedantic --haddock --no-haddock-deps --test-arguments "--color"
 
 notifications:
   email: false
