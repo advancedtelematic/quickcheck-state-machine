@@ -36,6 +36,12 @@ import           Test.QuickCheck.Property
 
 ------------------------------------------------------------------------
 
+oldMonadic :: Monad m => (m Property -> Property) -> PropertyM m a -> Property
+oldMonadic runner m0 = property (fmap runner (go m0))
+  where
+  go :: Monad m => PropertyM m a -> Gen (m Property)
+  go (MkPropertyM m) = m (const (return (return (property True))))
+
 -- | Lifts 'Prelude.any' to properties.
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)

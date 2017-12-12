@@ -66,7 +66,7 @@ import qualified Data.Map                              as M
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
-                   (Property, Testable, collect, cover, ioProperty,
+                   (Property, collect, cover, ioProperty,
                    property)
 import qualified Test.QuickCheck
 import           Test.QuickCheck.Counterexamples
@@ -79,7 +79,7 @@ import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (forAllShrinkShowC, whenFailM)
+                   (forAllShrinkShowC, oldMonadic, whenFailM)
 import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
@@ -124,7 +124,6 @@ forAllProgramC generator shrinker precondition transition model =
 monadicSequential
   :: Monad m
   => HFoldable act
-  => Testable a
   => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
@@ -135,7 +134,6 @@ monadicSequential sm = property . monadicSequentialC sm
 monadicSequentialC
   :: Monad m
   => HFoldable act
-  => Testable a
   => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
@@ -144,7 +142,7 @@ monadicSequentialC StateMachine {..} predicate
   = fmap (\(prog :&: ()) -> prog)
   . forAllProgramC generator' shrinker' precondition' transition' model'
   $ CE.property
-  . monadic (ioProperty . runner')
+  . oldMonadic (ioProperty . runner')
   . predicate
 
 -- | Testable property of sequential programs derived from a
