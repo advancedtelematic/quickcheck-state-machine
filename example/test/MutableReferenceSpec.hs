@@ -20,11 +20,11 @@ spec = do
     it "`prop_genScope`: generate well-scoped programs"
       prop_genScope
 
-    it "`prop_genParallelScope`: generate well-scoped parallel programs"
-      prop_genParallelScope
-
     it "`prop_genParallelSequence`: generate parallel programs where the symbolic references form a sequence"
       prop_genParallelSequence
+
+    it "`prop_genParallelValid`: generate valid parallel programs"
+      prop_genParallelValid
 
   describe "Sequential property" $ do
 
@@ -41,8 +41,8 @@ spec = do
       it "`prop_shrinkParallelSubseq`: shrinking parallel programs preserves subsequences"
         prop_shrinkParallelSubseq
 
-      it "`prop_shrinkParallelScope`: shrinking parallel programs preserves scope"
-        prop_shrinkParallelScope
+      it "`prop_shrinkParallelValid`: shrinking parallel programs preserves validity"
+        prop_shrinkParallelValid
 
   describe "Parallel property" $
 

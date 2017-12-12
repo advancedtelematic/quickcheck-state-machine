@@ -48,11 +48,6 @@ prop_genScope = forAll
   (evalStateT (generateProgram generator precondition oktransition 0) initModel)
   scopeCheck
 
-prop_genParallelScope :: Property
-prop_genParallelScope = forAll
-  (generateParallelProgram generator precondition oktransition initModel)
-  scopeCheckParallel
-
 prop_genParallelSequence :: Property
 prop_genParallelSequence = forAll
   (generateParallelProgram generator precondition oktransition initModel)
@@ -65,6 +60,11 @@ prop_genParallelSequence = forAll
 
     vars :: Program Action -> [Int]
     vars = map (\(Internal _ (Symbolic (Var i))) -> i) . unProgram
+
+prop_genParallelValid :: Property
+prop_genParallelValid = forAll
+  (generateParallelProgram generator precondition oktransition initModel)
+  (validParallelProgram precondition oktransition initModel)
 
 prop_sequentialShrink :: Property
 prop_sequentialShrink =
@@ -96,10 +96,11 @@ prop_shrinkParallelSubseq = forAll
                     void (unProgram (flattenParallelProgram pprog)))
         (shrinkParallelProgram shrinker precondition oktransition initModel (cheat pprog))
 
-prop_shrinkParallelScope :: Property
-prop_shrinkParallelScope = forAll
+prop_shrinkParallelValid :: Property
+prop_shrinkParallelValid = forAll
   (generateParallelProgram generator precondition oktransition initModel) $ \p ->
-    all scopeCheckParallel (shrinkParallelProgram shrinker precondition oktransition initModel p)
+    all (validParallelProgram precondition oktransition initModel)
+        (shrinkParallelProgram shrinker precondition oktransition initModel p)
 
 ------------------------------------------------------------------------
 
