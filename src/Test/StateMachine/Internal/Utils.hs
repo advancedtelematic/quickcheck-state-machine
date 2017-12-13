@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators    #-}
+{-# LANGUAGE TypeOperators #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -26,21 +26,18 @@ import           Test.QuickCheck
                    whenFail)
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), Counterexample, PropertyOf)
-import qualified Test.QuickCheck.Counterexamples  as CE
+import qualified Test.QuickCheck.Counterexamples as CE
+import           Test.QuickCheck.Gen.Unsafe
+                   (promote)
 import           Test.QuickCheck.Monadic
-                   (PropertyM(MkPropertyM), monadicIO, run)
+                   (PropertyM(MkPropertyM), run)
 import           Test.QuickCheck.Property
-                   (Property(MkProperty), unProperty)
+                   (Prop(MkProp), Property(MkProperty), ioRose, unProp,
+                   unProperty)
 import           Test.QuickCheck.Property
                    ((.&&.), (.||.))
 
 ------------------------------------------------------------------------
-
-oldMonadic :: Monad m => (m Property -> Property) -> PropertyM m a -> Property
-oldMonadic runner m0 = property (fmap runner (go m0))
-  where
-  go :: Monad m => PropertyM m a -> Gen (m Property)
-  go (MkPropertyM m) = m (const (return (return (property True))))
 
 -- | Lifts 'Prelude.any' to properties.
 anyP :: (a -> Property) -> [a] -> Property
@@ -62,14 +59,31 @@ alwaysP n prop
   | n == 1    = prop
   | otherwise = prop .&&. alwaysP (n - 1) prop
 
+oldMonadic :: Monad m => (m Property -> Property) -> PropertyM m a -> Property
+oldMonadic runner m0 = property (fmap runner (go m0))
+  where
+  go :: Monad m => PropertyM m a -> Gen (m Property)
+  go (MkPropertyM m) = m (const (return (return (property True))))
+
+oldMonadicIO :: PropertyM IO a -> Property
+oldMonadicIO = oldMonadic oldIoProperty
+
+oldIoProperty :: Testable prop => IO prop -> Property
+oldIoProperty = MkProperty . fmap (MkProp . ioRose . fmap unProp) .
+  promote . fmap (unProperty . property)
+
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.
 shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
-shrinkPropertyHelperC prop p = shrinkPropertyHelperC' prop (property . p)
+shrinkPropertyHelperC prop p = oldMonadicIO $ do
+  ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
+  case ce_ of
+    Nothing -> return False
+    Just ce -> return (p ce)
 
 -- | Same as above, but using a property predicate.
 shrinkPropertyHelperC' :: Show a => PropertyOf a -> (a -> Property) -> Property
-shrinkPropertyHelperC' prop p = monadicIO $ do
+shrinkPropertyHelperC' prop p = oldMonadicIO $ do
   ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
   case ce_ of
     Nothing -> return ()
