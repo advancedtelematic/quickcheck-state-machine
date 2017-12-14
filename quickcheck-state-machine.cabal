@@ -25,6 +25,7 @@ library
                      , Test.StateMachine.Internal.Types.Environment
                      , Test.StateMachine.Internal.Utils
                      , Test.StateMachine.Internal.Utils.BoxDrawer
+                     , Test.StateMachine.Logic
                      , Test.StateMachine.TH
                      , Test.StateMachine.Types
                      , Test.StateMachine.Types.Generics
