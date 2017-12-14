@@ -81,6 +81,13 @@ shrinkPropertyHelperC prop p = oldMonadicIO $ do
     Nothing -> return False
     Just ce -> return (p ce)
 
+shrinkPropertyHelperC'' :: Show a => a -> (a -> PropertyOf a) -> (a -> Bool) -> Property
+shrinkPropertyHelperC'' x prop p = oldMonadicIO $ do
+  ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) (prop x)
+  case ce_ of
+    Nothing -> return False
+    Just ce -> return (p ce)
+
 -- | Same as above, but using a property predicate.
 shrinkPropertyHelperC' :: Show a => PropertyOf a -> (a -> Property) -> Property
 shrinkPropertyHelperC' prop p = oldMonadicIO $ do

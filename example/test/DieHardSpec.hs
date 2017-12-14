@@ -71,7 +71,7 @@ testValidSolutions = all ((/= 4) . bigJug . run) validSolutions
   run = foldr (\c s -> transitions s c (Concrete ())) initModel
 
 prop_bigJug4 :: Property
-prop_bigJug4 = shrinkPropertyHelperC prop_dieHard $ \prog ->
+prop_bigJug4 = forAllProgram undefined undefined undefined undefined shrinkPropertyHelperC'' prop_dieHard $ \prog ->
   case find (alphaEq prog)
          (map (Program . map (flip Internal (Symbolic (Var 0)))) validSolutions) of
     Nothing -> False

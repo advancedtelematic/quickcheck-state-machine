@@ -157,8 +157,8 @@ sm = stateMachine
   generator shrinker preconditions transitions
   postconditions initModel semantics id
 
-prop_dieHard :: PropertyOf (Program Action)
-prop_dieHard = monadicSequentialC sm $ \prog -> do
+prop_dieHard :: Program Action -> PropertyOf (Program Action)
+prop_dieHard prog = monadicIO $ do
   (hist, _, res) <- runProgram sm prog
   prettyProgram sm hist $
     checkActionNames prog (res === Ok)
