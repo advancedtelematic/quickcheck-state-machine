@@ -1,6 +1,21 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE StandaloneDeriving        #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Logic
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- This module provides a propositional logic which gives counterexamples when
+-- the proposition is false.
+--
+-----------------------------------------------------------------------------
+
 module Test.StateMachine.Logic where
 
 infixr 1 :=>
@@ -41,6 +56,7 @@ dual p = case p of
   x `Elem`    xs -> x `NotElem` xs
   x `NotElem` xs -> x `Elem`    xs
 
+-- See Yuri Gurevich's "Intuitionistic logic with strong negation" (1977).
 strongNeg :: Logic -> Logic
 strongNeg l = case l of
   Bot          -> Top
