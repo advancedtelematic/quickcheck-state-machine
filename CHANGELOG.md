@@ -1,4 +1,11 @@
-#### ???
+#### 0.3.0 (2017-12-15)
+
+  * A propositional logic module was added to help provide better
+    counterexamples when pre- and post-conditions don't hold;
+
+  * Generation of parallel programs was improved (base on
+    a [comment](https://github.com/Quviq/QuickCheckExamples/issues/2) by
+    Hans Svensson about how Erlang QuickCheck does it);
 
   * Support for semantics that might fail was added;
 
