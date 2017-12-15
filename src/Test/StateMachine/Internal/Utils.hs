@@ -22,18 +22,15 @@ import           Data.List
                    (group, sort)
 import           Test.QuickCheck
                    (Gen, Property, Testable, again, chatty,
-                   counterexample, property, shrinking, stdArgs,
-                   whenFail)
+                   counterexample, ioProperty, property, shrinking,
+                   stdArgs, whenFail)
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), Counterexample, PropertyOf)
 import qualified Test.QuickCheck.Counterexamples as CE
-import           Test.QuickCheck.Gen.Unsafe
-                   (promote)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM), run)
 import           Test.QuickCheck.Property
-                   (Prop(MkProp), Property(MkProperty), ioRose, unProp,
-                   unProperty)
+                   (Property(MkProperty), unProperty)
 import           Test.QuickCheck.Property
                    ((.&&.), (.||.))
 
@@ -59,43 +56,25 @@ alwaysP n prop
   | n == 1    = prop
   | otherwise = prop .&&. alwaysP (n - 1) prop
 
-oldMonadic :: Monad m => (m Property -> Property) -> PropertyM m a -> Property
-oldMonadic runner m0 = property (fmap runner (go m0))
-  where
-  go :: Monad m => PropertyM m a -> Gen (m Property)
-  go (MkPropertyM m) = m (const (return (return (property True))))
-
-oldMonadicIO :: PropertyM IO a -> Property
-oldMonadicIO = oldMonadic oldIoProperty
-
-oldIoProperty :: Testable prop => IO prop -> Property
-oldIoProperty = MkProperty . fmap (MkProp . ioRose . fmap unProp) .
-  promote . fmap (unProperty . property)
-
 -- | Write a metaproperty on the output of QuickChecking a property using a
 --   boolean predicate on the output.
 shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
-shrinkPropertyHelperC prop p = oldMonadicIO $ do
+shrinkPropertyHelperC prop p = oldMonadic ioProperty $ do
   ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
   case ce_ of
     Nothing -> return False
     Just ce -> return (p ce)
+  where
+  oldMonadic :: (Monad m, Testable a) => (m Property -> Property) -> PropertyM m a -> Property
+  oldMonadic runner m0 = property (fmap runner (oldMonadic' m0))
+    where
+    oldMonadic' :: (Monad m, Testable a) => PropertyM m a -> Gen (m Property)
+    oldMonadic'
+      (MkPropertyM m) = m (const (return (return (property True))))
 
-shrinkPropertyHelperC'' :: Show a => a -> (a -> PropertyOf a) -> (a -> Bool) -> Property
-shrinkPropertyHelperC'' x prop p = oldMonadicIO $ do
-  ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) (prop x)
-  case ce_ of
-    Nothing -> return False
-    Just ce -> return (p ce)
-
--- | Same as above, but using a property predicate.
-shrinkPropertyHelperC' :: Show a => PropertyOf a -> (a -> Property) -> Property
-shrinkPropertyHelperC' prop p = oldMonadicIO $ do
-  ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
-  case ce_ of
-    Nothing -> return ()
-    Just ce -> liftProperty $
-      counterexample ("shrinkPropertyHelper: " ++ show ce) $ p ce
+      -- The new definition of @monadic'@:
+      --   (MkPropertyM m) = m (\prop -> return (return (property prop)))
+      -- breaks @shrinkPropertyHelperC@...
 
 -- | Given shrinkers for the components of a pair we can shrink the pair.
 shrinkPair' :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])
