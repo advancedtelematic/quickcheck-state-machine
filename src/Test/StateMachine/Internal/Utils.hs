@@ -56,26 +56,6 @@ alwaysP n prop
   | n == 1    = prop
   | otherwise = prop .&&. alwaysP (n - 1) prop
 
--- | Write a metaproperty on the output of QuickChecking a property using a
---   boolean predicate on the output.
-shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
-shrinkPropertyHelperC prop p = oldMonadic ioProperty $ do
-  ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
-  case ce_ of
-    Nothing -> return False
-    Just ce -> return (p ce)
-  where
-  oldMonadic :: (Monad m, Testable a) => (m Property -> Property) -> PropertyM m a -> Property
-  oldMonadic runner m0 = property (fmap runner (oldMonadic' m0))
-    where
-    oldMonadic' :: (Monad m, Testable a) => PropertyM m a -> Gen (m Property)
-    oldMonadic'
-      (MkPropertyM m) = m (const (return (return (property True))))
-
-      -- The new definition of @monadic'@:
-      --   (MkPropertyM m) = m (\prop -> return (return (property prop)))
-      -- breaks @shrinkPropertyHelperC@...
-
 -- | Given shrinkers for the components of a pair we can shrink the pair.
 shrinkPair' :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])
 shrinkPair' shrinkerA shrinkerB (x, y) =

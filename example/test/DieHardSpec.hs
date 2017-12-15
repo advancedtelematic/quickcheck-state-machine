@@ -18,7 +18,6 @@ import           Test.QuickCheck
 import           DieHard
 import           Test.StateMachine
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Utils
 import           Utils
 
 ------------------------------------------------------------------------

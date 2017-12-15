@@ -18,7 +18,8 @@
 -----------------------------------------------------------------------------
 
 module Utils
-  ( minimalShrinkHelper
+  ( shrinkPropertyHelperC
+  , minimalShrinkHelper
   , alphaEq
   , structuralSubset
   , scopeCheck
@@ -44,19 +45,42 @@ import qualified Data.Set                              as S
 import           Data.Tree
                    (Tree(Node), unfoldTree)
 import           Test.QuickCheck
-                   (Property)
+                   (Gen, Property, Testable, chatty, ioProperty,
+                   property, stdArgs)
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
+import qualified Test.QuickCheck.Counterexamples       as CE
+import           Test.QuickCheck.Monadic
+                   (PropertyM(MkPropertyM), run)
 
 import           Test.StateMachine.Internal.Parallel
                    (shrinkParallelProgram)
 import           Test.StateMachine.Internal.Sequential
                    (getUsedVars)
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
+
+-- | Write a metaproperty on the output of QuickChecking a property using a
+--   boolean predicate on the output.
+shrinkPropertyHelperC :: Show a => PropertyOf a -> (a -> Bool) -> Property
+shrinkPropertyHelperC prop p = oldMonadic ioProperty $ do
+  ce_ <- run $ CE.quickCheckWith (stdArgs {chatty = False}) prop
+  case ce_ of
+    Nothing -> return False
+    Just ce -> return (p ce)
+  where
+  oldMonadic :: (Monad m, Testable a) => (m Property -> Property) -> PropertyM m a -> Property
+  oldMonadic runner m0 = property (fmap runner (oldMonadic' m0))
+    where
+    oldMonadic' :: (Monad m, Testable a) => PropertyM m a -> Gen (m Property)
+    oldMonadic'
+      (MkPropertyM m) = m (const (return (return (property True))))
+
+      -- The new definition of @monadic'@:
+      --   (MkPropertyM m) = m (\prop -> return (return (property prop)))
+      -- breaks @shrinkPropertyHelperC@...
 
 minimalShrinkHelper
   :: forall act model err

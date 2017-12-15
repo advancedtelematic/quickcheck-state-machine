@@ -32,8 +32,6 @@ import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
                    (generateProgram)
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Utils
-                   (shrinkPropertyHelperC)
 
 import           MutableReference
 import           Utils
