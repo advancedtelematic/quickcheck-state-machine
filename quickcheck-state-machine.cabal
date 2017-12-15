@@ -1,5 +1,5 @@
 name:                quickcheck-state-machine
-version:             0.2.0
+version:             0.3.0
 synopsis:            Test monadic programs using state machine based models
 description:         See README at <https://github.com/advancedtelematic/quickcheck-state-machine#readme>
 homepage:            https://github.com/advancedtelematic/quickcheck-state-machine#readme
@@ -14,7 +14,7 @@ extra-source-files:  README.md
                    , CHANGELOG.md
                    , CONTRIBUTING.md
 cabal-version:       >=1.10
-tested-with:         GHC == 8.0.2
+tested-with:         GHC == 8.0.2, GHC == 8.2.2
 
 library
   hs-source-dirs:      src
