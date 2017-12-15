@@ -61,8 +61,6 @@ import           Control.Monad.Trans.Resource
 import qualified Data.ByteString.Char8            as BS
 import           Data.Char
                    (isPrint)
-import           Data.Dynamic
-                   (cast)
 import           Data.Functor.Classes
                    (Eq1)
 import           Data.List
@@ -76,6 +74,8 @@ import           Data.String.Conversions
 import           Data.Text
                    (Text)
 import qualified Data.Text                        as T
+import           Data.Typeable
+                   (cast)
 import           Database.Persist.Postgresql
                    (ConnectionPool, ConnectionString, Key, SqlBackend,
                    createPostgresqlPool, delete, get, getJust, insert,

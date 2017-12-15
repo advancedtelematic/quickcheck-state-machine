@@ -13,12 +13,11 @@ import           Data.Typeable
 import           Test.Hspec
                    (Spec, describe, it, shouldBe)
 import           Test.QuickCheck
-                   (Property, label, property)
+                   (Property)
 
 import           DieHard
 import           Test.StateMachine
 import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Utils
 import           Utils
 
 ------------------------------------------------------------------------
@@ -71,11 +70,11 @@ testValidSolutions = all ((/= 4) . bigJug . run) validSolutions
   run = foldr (\c s -> transitions s c (Concrete ())) initModel
 
 prop_bigJug4 :: Property
-prop_bigJug4 = shrinkPropertyHelperC' prop_dieHard $ \prog ->
+prop_bigJug4 = shrinkPropertyHelperC prop_dieHard $ \prog ->
   case find (alphaEq prog)
          (map (Program . map (flip Internal (Symbolic (Var 0)))) validSolutions) of
-    Nothing -> property False
-    Just ex -> label (show ex) (property True)
+    Nothing -> False
+    Just _  -> True
 
 ------------------------------------------------------------------------
 

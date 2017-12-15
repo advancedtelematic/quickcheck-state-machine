@@ -18,8 +18,6 @@ module Test.StateMachine.Utils
   , liftProperty
   , whenFailM
   , alwaysP
-  , shrinkPropertyHelperC
-  , shrinkPropertyHelperC'
   , shrinkPair
   , shrinkPair'
   , forAllShrinkShowC

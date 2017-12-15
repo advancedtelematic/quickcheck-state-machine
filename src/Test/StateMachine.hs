@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
@@ -66,13 +69,16 @@ import qualified Data.Map                              as M
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
-                   (Property, collect, cover, ioProperty, property)
+                   (Property, Testable, collect, cover, ioProperty,
+                   property)
 import qualified Test.QuickCheck
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), PropertyOf)
 import qualified Test.QuickCheck.Counterexamples       as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM, monadic, run)
+import           Test.QuickCheck.Property
+                   (succeeded)
 
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
@@ -123,6 +129,7 @@ forAllProgramC generator shrinker precondition transition model =
 monadicSequential
   :: Monad m
   => HFoldable act
+  => Testable a
   => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
@@ -133,6 +140,7 @@ monadicSequential sm = property . monadicSequentialC sm
 monadicSequentialC
   :: Monad m
   => HFoldable act
+  => Testable a
   => StateMachine' model act m err
   -> (Program act -> PropertyM m a)
      -- ^ Predicate that should hold for all programs.
@@ -143,6 +151,13 @@ monadicSequentialC StateMachine {..} predicate
   $ CE.property
   . monadic (ioProperty . runner')
   . predicate
+
+#if !MIN_VERSION_QuickCheck(2,10,0)
+instance Testable () where
+  property = property . liftUnit
+    where
+    liftUnit () = succeeded
+#endif
 
 -- | Testable property of sequential programs derived from a
 -- 'StateMachine' specification.

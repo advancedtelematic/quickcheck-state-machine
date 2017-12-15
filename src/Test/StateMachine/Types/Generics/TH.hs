@@ -33,14 +33,25 @@ import           Data.Functor.Classes
 import           Data.Maybe
                    (maybeToList)
 import           Language.Haskell.TH
+                   (Body(NormalB), Clause(Clause), Cxt,
+                   Dec(FunD, InstanceD), Exp(AppE, ConE, LitE, VarE),
+                   ExpQ, Lit(IntegerL, StringL), Match, Name,
+                   Pat(RecP, VarP, WildP), PatQ, Q,
+                   Type(AppT, ConT, SigT, VarT), appE, caseE, conE,
+                   conP, lamE, listE, match, mkName, nameBase, newName,
+                   normalB, standaloneDerivD, tupE, tupP,
+                   tupleDataName, varE, varP, wildP)
 import           Language.Haskell.TH.Datatype
+                   (ConstructorInfo, DatatypeInfo, constructorFields,
+                   constructorName, datatypeCons, datatypeName,
+                   datatypeVars, reifyDatatype, resolveTypeSynonyms)
 import           Test.QuickCheck
                    (shrink)
 
 import           Test.StateMachine.Internal.Utils
                    (dropLast, nub, toLast)
 import           Test.StateMachine.Types
-                   (Untyped, Symbolic)
+                   (Symbolic, Untyped)
 import           Test.StateMachine.Types.Generics
 import           Test.StateMachine.Types.References
                    (Reference)
@@ -72,7 +83,10 @@ deriveShow' info = do
       instanceHead_ = AppT
         (ConT ''Show)
         (foldl' AppT (ConT (datatypeName info)) (datatypeVars info))
-  return [StandaloneDerivD cxt_ instanceHead_]
+  standaloneDerivD' cxt_ instanceHead_
+
+standaloneDerivD' :: Cxt -> Type -> Q [Dec]
+standaloneDerivD' cxt ty = (:[]) <$> standaloneDerivD (return cxt) (return ty)
 
 -- |
 -- @
@@ -92,7 +106,7 @@ deriveShowUntyped' info = do
         (AppT
           (ConT ''Untyped)
           (foldl' AppT (ConT (datatypeName info)) (dropLast 2 (datatypeVars info))))
-  return [StandaloneDerivD cxt_ instanceHead_]
+  standaloneDerivD' cxt_ instanceHead_
 
 -- |
 -- @ 'derivingShow1' ''Action

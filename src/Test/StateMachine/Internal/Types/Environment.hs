@@ -28,11 +28,12 @@ module Test.StateMachine.Internal.Types.Environment
   ) where
 
 import           Data.Dynamic
-                   (Dynamic, Proxy(Proxy), TypeRep, Typeable,
-                   dynTypeRep, fromDynamic, toDyn, typeRep)
+                   (Dynamic, Typeable, dynTypeRep, fromDynamic, toDyn)
 import           Data.Map
                    (Map)
 import qualified Data.Map                as M
+import           Data.Typeable
+                   (Proxy(Proxy), TypeRep, typeRep)
 
 import           Test.StateMachine.Types
 
