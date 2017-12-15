@@ -1,6 +1,8 @@
 ## quickcheck-state-machine
 
 [![Hackage](https://img.shields.io/hackage/v/quickcheck-state-machine.svg)](https://hackage.haskell.org/package/quickcheck-state-machine)
+[![Stackage Nightly](http://stackage.org/package/quickcheck-state-machine/badge/nightly)](http://stackage.org/nightly/package/quickcheck-state-machine)
+[![Stackage LTS](http://stackage.org/package/quickcheck-state-machine/badge/lts)](http://stackage.org/lts/package/quickcheck-state-machine)
 [![Build Status](https://api.travis-ci.org/advancedtelematic/quickcheck-state-machine.svg?branch=master)](https://travis-ci.org/advancedtelematic/quickcheck-state-machine)
 
 `quickcheck-state-machine` is a Haskell library, based
