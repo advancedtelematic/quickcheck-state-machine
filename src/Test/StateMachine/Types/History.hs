@@ -29,11 +29,17 @@ module Test.StateMachine.Types.History
   , UntypedConcrete(..)
   , Operation(..)
   , linearTree
+  , pending
+  , ppEvents
+  , complete
+  , extend
   )
   where
 
 import           Data.Dynamic
-                   (Dynamic)
+                   (Dynamic, toDyn)
+import           Data.List
+                   (subsequences)
 import           Data.Tree
                    (Tree(Node))
 import           Data.Typeable
@@ -136,3 +142,37 @@ linearTree es =
   -- Hmm, is this enough?
   matchInv pid (InvocationEvent _ _ _ pid') = pid == pid'
   matchInv _   _                            = False
+
+------------------------------------------------------------------------
+
+pending :: History' act err -> [HistoryEvent (UntypedConcrete act) err]
+pending []                              = []
+pending (e@(InvocationEvent _ _ _ pid) : es)
+  | null (findCorrespondingResp pid es) = e : pending es
+  | otherwise                           =     pending es
+pending (ResponseEvent _ _ _ : es)      =     pending es
+
+ppEvents :: [HistoryEvent (UntypedConcrete act) err] -> String
+ppEvents [] = ""
+ppEvents (InvocationEvent _ s _ (Pid pid) : es) = s ++ " (" ++ show pid ++ ")\n" ++ ppEvents es
+ppEvents (ResponseEvent   _ s   (Pid pid) : es) = s ++ " (" ++ show pid ++ ")\n" ++ ppEvents es
+
+complete
+  :: model
+  -> (forall resp. (Show resp, Typeable resp) => act Concrete resp -> model -> resp)
+  -> HistoryEvent (UntypedConcrete act) err
+  -> HistoryEvent (UntypedConcrete act) err
+complete model mock (InvocationEvent (UntypedConcrete act) s _ pid)
+  = ResponseEvent (Success (toDyn resp)) (show resp) pid
+  where
+  resp = mock act model
+
+extend
+  :: model
+  -> (forall resp. Typeable resp => act Concrete resp -> model -> resp)
+  -> History' act err
+  -> [History' act err]
+extend model mock hist =
+  [ hist ++ map (complete model mock) sub
+  | sub <- subsequences (pending hist)
+  ]
