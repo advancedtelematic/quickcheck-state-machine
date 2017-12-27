@@ -38,11 +38,12 @@ import           Control.Concurrent.STM
                    (atomically)
 import           Control.Concurrent.STM.TChan
                    (TChan, newTChanIO, writeTChan)
+import           Control.Exception.Lifted
+                   (SomeException, catch)
 import           Control.Monad
-                   (foldM, forM_)
+                   (foldM_)
 import           Control.Monad.State
-                   (StateT, evalStateT, execStateT, get,
-                   lift, modify)
+                   (StateT, execStateT, get, lift, modify)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
@@ -186,7 +187,8 @@ validSuffixes precondition transition model0 scope0 = go model0 scope0
     scope' = boundVars prog `S.union` scope
 
 runMany
-  :: MonadBaseControl IO  m
+  :: forall m act err
+  .  MonadBaseControl IO m
   => HTraversable act
   => Show1 (act Symbolic)
   => Semantics' act m err
@@ -194,24 +196,38 @@ runMany
   -> Pid
   -> [Internal act]
   -> StateT Environment m ()
-runMany semantics hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
-  env <- get
-  case reify env act of
-    Left  _    -> return () -- The reference that the action uses failed to
-                            -- create.
-    Right cact -> do
-      liftBaseWith $ const $ atomically $ writeTChan hchan $
-        InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
-      mresp <- lift (semantics cact)
-      threadDelay 10
-      case mresp of
-        Fail err ->
-          liftBaseWith $ const $
-            atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
-        Success resp -> do
-          modify (insertConcrete sym (Concrete resp))
-          liftBaseWith $ const $
-            atomically $ writeTChan hchan $ ResponseEvent (Success (toDyn resp)) (show resp) pid
+runMany semantics hchan pid iacts0 = go iacts0
+  where
+  go :: [Internal act] -> StateT Environment m ()
+  go []                                        = return ()
+  go (Internal act sym@(Symbolic var) : iacts) = do
+    env <- get
+    case reify env act of
+      Left  _    ->
+        error "runMany: impossible, reference that the action uses failed to create."
+      Right cact -> do
+        liftBaseWith $ const $ atomically $ writeTChan hchan $
+          InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
+        mresp <- lift (semantics cact)
+                   `catch` (\(e :: SomeException) -> return (Info (show e)))
+        threadDelay 10
+        case mresp of
+          Fail err -> do
+            liftBaseWith $ const $
+              atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
+            -- We continue executing further actions. In case, for
+            -- example, a reference failed to create, then we will get a
+            -- run-time error or pre-condition failed.
+            go iacts
+          Success resp -> do
+            modify (insertConcrete sym (Concrete resp))
+            liftBaseWith $ const $
+              atomically $ writeTChan hchan $ ResponseEvent (Success (toDyn resp)) (show resp) pid
+            go iacts
+          Info info ->
+            liftBaseWith $ const $
+              atomically $ writeTChan hchan $ ResponseEvent (Info info) "<info>" pid
+            -- We don't continue executing further actions.
 
 -- | Run a parallel program, by first executing the prefix sequentially
 --   and then the suffixes in parallel, and return the history (or
@@ -226,16 +242,17 @@ executeParallelProgram
   -> m (History act err)
 executeParallelProgram semantics (ParallelProgram prefix suffixes) = do
   hchan <- liftBaseWith (const newTChanIO)
-  env   <- execStateT
+  env0  <- execStateT
              (runMany semantics hchan (Pid 0) (unProgram prefix))
              emptyEnvironment
-  forM_ suffixes $ \(prog1, prog2) -> do
-    _ <- concurrently
-      (evalStateT (runMany semantics hchan (Pid 1) (unProgram prog1)) env)
-      (evalStateT (runMany semantics hchan (Pid 2) (unProgram prog2)) env)
-    return ()
-
+  foldM_ (go hchan) env0 suffixes
   History <$> liftBaseWith (const (getChanContents hchan))
+  where
+  go hchan env (prog1, prog2) = do
+    (env1, env2) <- concurrently
+      (execStateT (runMany semantics hchan (Pid 1) (unProgram prog1)) env)
+      (execStateT (runMany semantics hchan (Pid 2) (unProgram prog2)) env)
+    return (env1 <> env2)
 
 ------------------------------------------------------------------------
 
