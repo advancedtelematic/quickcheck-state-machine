@@ -21,14 +21,13 @@ import           Control.Concurrent.STM.TChan
 import           Data.List
                    (group, sort)
 import           Test.QuickCheck
-                   (Gen, Property, Testable, again, chatty,
-                   counterexample, ioProperty, property, shrinking,
-                   stdArgs, whenFail)
+                   (Gen, Property, Testable, again, counterexample,
+                   property, shrinking, whenFail)
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), Counterexample, PropertyOf)
 import qualified Test.QuickCheck.Counterexamples as CE
 import           Test.QuickCheck.Monadic
-                   (PropertyM(MkPropertyM), run)
+                   (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
                    (Property(MkProperty), unProperty)
 import           Test.QuickCheck.Property

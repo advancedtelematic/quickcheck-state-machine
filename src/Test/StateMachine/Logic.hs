@@ -58,7 +58,7 @@ dual p = case p of
 
 -- See Yuri Gurevich's "Intuitionistic logic with strong negation" (1977).
 strongNeg :: Logic -> Logic
-strongNeg l = case l of
+strongNeg l0 = case l0 of
   Bot          -> Top
   Top          -> Bot
   l :&& r      -> strongNeg l :|| strongNeg r
@@ -111,7 +111,7 @@ logic (Annotate s l) = case logic l of
   VFalse ce -> VFalse (AnnotateC s ce)
 
 predicate :: Predicate -> Value
-predicate p = let b = boolean p in case p of
+predicate p0 = let b = boolean p0 in case p0 of
   x :== y        -> b (x == y)
   x :/= y        -> b (x /= y)
   x :<  y        -> b (x <  y)
@@ -122,5 +122,5 @@ predicate p = let b = boolean p in case p of
   x `NotElem` xs -> b (x `notElem` xs)
   where
   boolean :: Predicate -> Bool -> Value
-  boolean p True  = VTrue
+  boolean _ True  = VTrue
   boolean p False = VFalse (PredicateC (dual p))

@@ -87,7 +87,9 @@ ppHistory model0 transition
     let model1 = transition model act (fmap Concrete resp) in
     "\n\n    " ++ astr ++ (case resp of
         Success _ -> " --> "
-        Fail _    -> " -/-> ") ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
+        Fail _    -> " -/-> "
+        Info info -> " -~-> (" ++ info ++ ")"
+        ) ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
 
 -- | Get the process id of an event.
 getProcessIdEvent :: HistoryEvent act err -> Pid
@@ -116,6 +118,7 @@ dynResp :: forall err resp. Typeable resp => Result err Dynamic -> Result err re
 dynResp (Success resp) = Success
   (either (error . show) (\(Concrete resp') -> resp') (reifyDynamic resp))
 dynResp (Fail err)     = Fail err
+dynResp (Info info)    = Info info
 
 makeOperations :: History' act err -> [Operation act err]
 makeOperations [] = []
@@ -162,10 +165,11 @@ complete
   -> (forall resp. (Show resp, Typeable resp) => act Concrete resp -> model -> resp)
   -> HistoryEvent (UntypedConcrete act) err
   -> HistoryEvent (UntypedConcrete act) err
-complete model mock (InvocationEvent (UntypedConcrete act) s _ pid)
+complete model mock (InvocationEvent (UntypedConcrete act) _ _ pid)
   = ResponseEvent (Success (toDyn resp)) (show resp) pid
   where
   resp = mock act model
+complete _     _    (ResponseEvent _ _ _) = error "complete: impossible"
 
 extend
   :: model

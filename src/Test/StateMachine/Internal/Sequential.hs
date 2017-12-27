@@ -215,3 +215,6 @@ executeProgram StateMachine{..}
                , insertConcrete sym (Concrete resp') env
                )
                acts
+
+          Info info ->
+            return (hist', smodel, cmodel, env, ExceptionThrown info)
