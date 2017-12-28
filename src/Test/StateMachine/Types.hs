@@ -42,6 +42,7 @@ module Test.StateMachine.Types
   , InitialModel
   , Result(..)
   , ppResult
+  , isntInfo
   , Semantics
   , Semantics'
   , Runner
@@ -176,6 +177,10 @@ ppResult :: (Show err, Show resp) => Result err resp -> String
 ppResult (Success resp) = show resp
 ppResult (Fail err)     = show err
 ppResult (Info info)    = info
+
+isntInfo :: Result err resp -> Bool
+isntInfo (Info _) = False
+isntInfo _        = True
 
 type Semantics' act m err = forall resp. act Concrete resp -> m (Result err resp)
 
