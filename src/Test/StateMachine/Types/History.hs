@@ -29,6 +29,7 @@ module Test.StateMachine.Types.History
   , UntypedConcrete(..)
   , Operation(..)
   , linearTree
+  , linearTree'
   , pending
   , ppEvents
   , complete
@@ -103,7 +104,8 @@ takeInvocations = takeWhile $ \h -> case h of
 
 findCorrespondingResp :: Pid -> History' act err -> [(Result err Dynamic, History' act err)]
 findCorrespondingResp _   [] = []
-findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
+findCorrespondingResp pid (ResponseEvent resp _ pid' : es)
+  | pid == pid' && isntInfo resp = [(resp, es)]
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 
@@ -146,6 +148,14 @@ linearTree es =
   matchInv pid (InvocationEvent _ _ _ pid') = pid == pid'
   matchInv _   _                            = False
 
+linearTree'
+  :: model
+  -> (forall resp. Typeable resp => act Concrete resp -> model -> resp)
+  -> err
+  -> History' act err
+  -> [Tree (Operation act err)]
+linearTree' model mock err = concatMap linearTree . extend model mock err
+
 ------------------------------------------------------------------------
 
 pending :: History' act err -> [HistoryEvent (UntypedConcrete act) err]
@@ -171,12 +181,26 @@ complete model mock (InvocationEvent (UntypedConcrete act) _ _ pid)
   resp = mock act model
 complete _     _    (ResponseEvent _ _ _) = error "complete: impossible"
 
+completeFail
+  :: err
+  -> HistoryEvent (UntypedConcrete act) err
+  -> HistoryEvent (UntypedConcrete act) err
+completeFail err (InvocationEvent (UntypedConcrete _) _ _ pid)
+  = ResponseEvent (Fail err) "<fail>" pid
+completeFail _   (ResponseEvent _ _ _) = error "completeFail: impossible"
+
 extend
   :: model
   -> (forall resp. Typeable resp => act Concrete resp -> model -> resp)
+  -> err
   -> History' act err
   -> [History' act err]
-extend model mock hist =
-  [ hist ++ map (complete model mock) sub
-  | sub <- subsequences (pending hist)
+extend model mock err hist =
+  [ hist ++ map (complete model mock) success ++ map (completeFail err) failed
+  | (success, failed) <- subsequences' (pending hist)
   ]
+  where
+  subsequences' :: [a] -> [([a], [a])]
+  subsequences' xs = sub `zip` reverse sub
+    where
+    sub = subsequences xs

@@ -25,6 +25,7 @@ module Test.StateMachine.Internal.Parallel
   , validParallelProgram
   , executeParallelProgram
   , linearise
+  , linearise'
   , toBoxDrawings
   ) where
 
@@ -61,6 +62,8 @@ import           Data.Set
 import qualified Data.Set                                     as S
 import           Data.Tree
                    (Tree(Node))
+import           Data.Typeable
+                   (Typeable)
 import           Test.QuickCheck
                    (Gen, Property, choose, property, shrinkList, sized,
                    (.&&.))
@@ -280,6 +283,26 @@ linearise transition postcondition model0 = go . unHistory
 anyP' :: (a -> Property) -> [a] -> Property
 anyP' _ [] = property True
 anyP' p xs = anyP p xs
+
+linearise'
+  :: forall model act err
+  .  Transition'    model act err
+  -> Postcondition' model act err
+  -> InitialModel model
+  -> (forall resp. Typeable resp => act Concrete resp -> model Concrete -> resp)
+  -> err
+  -> History act err
+  -> Property
+linearise' transition postcondition model0 mock err = go . unHistory
+  where
+  go :: History' act err -> Property
+  go [] = property True
+  go es = anyP (step model0) (linearTree' model0 mock err es)
+
+  step :: model Concrete -> Tree (Operation act err) -> Property
+  step model (Node (Operation act _ resp _ _) roses) =
+    postcondition model act resp .&&.
+    anyP' (step (transition model act (fmap Concrete resp))) roses
 
 ------------------------------------------------------------------------
 
