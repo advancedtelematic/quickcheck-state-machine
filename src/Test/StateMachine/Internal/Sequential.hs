@@ -1,7 +1,8 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE Rank2Types          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -26,31 +27,36 @@ module Test.StateMachine.Internal.Sequential
   , liftShrinkInternal
   , validProgram
   , shrinkProgram
+  , ExecutionEnv(..)
   , executeProgram
+  , executeProgram'
   )
   where
 
+import           Control.Concurrent.STM.TChan
+                   (TChan, newTChanIO)
+import           Control.Exception.Lifted
+                   (SomeException, catch)
 import           Control.Monad
                    (filterM, when)
 import           Control.Monad.State
-                   (State, StateT, evalStateT, get, lift,
-                   put)
+                   (State, StateT, evalStateT, get, lift, put, runStateT)
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
 import           Data.Dynamic
                    (toDyn)
 import           Data.Functor.Classes
                    (Show1, showsPrec1)
-import           Data.Monoid
-                   ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                                     as S
-import           Data.Typeable
-                   (Typeable)
 import           Test.QuickCheck
                    (Gen, choose, shrinkList, sized, suchThat)
 
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
+import           Test.StateMachine.Internal.Utils
+                   (writeTChanMBC, getChanContents)
 import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
@@ -154,67 +160,79 @@ shrinkProgram shrinker precondition transition model
 --   contains the information of whether the execution respects the state
 --   machine model or not.
 executeProgram
-  :: forall m act model err
-  .  Monad m
-  => Typeable err
+  :: MonadBaseControl IO m
   => Show1 (act Symbolic)
-  => Show err
   => HTraversable act
+  => Show err
   => StateMachine' model act m err
   -> Program act
   -> m (History act err, model Concrete, Reason)
-executeProgram StateMachine{..}
-  = fmap (\(hist, _, cmodel, _, reason) -> (hist, cmodel, reason))
-  . go (mempty, model', model', emptyEnvironment)
-  . unProgram
+executeProgram sm@StateMachine{..} prog = do
+  hchan <- liftBaseWith (const newTChanIO)
+  let eenv = ExecutionEnv emptyEnvironment model' model'
+  (reason, eenv') <- runStateT (executeProgram' sm hchan (Pid 0) True prog) eenv
+  hist <- liftBaseWith (const (getChanContents hchan))
+  return (History hist, cmodel eenv', reason)
+
+data ExecutionEnv model = ExecutionEnv
+  { env    :: Environment
+  , smodel :: model Symbolic
+  , cmodel :: model Concrete
+  }
+
+executeProgram'
+  :: MonadBaseControl IO m
+  => Show1 (act Symbolic)
+  => HTraversable act
+  => Show err
+  => StateMachine' model act m err
+  -> TChan (HistoryEvent (UntypedConcrete act) err)
+  -> Pid
+  -> Bool -- ^ Check post-condition?
+  -> Program act
+  -> StateT (ExecutionEnv model) m Reason
+executeProgram' StateMachine{..} hchan pid check = go . unProgram
   where
-  go :: (History act err, model Symbolic, model Concrete, Environment)
-     -> [Internal act]
-     -> m (History act err, model Symbolic, model Concrete, Environment, Reason)
-  go (hist, smodel, cmodel, env)  []                                       =
-    return (hist, smodel, cmodel, env, Ok)
-  go (hist, smodel, cmodel, env)  (Internal act sym@(Symbolic var) : acts) =
+  go []                                        = return Ok
+  go (Internal act sym@(Symbolic var) : iacts) = do
+
+    ExecutionEnv{..} <- get
+
     if not (precondition' smodel act)
     then
-      return ( hist
-             , smodel
-             , cmodel
-             , env
-             , PreconditionFailed
-             )
+      return PreconditionFailed
     else do
       let Right cact = reify env act
-      resp <- semantics' cact
-      let hist' = hist <> History
-            [ InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var (Pid 0)
-            , ResponseEvent (fmap toDyn resp) (ppResult resp) (Pid 0)
-            ]
-      if not (postcondition' cmodel cact resp)
+
+      writeTChanMBC hchan
+        (InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid)
+
+      mresp <- lift (semantics' cact
+                 `catch` (\(e :: SomeException) -> return (Info (show e))))
+
+      writeTChanMBC hchan
+        (ResponseEvent (fmap toDyn mresp) (ppResult mresp) pid)
+
+      if check && not (postcondition' cmodel cact mresp)
       then
-        return ( hist'
-               , smodel
-               , cmodel
-               , env
-               , PostconditionFailed
-               )
-      else
-        case resp of
+        return PostconditionFailed
+      else do
+        case mresp of
 
-          Fail    err   ->
-            go ( hist'
-               , transition' smodel  act (Fail err)
-               , transition' cmodel cact (Fail err)
-               , env
-               )
-               acts
+          Fail err     -> do
+            put (ExecutionEnv
+                   { smodel = transition' smodel  act (Fail err)
+                   , cmodel = transition' cmodel cact (Fail err)
+                   , ..
+                   })
+            go iacts
 
-          Success resp' ->
-            go ( hist'
-               , transition' smodel  act (Success sym)
-               , transition' cmodel cact (fmap Concrete resp)
-               , insertConcrete sym (Concrete resp') env
-               )
-               acts
+          Success resp -> do
+            put (ExecutionEnv
+                   { smodel = transition' smodel  act (Success sym)
+                   , cmodel = transition' cmodel cact (fmap Concrete mresp)
+                   , env    = insertConcrete sym (Concrete resp) env
+                   })
+            go iacts
 
-          Info info ->
-            return (hist', smodel, cmodel, env, ExceptionThrown info)
+          Info info    -> return (ExceptionThrown info)

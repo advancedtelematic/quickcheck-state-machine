@@ -91,7 +91,7 @@ import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (forAllShrinkShowC, whenFailM)
+                   (forAllShow, forAllShrinkShowC, whenFailM)
 import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
@@ -169,7 +169,7 @@ instance Testable () where
 -- | Testable property of sequential programs derived from a
 -- 'StateMachine' specification.
 runProgram
-  :: Monad m
+  :: MonadBaseControl IO m
   => Show1 (act Symbolic)
   => Show err
   => Typeable err
@@ -266,6 +266,7 @@ monadicParallelC StateMachine{..} predicate
 runParallelProgram
   :: MonadBaseControl IO m
   => Show1 (act Symbolic)
+  => Show err
   => HTraversable act
   => StateMachine' model act m err
      -- ^
@@ -276,15 +277,16 @@ runParallelProgram = runParallelProgram' 10
 runParallelProgram'
   :: MonadBaseControl IO m
   => Show1 (act Symbolic)
+  => Show err
   => HTraversable act
   => Int -- ^ How many times to execute the parallel program.
   -> StateMachine' model act m err
      -- ^
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
-runParallelProgram' n StateMachine{..} prog =
+runParallelProgram' n sm@StateMachine{..} prog =
   replicateM n $ do
-    hist <- run (executeParallelProgram semantics' prog)
+    (hist, _reason) <- run (executeParallelProgram sm prog)
     return (hist, linearise transition' postcondition' model' hist)
 
 runParallelProgramIncomplete
@@ -298,10 +300,13 @@ runParallelProgramIncomplete
   -> err
   -> ParallelProgram act
   -> PropertyM m [(History act err, Property)]
-runParallelProgramIncomplete n StateMachine{..} mock err prog =
+runParallelProgramIncomplete _n StateMachine{..} _mock _err _prog =
+  undefined
+  {-
   replicateM n $ do
     hist <- run (executeParallelProgram semantics' prog)
     return (hist, linearise' transition' postcondition' model' mock err hist)
+-}
 
 -- | Takes the output of a parallel program runs and pretty prints a
 --   counter example if any of the runs fail.
@@ -349,7 +354,6 @@ monadicParallelNoShrink
   :: MonadBaseControl IO m
   => Eq (Untyped act)
   => Show1 (act Symbolic)
-  => Show (Untyped act) -- XXX
   => HFoldable act
   => StateMachine' model act m err
   -> (ParallelProgram act -> PropertyM m ())
@@ -361,8 +365,7 @@ monadicParallelNoShrink StateMachine{..} predicate
   . predicate
 
 forAllParallelProgramNoShrink
-  :: Show (Untyped act)
-  => HFoldable act
+  :: HFoldable act
   => Generator model act
   -> Precondition model act
   -> Transition'  model act err
@@ -371,4 +374,6 @@ forAllParallelProgramNoShrink
                                         --   parallel programs.
   -> Property
 forAllParallelProgramNoShrink generator precondition transition model =
-  forAll (generateParallelProgram generator precondition transition model)
+  forAllShow
+    (generateParallelProgram generator precondition transition model)
+    (const "")

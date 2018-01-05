@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 -----------------------------------------------------------------------------
@@ -33,26 +34,18 @@ import           Control.Arrow
                    ((***))
 import           Control.Concurrent.Async.Lifted
                    (concurrently)
-import           Control.Concurrent.Lifted
-                   (threadDelay)
-import           Control.Concurrent.STM
-                   (atomically)
 import           Control.Concurrent.STM.TChan
-                   (TChan, newTChanIO, writeTChan)
-import           Control.Exception.Lifted
-                   (SomeException, catch)
+                   (newTChanIO)
 import           Control.Monad
-                   (foldM_)
+                   (foldM)
 import           Control.Monad.State
-                   (StateT, execStateT, get, lift, modify)
+                   (runStateT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
                    (bimap)
-import           Data.Dynamic
-                   (toDyn)
 import           Data.Functor.Classes
-                   (Show1, showsPrec1)
+                   (Show1)
 import           Data.List
                    (partition, permutations)
 import           Data.Monoid
@@ -75,8 +68,7 @@ import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Utils.BoxDrawer
-import           Test.StateMachine.Types                      hiding
-                   (StateMachine'(..))
+import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
 ------------------------------------------------------------------------
@@ -189,73 +181,57 @@ validSuffixes precondition transition model0 scope0 = go model0 scope0
     where
     scope' = boundVars prog `S.union` scope
 
-runMany
-  :: forall m act err
-  .  MonadBaseControl IO m
-  => HTraversable act
-  => Show1 (act Symbolic)
-  => Semantics' act m err
-  -> TChan (HistoryEvent (UntypedConcrete act) err)
-  -> Pid
-  -> [Internal act]
-  -> StateT Environment m ()
-runMany semantics hchan pid iacts0 = go iacts0
-  where
-  go :: [Internal act] -> StateT Environment m ()
-  go []                                        = return ()
-  go (Internal act sym@(Symbolic var) : iacts) = do
-    env <- get
-    case reify env act of
-      Left  _    ->
-        error "runMany: impossible, reference that the action uses failed to create."
-      Right cact -> do
-        liftBaseWith $ const $ atomically $ writeTChan hchan $
-          InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
-        mresp <- lift (semantics cact)
-                   `catch` (\(e :: SomeException) -> return (Info (show e)))
-        threadDelay 10
-        case mresp of
-          Fail err -> do
-            liftBaseWith $ const $
-              atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
-            -- We continue executing further actions. In case, for
-            -- example, a reference failed to create, then we will get a
-            -- run-time error or pre-condition failed.
-            go iacts
-          Success resp -> do
-            modify (insertConcrete sym (Concrete resp))
-            liftBaseWith $ const $
-              atomically $ writeTChan hchan $ ResponseEvent (Success (toDyn resp)) (show resp) pid
-            go iacts
-          Info info ->
-            liftBaseWith $ const $
-              atomically $ writeTChan hchan $ ResponseEvent (Info info) "<info>" pid
-            -- We don't continue executing further actions.
-
 -- | Run a parallel program, by first executing the prefix sequentially
 --   and then the suffixes in parallel, and return the history (or
 --   trace) of the execution.
 executeParallelProgram
-  :: forall m act err
-  .  MonadBaseControl IO m
+  :: MonadBaseControl IO m
   => HTraversable act
   => Show1 (act Symbolic)
-  => Semantics' act m err
+  => Show err
+  => StateMachine' model act m err
   -> ParallelProgram act
-  -> m (History act err)
-executeParallelProgram semantics (ParallelProgram prefix suffixes) = do
+  -> m (History act err, Reason)
+executeParallelProgram sm@StateMachine{..} (ParallelProgram prefix suffixes) = do
+
   hchan <- liftBaseWith (const newTChanIO)
-  env0  <- execStateT
-             (runMany semantics hchan (Pid 0) (unProgram prefix))
-             emptyEnvironment
-  foldM_ (go hchan) env0 suffixes
-  History <$> liftBaseWith (const (getChanContents hchan))
+
+  (reason0, eenv0) <- runStateT
+    (executeProgram' sm hchan (Pid 0) True prefix)
+    (ExecutionEnv emptyEnvironment model' model')
+
+  if reason0 /= Ok
+  then do
+    hist <- liftBaseWith (const (getChanContents hchan))
+    return (History hist, reason0)
+  else do
+    (reason, _) <- foldM (go hchan) (reason0, eenv0) suffixes
+    hist <- liftBaseWith (const (getChanContents hchan))
+    return (History hist, reason)
   where
-  go hchan env (prog1, prog2) = do
-    (env1, env2) <- concurrently
-      (execStateT (runMany semantics hchan (Pid 1) (unProgram prog1)) env)
-      (execStateT (runMany semantics hchan (Pid 2) (unProgram prog2)) env)
-    return (env1 <> env2)
+  go hchan (_, eenv) (prog1, prog2) = do
+    ((reason1, eenv1), (reason2, eenv2)) <- concurrently
+      (runStateT (executeProgram' sm hchan (Pid 1) False prog1) eenv)
+      (runStateT (executeProgram' sm hchan (Pid 2) False prog2) eenv)
+    return ( reason1 `combineReason` reason2
+           , combineEnv eenv1 eenv2 transition' prog2
+           )
+    where
+    combineReason :: Reason -> Reason -> Reason
+    combineReason Ok r2 = r2
+    combineReason r1 _  = r1
+
+combineEnv
+  :: ExecutionEnv model
+  -> ExecutionEnv model
+  -> Transition' model act err
+  -> Program act
+  -> ExecutionEnv model
+combineEnv (ExecutionEnv env1 smodel1 cmodel1) (ExecutionEnv env2 _ _) transition prog
+  = ExecutionEnv (env1 <> env2) (advanceModel transition smodel1 prog) cmodel1
+
+  -- We don't care about the concrete model when executing parallel
+  -- programs, as we are not checking post-conditions.
 
 ------------------------------------------------------------------------
 
