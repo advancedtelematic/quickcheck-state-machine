@@ -45,9 +45,7 @@ import           Control.Concurrent
 import           Control.Concurrent.Async.Lifted
                    (Async, async, cancel, waitEither)
 import           Control.Exception
-                   (SomeException, bracket)
-import           Control.Exception
-                   (catch)
+                   (SomeException, bracket, catch)
 import           Control.Monad.IO.Class
                    (liftIO)
 import           Control.Monad.Logger
@@ -101,6 +99,8 @@ import           System.IO
                    (Handle, hClose)
 import           System.Process
                    (callProcess, readProcess)
+import           System.Random
+                   (randomRIO)
 import           Test.QuickCheck
                    (Arbitrary, Property, arbitrary, elements,
                    frequency, listOf, shrink, suchThat, (===))
@@ -114,6 +114,7 @@ import           Test.StateMachine.Internal.Types
                    (ParallelProgram(..), parallelProgramLength)
 import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses)
+import           Test.StateMachine.Types.History
 import           Utils
                    (minimalShrinkHelper, structuralSubset)
 
@@ -273,7 +274,7 @@ generator (Model m)
       [ (1, Untyped . PostUser   <$> arbitrary)
       , (8, Untyped . GetUser    <$> elements (map fst m))
       , (8, Untyped . IncAgeUser <$> elements (map fst m))
-      , (8, Untyped . DeleteUser <$> elements (map fst m))
+      -- , (8, Untyped . DeleteUser <$> elements (map fst m))
       ]
 
 shrinker :: Shrinker Action
@@ -286,16 +287,25 @@ shrinker _                          = []
 -- * The semantics.
 
 semantics :: Action Concrete resp -> ReaderT ClientEnv IO resp
-semantics act = do
-  env <- ask
-  res <- liftIO $ flip runClientM env $ case act of
-    PostUser   user -> postUserC   user
-    GetUser    key  -> getUserC    (concrete key)
-    IncAgeUser key  -> incAgeUserC (concrete key)
-    DeleteUser key  -> deleteUserC (concrete key)
-  case res of
-    Left  err  -> error (show err)
-    Right resp -> return resp
+semantics act = go $ case act of
+  PostUser   user -> postUserC user
+  GetUser    key  -> getUserC    (concrete key)
+  IncAgeUser key  -> incAgeUserC (concrete key)
+  {-
+    d6 <- liftIO (randomRIO (1, 6 :: Int))
+    case d6 of
+      -- 1 -> throw TimeoutException
+      _ -> incAgeUserC (concrete key)
+-}
+  DeleteUser key  -> deleteUserC (concrete key)
+  where
+  go :: ClientM resp -> ReaderT ClientEnv IO resp
+  go client = do
+    env <- ask
+    res <- liftIO (runClientM client env)
+    case res of
+      Left  err  -> error (show err)
+      Right resp -> return resp
 
 ------------------------------------------------------------------------
 
@@ -369,9 +379,18 @@ withCrudWebserverDbRaceParallel bug run =
 ------------------------------------------------------------------------
 
 
+prop_crudWebserverDbRaceParallelIncomplete :: Property
+prop_crudWebserverDbRaceParallelIncomplete =
+  monadicParallel sm' $ \prog -> do
+    (hist, prop): _ <- runParallelProgramIncomplete 30 sm' undefined undefined prog
+    liftIO (putStrLn $ ppHistory initModel (okTransition transitions) hist)
+    -- prettyParallelProgram prog =<<
+  where
+  sm' = sm crudWebserverDbParallelPort
 
 
 
+------------------------------------------------------------------------
 
 crudWebserverDbParallelPort :: Int
 crudWebserverDbParallelPort = 8084
