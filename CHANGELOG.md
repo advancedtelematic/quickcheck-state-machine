@@ -1,3 +1,8 @@
+#### 0.3.1 (2018-1-15)
+
+  * Remove upper bounds for dependencies, to easier keep up with
+    Stackage nightly.
+
 #### 0.3.0 (2017-12-15)
 
   * A propositional logic module was added to help provide better

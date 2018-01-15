@@ -1,5 +1,5 @@
 name:                quickcheck-state-machine
-version:             0.3.0
+version:             0.3.1
 synopsis:            Test monadic programs using state machine based models
 description:         See README at <https://github.com/advancedtelematic/quickcheck-state-machine#readme>
 homepage:            https://github.com/advancedtelematic/quickcheck-state-machine#readme
@@ -37,20 +37,20 @@ library
                      , Test.StateMachine.Z
   other-modules:       Test.StateMachine.Utils
   build-depends:
-        ansi-wl-pprint >=0.6.7.3 && <0.7,
-        async >=2.1.1.1 && <2.2,
+        ansi-wl-pprint >=0.6.7.3,
+        async >=2.1.1.1,
         base >=4.7 && <5,
-        containers >=0.5.7.1 && <0.6,
-        lifted-async >=0.9.3 && <0.10,
-        lifted-base >=0.2.3.11 && <0.3,
-        monad-control >=1.0.2.2 && <1.1,
-        mtl >=2.2.1 && <2.3,
-        QuickCheck >=2.9.2 && <2.11,
-        quickcheck-with-counterexamples >=1.0 && <2.0,
-        random ==1.1.*,
-        stm >=2.4.4.1 && <2.5,
-        template-haskell >=2.11.1.0 && <2.13,
-        th-abstraction >=0.2.6.0 && <0.3
+        containers >=0.5.7.1,
+        lifted-async >=0.9.3,
+        lifted-base >=0.2.3.11,
+        monad-control >=1.0.2.2,
+        mtl >=2.2.1,
+        QuickCheck >=2.9.2,
+        quickcheck-with-counterexamples >=1.0,
+        random >=1.1,
+        stm >=2.4.4.1,
+        template-haskell >=2.11.1.0,
+        th-abstraction >=0.2.6.0
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-test
