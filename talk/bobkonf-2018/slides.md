@@ -53,7 +53,7 @@
 * Proof by (structural) induction
 
       $\quad\;\forall xs(\textsf{reverse}(\textsf{reverse}(xs)) = xs)$
-      
+
 . . .
 
 * Type theory
@@ -81,6 +81,8 @@
     - Gurevich's abstract state machines/new thesis, think of finite
       state machines were the states are arbitrary datatypes
 
+---
+
 # The `quickcheck-state-machine` library
 
 * Use abstract state machine to model the program
@@ -105,6 +107,8 @@
 
     - Jepsen (Kafka, Cassandra, Zookeeper, ...)
 
+---
+
 # The properties / experiments
 
 * Sequential property
@@ -118,14 +122,16 @@
 * Parallel/concurrent property
 
      - Generate two lists of actions (one per thread)
-  
+
      - Run the actions concurrently against the system, and gather a trace
        of invocations and responses for each action
-  
+
 
      - Try to find a possible sequential interleaving of action
        invocations and responses that respects the post-conditions (cf.
        linearisation by Herlihy and Wing, 1987)
+
+---
 
 # Demo
 
@@ -136,26 +142,41 @@
     - Update age (put request)
     - Delete user (delete request)
 
-* Implementation 
+* Implementation
     - Servant and persistant
     - Could be written using any libraries or language
     - Completely independent of `quickcheck-state-machine`
-    
+
 * Specification
 
     - Uses the `quickcheck-state-machine` library in the way described
       above
 
+---
+
 # Comparison to other tools
 
 * Quiviq's Erlang QuickCheck
+    - More polished and used
+    - Better statistics
+    - Deterministic scheduling
+    - Closed source
 
 * Z/B/Event-B
+    - Deductive proving (heavily automated)
+    - Refinement
+    - Notation
 
 * TLA+
+    - Model checking (proving is also possible)
+    - Liveness and fairness properties can be expressed
+    - Most specifications are ``closed world''
+    - No connection to actual implementation
 
 * Jepsen
+    - Does fault injection (e.g. network paritions)
+    - No shrinking (is it even possible?)
+
+---
 
 # Conclusion
-
- 
