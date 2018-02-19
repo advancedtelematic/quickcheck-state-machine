@@ -105,7 +105,7 @@ transition function is polymorphic in `v`. The reason for this is that we use
 the transition function both while generating and executing.
 
 ```haskell
-transition :: Model v -> Action v resp -> v resp -> Model v
+transition :: Ord1 v => Model v -> Action v resp -> v resp -> Model v
 transition (Model m) New           ref = Model (m ++ [(Reference ref, 0)])
 transition m         (Read  _)     _   = m
 transition (Model m) (Write ref i) _   = Model (update ref i         m)
