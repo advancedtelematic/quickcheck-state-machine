@@ -1,7 +1,5 @@
-resolver: lts-9.6
+resolver: lts-10.5
 packages:
   - '.'
   - location: '..'
     extra-dep: true
-extra-deps:
-  - 'quickcheck-with-counterexamples-1.0'
