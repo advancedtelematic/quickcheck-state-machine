@@ -5,14 +5,14 @@
 # Introduction
 
 * Property based testing in general
-* How to apply property based testing to stateful programs
+* How to apply property based testing to stateful and concurrent programs
 * Running example, simple CRUD web application
     - Familiar type of program
-    - Obviously stateful
+    - Obviously stateful and concurrent
     - Non-obvious property?
 * Using the
   [`quickcheck-state-machine`](https://github.com/advancedtelematic/quickcheck-state-machine)
-  library
+  library, but the principes are general
 
 ---
 
@@ -22,11 +22,10 @@
     - What are property based tests?
     - Why are they so effective?
 * Basic idea and motivation behind how the library applies property based
-  testing principles to stateful programs
-* Demo, sequential property
-* How we can get concurrent tests (catch race conditions) for free via
-  linearisation
-* Demo, concurrent property
+  testing principles to stateful and concurrent programs
+* Demo
+    - Sequential property (catches logic and specification bugs)
+    - Concurrent property (catches race conditions)
 * Comparison to other tools
 
 ---
@@ -66,20 +65,31 @@
 
 # Stateful programs, basic idea / motivation
 
-* Obvious idea, that doesn't work so well: proof by induction modulo
-  monad laws
+* An idea, that doesn't work so well: proof by induction modulo
+  monad laws [@monadic]
 
-* A much more successful approach is to take inspiration from physics
+* A much more successful approach is to take inspiration from physics [@erlang]
     - Simplified model of reality that can predict what will happen
     - Experiments against reality validate the model
 
 * How do we model algorithms/programs?
 
     - Turing's machines/thesis: too "low level", because Turing was
-      concerned about functions on natural numbers (not arbitrary algorithms)
+      concerned about functions on strings (not arbitrary algorithms)
 
     - Gurevich's abstract state machines/new thesis, think of finite
       state machines were the states are arbitrary datatypes
+
+* Abstract state machines are used by:
+
+    - Quiviq's closed source version of QuickCheck for Erlang (Volvo
+      cars, ...)
+
+    - Z/B/Event-B familiy (Paris metro line 14)
+
+    - TLA+ (AWS, XBox)
+
+    - Jepsen (MongoDB, Cassandra, Zookeeper, ...)
 
 ---
 
@@ -87,49 +97,20 @@
 
 * Use abstract state machine to model the program
     - A model datatype, and an initial model
-    - A datatype of actions (things that can be happen)
+    - A datatype of actions (things that can be happen in the system we are modelling)
     - A transition function that given an action advances the model to the
       next state
 
-* Use pre- and post-conditions on the model to enforce invariants
+* A semantics function that takes an action and runs it against the real system
+
+* Use pre- and post-conditions on the model to make sure that the model agrees
+  with reality [@floyd; @hoare]
 
 * Use QuickCheck's generation to conduct experiments that validate the
   model
 
-* Abstract state machines are also used by:
-
-    - Quiviq's closed source version of QuickCheck for Erlang (Volvo
-      cars, Ericsson, ...)
-
-    - Z/B/Event-B familiy (Paris metro line 14)
-
-    - TLA+ (AWS, XBox)
-
-    - Jepsen (Kafka, Cassandra, Zookeeper, ...)
-
----
-
-# The properties / experiments
-
-* Sequential property
-
-    - Generate list of actions, such that all actions' pre-condition holds
-    - For each action starting with the inital model
-        - Run the action against the real system
-        - Ensure that the post-condition for the action holds
-        - Advanced the model using the transition function
-
-* Parallel/concurrent property
-
-     - Generate two lists of actions (one per thread)
-
-     - Run the actions concurrently against the system, and gather a trace
-       of invocations and responses for each action
-
-
-     - Try to find a possible sequential interleaving of action
-       invocations and responses that respects the post-conditions (cf.
-       linearisation by Herlihy and Wing, 1987)
+    - Sequential property
+    - Parallel/concurrent property [linearisabiltiy, @linearisability]
 
 ---
 
@@ -154,12 +135,23 @@
 
 ---
 
+# Demo
+
+---
+
+# Lineraisability
+
+* [@linearisability]
+
+
+
+---
+
 # Comparison to other tools
 
 * Quiviq's Erlang QuickCheck
     - More polished and used
     - Better statistics
-    - Deterministic scheduling
     - Closed source
 
 * Z/B/Event-B
@@ -180,3 +172,14 @@
 ---
 
 # Conclusion
+
+* (Abstract) state machines are useful for modelling programs
+
+* Write a sequential model, get race condition testing for free
+  via linearisability
+
+* Plenty of work left to do
+
+---
+
+# References

@@ -90,8 +90,8 @@ import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
 import qualified Network.Wai.Handler.Warp         as Warp
 import           Servant
-                   ((:<|>)(..), (:>), Application, Capture, Get, JSON,
-                   Post, ReqBody, Server, serve)
+                   ((:<|>)(..), (:>), Application, Capture, Delete,
+                   Get, JSON, Post, Put, ReqBody, Server, serve)
 import           Servant.Client
                    (BaseUrl(..), ClientEnv(..), ClientM, Scheme(Http),
                    client, runClientM)
@@ -102,8 +102,9 @@ import           System.IO
 import           System.Process
                    (callProcess, readProcess)
 import           Test.QuickCheck
-                   (Arbitrary, Property, arbitrary, elements,
-                   frequency, listOf, shrink, suchThat, (===))
+                   (Arbitrary, Gen, Property, arbitrary, elements,
+                   frequency, listOf, quickCheck, shrink, suchThat,
+                   (===))
 import           Test.QuickCheck.Counterexamples
                    (PropertyOf)
 import           Test.QuickCheck.Instances
@@ -118,8 +119,10 @@ import           Utils
                    (minimalShrinkHelper, structuralSubset)
 
 ------------------------------------------------------------------------
+-- * User datatype
 
--- * User datatype.
+
+
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 User json
@@ -128,23 +131,34 @@ User json
   deriving Eq Read Show
 |]
 
-------------------------------------------------------------------------
+-- data User = User
+--   { name :: Text
+--   , age  :: Int
+--   }
 
--- * The API.
+
+------------------------------------------------------------------------
+-- * API
+
+
+
 
 type Api =
-       "user" :> "add" :> ReqBody '[JSON] User     :> Post '[JSON] (Key User)
-  :<|> "user" :> "get" :> Capture "key" (Key User) :> Get  '[JSON] (Maybe User)
-  :<|> "user" :> "inc" :> Capture "key" (Key User) :> Get  '[JSON] ()
-  :<|> "user" :> "del" :> Capture "key" (Key User) :> Get  '[JSON] ()
-  :<|> "health"                                    :> Get  '[JSON] ()
+       "user" :> "add" :> ReqBody '[JSON] User     :> Post    '[JSON] (Key User)
+  :<|> "user" :> "get" :> Capture "key" (Key User) :> Get     '[JSON] (Maybe User)
+  :<|> "user" :> "inc" :> Capture "key" (Key User) :> Put     '[JSON] ()
+  :<|> "user" :> "del" :> Capture "key" (Key User) :> Delete  '[JSON] ()
 
-api :: Proxy Api
-api = Proxy
+  :<|> "health"                                    :> Get     '[JSON] ()
+
+
+
+
+
+
 
 ------------------------------------------------------------------------
-
--- * Server implementation.
+-- * Server implementation
 
 data Bug = None | Logic | Race
 
@@ -178,11 +192,175 @@ server bug pool =
   sql q = liftSqlPersistMPool q pool
 
 ------------------------------------------------------------------------
+-- * Client bindings
 
--- * How to run a server.
+
+postUserC    :: User     -> ClientM (Key User)
+getUserC     :: Key User -> ClientM (Maybe User)
+incAgeUserC  :: Key User -> ClientM ()
+deleteUserC  :: Key User -> ClientM ()
+healthC      ::             ClientM ()
+
+postUserC :<|> getUserC :<|> incAgeUserC :<|> deleteUserC :<|> healthC
+  = client api
+
+
+
+
+
+
+
+------------------------------------------------------------------------
+-- * Implementation done, modelling starts
+
+
+
+data Action (v :: * -> *) :: * -> * where
+  PostUser   :: User                   -> Action v (Key User)
+  GetUser    :: Reference v (Key User) -> Action v (Maybe User)
+  IncAgeUser :: Reference v (Key User) -> Action v ()
+  DeleteUser :: Reference v (Key User) -> Action v ()
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------
+-- * State machine model
+
+
+newtype Model v = Model [(Reference v (Key User), User)]
+  deriving Show
+
+initModel :: Model v
+initModel = Model []
+
+transitions :: Eq1 v => Model v -> Action v resp -> v resp -> Model v
+transitions (Model m) (PostUser   user) key = Model (m ++ [(Reference key, user)])
+transitions m         (GetUser    _)    _   = m
+transitions (Model m) (IncAgeUser key)  _   = case lookup key m of
+  Nothing              -> Model m
+  Just (User user age) -> Model (updateModel key (User user (age + 1)) m)
+transitions (Model m) (DeleteUser key)  _   = Model (filter ((/= key) . fst) m)
+
+
+------------------------------------------------------------------------
+-- * Pre-requisites and invariants
+
+preconditions :: Model Symbolic -> Action Symbolic resp -> Bool
+preconditions _         (PostUser _)     = True
+preconditions (Model m) (GetUser    key) = key `elem` map fst m
+preconditions (Model m) (IncAgeUser key) = key `elem` map fst m
+preconditions (Model m) (DeleteUser key) = key `elem` map fst m
+
+
+
+postconditions :: Model Concrete -> Action Concrete resp -> resp -> Bool
+postconditions _         (PostUser _)   _    = True
+postconditions (Model m) (GetUser key)  resp = lookup key m == resp
+postconditions _         (IncAgeUser _) _    = True
+postconditions _         (DeleteUser _) _    = True
+
+
+
+------------------------------------------------------------------------
+-- * How to generate and shrink programs.
+
+generator :: Model Symbolic -> Gen (Untyped Action)
+generator (Model m)
+  | null m    = Untyped . PostUser <$> arbitrary
+  | otherwise = frequency
+      [ (1, Untyped . PostUser   <$> arbitrary)
+      , (8, Untyped . GetUser    <$> elements (map fst m))
+      , (8, Untyped . IncAgeUser <$> elements (map fst m))
+      , (8, Untyped . DeleteUser <$> elements (map fst m))
+      ]
+
+
+shrinker :: Action Symbolic resp -> [Action Symbolic resp]
+shrinker (PostUser (User user age)) =
+  [ PostUser (User user' age') | (user', age') <- shrink (user, age) ]
+shrinker _                          = []
+
+------------------------------------------------------------------------
+-- * The semantics.
+
+
+semantics :: Action Concrete resp -> ReaderT ClientEnv IO resp
+semantics act = do
+  env <- ask
+  res <- liftIO $ flip runClientM env $ case act of
+    PostUser   user -> postUserC   user
+    GetUser    key  -> getUserC    (concrete key)
+    IncAgeUser key  -> incAgeUserC (concrete key)
+    DeleteUser key  -> deleteUserC (concrete key)
+  case res of
+    Left  err  -> error (show err)
+    Right resp -> return resp
+
+
+
+
+------------------------------------------------------------------------
+
+sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO)
+sm port = stateMachine
+  generator shrinker preconditions transitions
+  postconditions initModel semantics (runner port)
+
+------------------------------------------------------------------------
+-- * Sequential property
+
+prop_crudWebserverDbRace :: Property
+prop_crudWebserverDbRace =
+  monadicSequential sm' $ \prog -> do
+    (hist, _, res) <- runProgram sm' prog
+    prettyProgram sm' hist $
+      checkActionNames prog (res === Ok)
+  where
+  sm' = sm crudWebserverDbPort
+
+withCrudWebserverDbRace :: Bug -> IO () -> IO ()
+withCrudWebserverDbRace bug run =
+  bracket
+    (setup bug connectionString crudWebserverDbPort)
+    cleanup
+    (const run)
+
+demoNoBug, demoLogicBug, demoNoRace :: IO ()
+demoNoBug    = withCrudWebserverDbRace None  (quickCheck prop_crudWebserverDbRace)
+demoLogicBug = withCrudWebserverDbRace Logic (quickCheck prop_crudWebserverDbRace)
+demoNoRace   = withCrudWebserverDbRace Race  (quickCheck prop_crudWebserverDbRace)
+
+-----------------------------------------------------------------------
+-- * Parallel property
+
+prop_crudWebserverDbRaceParallel :: PropertyOf (ParallelProgram Action)
+prop_crudWebserverDbRaceParallel =
+  monadicParallelC sm' $ \prog ->
+    prettyParallelProgram prog =<< runParallelProgram' 30 sm' prog
+  where
+  sm' = sm crudWebserverDbParallelPort
+
+withCrudWebserverDbRaceParallel :: Bug -> IO () -> IO ()
+withCrudWebserverDbRaceParallel bug run =
+  bracket
+    (setup bug connectionString crudWebserverDbParallelPort)
+    cleanup
+    (const run)
+
+demoRace :: IO ()
+demoRace = withCrudWebserverDbRaceParallel Race
+  (quickCheck prop_crudWebserverDbRaceParallel)
+
+------------------------------------------------------------------------
 
 app :: Bug -> ConnectionPool -> Application
-app bug pool = serve api (server bug pool)
+app bug pool = serve (Proxy :: Proxy Api) (server bug pool)
 
 mkApp :: Bug -> ConnectionString -> IO Application
 mkApp bug conn = do
@@ -202,176 +380,18 @@ runServer bug conn port ready = do
 
 ------------------------------------------------------------------------
 
--- * HTTP client for the API.
-
-postUserC    :: User     -> ClientM (Key User)
-getUserC     :: Key User -> ClientM (Maybe User)
-incAgeUserC  :: Key User -> ClientM ()
-deleteUserC  :: Key User -> ClientM ()
-healthC      ::             ClientM ()
-
-postUserC :<|> getUserC :<|> incAgeUserC :<|> deleteUserC :<|> healthC
-  = client api
-
-------------------------------------------------------------------------
-
--- * Implementation done, modelling starts.
-
-data Action (v :: * -> *) :: * -> * where
-  PostUser   :: User                   -> Action v (Key User)
-  GetUser    :: Reference v (Key User) -> Action v (Maybe User)
-  IncAgeUser :: Reference v (Key User) -> Action v ()
-  DeleteUser :: Reference v (Key User) -> Action v ()
-
-deriving instance Eq1 v => Eq (Action v resp)
-
-------------------------------------------------------------------------
-
--- * The model.
-
-newtype Model v = Model [(Reference v (Key User), User)]
-  deriving Show
-
-initModel :: Model v
-initModel = Model []
-
-------------------------------------------------------------------------
-
--- * The specification.
-
-preconditions :: Precondition Model Action
-preconditions _         (PostUser _)     = True
-preconditions (Model m) (GetUser    key) = key `elem` map fst m
-preconditions (Model m) (IncAgeUser key) = key `elem` map fst m
-preconditions (Model m) (DeleteUser key) = key `elem` map fst m
-
-transitions :: Transition Model Action
-transitions (Model m) (PostUser   user) key = Model (m ++ [(Reference key, user)])
-transitions m         (GetUser    _)    _   = m
-transitions (Model m) (IncAgeUser key)  _   = case lookup key m of
-  Nothing              -> Model m
-  Just (User user age) -> Model (updateList key (User user (age + 1)) m)
-    where
-    updateList :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
-    updateList x y xys = (x, y) : filter ((/= x) . fst) xys
-transitions (Model m) (DeleteUser key)  _   = Model (filter ((/= key) . fst) m)
-
-postconditions :: Postcondition Model Action
-postconditions _         (PostUser _)   _    = True
-postconditions (Model m) (GetUser key)  resp = lookup key m == resp
-postconditions _         (IncAgeUser _) _    = True
-postconditions _         (DeleteUser _) _    = True
-
-------------------------------------------------------------------------
-
--- * How to generate and shrink programs.
-
-generator :: Generator Model Action
-generator (Model m)
-  | null m    = Untyped . PostUser <$> arbitrary
-  | otherwise = frequency
-      [ (1, Untyped . PostUser   <$> arbitrary)
-      , (8, Untyped . GetUser    <$> elements (map fst m))
-      , (8, Untyped . IncAgeUser <$> elements (map fst m))
-      , (8, Untyped . DeleteUser <$> elements (map fst m))
-      ]
-
-shrinker :: Shrinker Action
-shrinker (PostUser (User user age)) =
-  [ PostUser (User user' age') | (user', age') <- shrink (user, age) ]
-shrinker _                          = []
-
-------------------------------------------------------------------------
-
--- * The semantics.
-
-semantics :: Action Concrete resp -> ReaderT ClientEnv IO resp
-semantics act = do
-  env <- ask
-  res <- liftIO $ flip runClientM env $ case act of
-    PostUser   user -> postUserC   user
-    GetUser    key  -> getUserC    (concrete key)
-    IncAgeUser key  -> incAgeUserC (concrete key)
-    DeleteUser key  -> deleteUserC (concrete key)
-  case res of
-    Left  err  -> error (show err)
-    Right resp -> return resp
-
-------------------------------------------------------------------------
-
-sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO)
-sm port = stateMachine
-  generator shrinker preconditions transitions
-  postconditions initModel semantics (runner port)
-
 connectionString :: String -> ConnectionString
 connectionString ip = "host=" <> BS.pack ip
   <> " dbname=postgres user=postgres password=mysecretpassword port=5432"
 
+updateModel :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+updateModel x y xys = (x, y) : filter ((/= x) . fst) xys
+
+api :: Proxy Api
+api = Proxy
+
 crudWebserverDbPort :: Int
 crudWebserverDbPort = 8083
-
-------------------------------------------------------------------------
-
-prop_crudWebserverDbRace :: Property
-prop_crudWebserverDbRace =
-  monadicSequential sm' $ \prog -> do
-    (hist, _, res) <- runProgram sm' prog
-    prettyProgram sm' hist $
-      checkActionNames prog (res === Ok)
-  where
-    sm' = sm crudWebserverDbPort
-
-withCrudWebserverDbRace :: Bug -> IO () -> IO ()
-withCrudWebserverDbRace bug run =
-  bracket
-    (setup bug connectionString crudWebserverDbPort)
-    cleanup
-    (const run)
-
-------------------------------------------------------------------------
-
-prop_crudWebserverDbRaceParallel :: PropertyOf (ParallelProgram Action)
-prop_crudWebserverDbRaceParallel =
-  monadicParallelC sm' $ \prog ->
-    prettyParallelProgram prog =<< runParallelProgram' 30 sm' prog
-  where
-  sm' = sm crudWebserverDbParallelPort
-
-prop_dbShrinkRace :: Property
-prop_dbShrinkRace =
-  minimalShrinkHelper
-    shrinker preconditions (okTransition transitions) initModel
-    prop_crudWebserverDbRaceParallel
-    isMinimal
-  where
-  isMinimal pprog =
-    parallelProgramLength pprog == 4 &&
-    structuralSubset
-      [ Untyped (PostUser (User "" 0)) ]
-      [ Untyped (IncAgeUser ref0)
-      , Untyped (IncAgeUser ref0)
-      , Untyped (GetUser    ref0)
-      ] pprog
-    where
-    ref0   = Reference (Symbolic (Var 0))
-
-instance Eq (Untyped Action) where
-  Untyped act1 == Untyped act2 = cast act1 == Just act2
-
-withCrudWebserverDbRaceParallel :: Bug -> IO () -> IO ()
-withCrudWebserverDbRaceParallel bug run =
-  bracket
-    (setup bug connectionString crudWebserverDbParallelPort)
-    cleanup
-    (const run)
-
-------------------------------------------------------------------------
-
-
-
-
-
 
 crudWebserverDbParallelPort :: Int
 crudWebserverDbParallelPort = 8084
@@ -420,7 +440,7 @@ setupDb = do
     [ "run"
     , "-d"
     , "-e", "POSTGRES_PASSWORD=mysecretpassword"
-    , "postgres:10.1-alpine"
+    , "postgres:10.2"
     ] ""
   ip <- trim <$> readProcess "docker"
     [ "inspect"
@@ -457,3 +477,31 @@ cleanup (pid, aServer) = do
 
 deriveShows       ''Action
 deriveTestClasses ''Action
+
+prop_dbShrinkRace :: Property
+prop_dbShrinkRace =
+  minimalShrinkHelper
+    shrinker preconditions (okTransition transitions) initModel
+    prop_crudWebserverDbRaceParallel
+    isMinimal
+  where
+  isMinimal pprog =
+    parallelProgramLength pprog == 4 &&
+    structuralSubset
+      [ Untyped (PostUser (User "" 0)) ]
+      [ Untyped (IncAgeUser ref0)
+      , Untyped (IncAgeUser ref0)
+      , Untyped (GetUser    ref0)
+      ] pprog
+    where
+    ref0   = Reference (Symbolic (Var 0))
+
+deriving instance Eq1 v => Eq (Action v resp)
+
+instance Eq (Untyped Action) where
+  Untyped act1 == Untyped act2 = cast act1 == Just act2
+
+------------------------------------------------------------------------
+
+-- Spacemacs reminders:
+--   * Change to light theme: SPC T n
