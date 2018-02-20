@@ -139,10 +139,30 @@
 
 ---
 
-# Linearisability
+# Linearisability (bad)
 
 * [@linearisability]
 
+![](image/lin1a.jpg)\
+
+
+---
+
+
+![](image/lin1b.jpg)\
+
+
+---
+
+# Linearisability (good)
+
+![](image/lin2a.jpg)\
+
+
+---
+
+
+![](image/lin2b.jpg)\
 
 
 ---
