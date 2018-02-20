@@ -319,8 +319,7 @@ prop_crudWebserverDbRace :: Property
 prop_crudWebserverDbRace =
   monadicSequential sm' $ \prog -> do
     (hist, _, res) <- runProgram sm' prog
-    prettyProgram sm' hist $
-      checkActionNames prog (res === Ok)
+    prettyProgram sm' hist (res === Ok)
   where
   sm' = sm crudWebserverDbPort
 
