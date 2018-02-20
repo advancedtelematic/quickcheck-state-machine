@@ -110,7 +110,7 @@
   model
 
     - Sequential property
-    - Parallel/concurrent property [linearisabiltiy, @linearisability]
+    - Parallel/concurrent property [linearisability, @linearisability]
 
 ---
 
@@ -139,7 +139,7 @@
 
 ---
 
-# Lineraisability
+# Linearisability
 
 * [@linearisability]
 
