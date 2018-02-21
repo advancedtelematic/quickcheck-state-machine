@@ -108,6 +108,13 @@
 
 ---
 
+# State machine model
+
+![State machine model](image/asm.jpg)\
+
+
+---
+
 # Demo
 
 * Simple web application
@@ -186,12 +193,15 @@
 
 # Conclusion
 
-* (Abstract) state machines are useful for modelling programs
+* State machines are useful for modelling programs
 
-* Write a sequential model, get race condition testing for free
-  via linearisability
+* Race condition testing for free via linearisability
 
-* https://github.com/advancedtelematic/quickcheck-state-machine
+* See also
+
+    - `quickcheck-state-machine` library on GitHub
+    - Oskar's talk
+    - Matthias' tutorial
 
 ---
 
