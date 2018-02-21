@@ -12,7 +12,7 @@
     - Non-obvious property?
 * Using the
   [`quickcheck-state-machine`](https://github.com/advancedtelematic/quickcheck-state-machine)
-  library, but the principes are general
+  Haskell library, but the principles are general
 
 ---
 
@@ -65,25 +65,19 @@
 
 # Stateful programs, basic idea / motivation
 
-* An idea, that doesn't work so well: proof by induction modulo
-  monad laws [@monadic]
-
-* A much more successful approach is to take inspiration from physics [@erlang]
+* Take inspiration from physics
     - Simplified model of reality that can predict what will happen
     - Experiments against reality validate the model
 
 * How do we model algorithms/programs?
 
-    - Turing's machines/thesis: too "low level", because Turing was
-      concerned about functions on strings (not arbitrary algorithms)
-
     - Gurevich's abstract state machines/new thesis, think of finite
-      state machines were the states are arbitrary datatypes
+      state machines where the states are arbitrary datatypes
 
 * Abstract state machines are used by:
 
     - Quiviq's closed source version of QuickCheck for Erlang (Volvo
-      cars, ...)
+      cars, ...) [@erlang]
 
     - Z/B/Event-B familiy (Paris metro line 14)
 
@@ -139,7 +133,7 @@
 
 ---
 
-# Linearisability (bad)
+# Linearisability (fails)
 
 * [@linearisability]
 
@@ -154,7 +148,7 @@
 
 ---
 
-# Linearisability (good)
+# Linearisability (succeeds)
 
 ![](image/lin2a.jpg)\
 
@@ -182,11 +176,10 @@
 * TLA+
     - Model checking (proving is also possible)
     - Liveness and fairness properties can be expressed
-    - Most specifications are ``closed world''
     - No connection to actual implementation
 
 * Jepsen
-    - Does fault injection (e.g. network paritions)
+    - Does fault injection (e.g. network partitions)
     - No shrinking (is it even possible?)
 
 ---
@@ -198,7 +191,7 @@
 * Write a sequential model, get race condition testing for free
   via linearisability
 
-* Plenty of work left to do
+* https://github.com/advancedtelematic/quickcheck-state-machine
 
 ---
 

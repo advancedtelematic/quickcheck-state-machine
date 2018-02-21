@@ -502,5 +502,6 @@ instance Eq (Untyped Action) where
 
 ------------------------------------------------------------------------
 
--- Spacemacs reminders:
+-- Reminders:
 --   * Change to light theme: SPC T n
+--   * Increase terminal font size: S-M-PgUp
