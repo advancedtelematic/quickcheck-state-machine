@@ -42,6 +42,7 @@ module Test.StateMachine.Types
   , InitialModel
   , Result(..)
   , ppResult
+  , isntInfo
   , Semantics
   , Semantics'
   , Runner
@@ -122,10 +123,12 @@ stateMachine gen shr precond trans post model sem run =
 okTransition :: Transition model act -> Transition' model act Void
 okTransition transition model act (Success resp) = transition model act resp
 okTransition _          _     _   (Fail false)   = absurd false
+okTransition _          _     _   (Info _)       = error "okTransition: impossible"
 
 okPostcondition :: Postcondition model act -> Postcondition' model act Void
 okPostcondition postcondition model act (Success resp) = postcondition model act resp
 okPostcondition _             _     _   (Fail false)   = absurd false
+okPostcondition _             _     _   (Info _)       = error "okPostcondition: impossible"
 
 okSemantics :: Functor m => Semantics act m -> Semantics' act m Void
 okSemantics sem = fmap Success . sem
@@ -168,17 +171,26 @@ type InitialModel m = forall (v :: * -> *). m v
 type Semantics act m = forall resp. act Concrete resp -> m resp
 
 -- | The result of executing an action.
-data Result err resp = Success resp | Fail err
+data Result err resp = Success resp | Fail err | Info String
   deriving Functor
 
 ppResult :: (Show err, Show resp) => Result err resp -> String
 ppResult (Success resp) = show resp
 ppResult (Fail err)     = show err
+ppResult (Info info)    = info
+
+isntInfo :: Result err resp -> Bool
+isntInfo (Info _) = False
+isntInfo _        = True
 
 type Semantics' act m err = forall resp. act Concrete resp -> m (Result err resp)
 
 -- | How to run the monad used by the semantics.
 type Runner m = m Property -> IO Property
 
-data Reason = Ok | PreconditionFailed | PostconditionFailed
+data Reason
+  = Ok
+  | PreconditionFailed
+  | PostconditionFailed
+  | ExceptionThrown String
   deriving (Eq, Show)

@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 -----------------------------------------------------------------------------
@@ -25,6 +26,7 @@ module Test.StateMachine.Internal.Parallel
   , validParallelProgram
   , executeParallelProgram
   , linearise
+  , linearise'
   , toBoxDrawings
   ) where
 
@@ -32,25 +34,18 @@ import           Control.Arrow
                    ((***))
 import           Control.Concurrent.Async.Lifted
                    (concurrently)
-import           Control.Concurrent.Lifted
-                   (threadDelay)
-import           Control.Concurrent.STM
-                   (atomically)
 import           Control.Concurrent.STM.TChan
-                   (TChan, newTChanIO, writeTChan)
+                   (newTChanIO)
 import           Control.Monad
-                   (foldM, forM_)
+                   (foldM)
 import           Control.Monad.State
-                   (StateT, evalStateT, execStateT, get,
-                   lift, modify)
+                   (runStateT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
                    (bimap)
-import           Data.Dynamic
-                   (toDyn)
 import           Data.Functor.Classes
-                   (Show1, showsPrec1)
+                   (Show1)
 import           Data.List
                    (partition, permutations)
 import           Data.Monoid
@@ -60,6 +55,8 @@ import           Data.Set
 import qualified Data.Set                                     as S
 import           Data.Tree
                    (Tree(Node))
+import           Data.Typeable
+                   (Typeable)
 import           Test.QuickCheck
                    (Gen, Property, choose, property, shrinkList, sized,
                    (.&&.))
@@ -71,8 +68,7 @@ import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Types.Environment
 import           Test.StateMachine.Internal.Utils
 import           Test.StateMachine.Internal.Utils.BoxDrawer
-import           Test.StateMachine.Types                      hiding
-                   (StateMachine'(..))
+import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
 ------------------------------------------------------------------------
@@ -185,57 +181,57 @@ validSuffixes precondition transition model0 scope0 = go model0 scope0
     where
     scope' = boundVars prog `S.union` scope
 
-runMany
-  :: MonadBaseControl IO  m
-  => HTraversable act
-  => Show1 (act Symbolic)
-  => Semantics' act m err
-  -> TChan (HistoryEvent (UntypedConcrete act) err)
-  -> Pid
-  -> [Internal act]
-  -> StateT Environment m ()
-runMany semantics hchan pid = flip foldM () $ \_ (Internal act sym@(Symbolic var)) -> do
-  env <- get
-  case reify env act of
-    Left  _    -> return () -- The reference that the action uses failed to
-                            -- create.
-    Right cact -> do
-      liftBaseWith $ const $ atomically $ writeTChan hchan $
-        InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid
-      mresp <- lift (semantics cact)
-      threadDelay 10
-      case mresp of
-        Fail err ->
-          liftBaseWith $ const $
-            atomically $ writeTChan hchan $ ResponseEvent (Fail err) "<fail>" pid
-        Success resp -> do
-          modify (insertConcrete sym (Concrete resp))
-          liftBaseWith $ const $
-            atomically $ writeTChan hchan $ ResponseEvent (Success (toDyn resp)) (show resp) pid
-
 -- | Run a parallel program, by first executing the prefix sequentially
 --   and then the suffixes in parallel, and return the history (or
 --   trace) of the execution.
 executeParallelProgram
-  :: forall m act err
-  .  MonadBaseControl IO m
+  :: MonadBaseControl IO m
   => HTraversable act
   => Show1 (act Symbolic)
-  => Semantics' act m err
+  => Show err
+  => StateMachine' model act m err
   -> ParallelProgram act
-  -> m (History act err)
-executeParallelProgram semantics (ParallelProgram prefix suffixes) = do
-  hchan <- liftBaseWith (const newTChanIO)
-  env   <- execStateT
-             (runMany semantics hchan (Pid 0) (unProgram prefix))
-             emptyEnvironment
-  forM_ suffixes $ \(prog1, prog2) -> do
-    _ <- concurrently
-      (evalStateT (runMany semantics hchan (Pid 1) (unProgram prog1)) env)
-      (evalStateT (runMany semantics hchan (Pid 2) (unProgram prog2)) env)
-    return ()
+  -> m (History act err, Reason)
+executeParallelProgram sm@StateMachine{..} (ParallelProgram prefix suffixes) = do
 
-  History <$> liftBaseWith (const (getChanContents hchan))
+  hchan <- liftBaseWith (const newTChanIO)
+
+  (reason0, eenv0) <- runStateT
+    (executeProgram' sm hchan (Pid 0) True prefix)
+    (ExecutionEnv emptyEnvironment model' model')
+
+  if reason0 /= Ok
+  then do
+    hist <- liftBaseWith (const (getChanContents hchan))
+    return (History hist, reason0)
+  else do
+    (reason, _) <- foldM (go hchan) (reason0, eenv0) suffixes
+    hist <- liftBaseWith (const (getChanContents hchan))
+    return (History hist, reason)
+  where
+  go hchan (_, eenv) (prog1, prog2) = do
+    ((reason1, eenv1), (reason2, eenv2)) <- concurrently
+      (runStateT (executeProgram' sm hchan (Pid 1) False prog1) eenv)
+      (runStateT (executeProgram' sm hchan (Pid 2) False prog2) eenv)
+    return ( reason1 `combineReason` reason2
+           , combineEnv eenv1 eenv2 transition' prog2
+           )
+    where
+    combineReason :: Reason -> Reason -> Reason
+    combineReason Ok r2 = r2
+    combineReason r1 _  = r1
+
+combineEnv
+  :: ExecutionEnv model
+  -> ExecutionEnv model
+  -> Transition' model act err
+  -> Program act
+  -> ExecutionEnv model
+combineEnv (ExecutionEnv env1 smodel1 cmodel1) (ExecutionEnv env2 _ _) transition prog
+  = ExecutionEnv (env1 <> env2) (advanceModel transition smodel1 prog) cmodel1
+
+  -- We don't care about the concrete model when executing parallel
+  -- programs, as we are not checking post-conditions.
 
 ------------------------------------------------------------------------
 
@@ -263,6 +259,26 @@ linearise transition postcondition model0 = go . unHistory
 anyP' :: (a -> Property) -> [a] -> Property
 anyP' _ [] = property True
 anyP' p xs = anyP p xs
+
+linearise'
+  :: forall model act err
+  .  Transition'    model act err
+  -> Postcondition' model act err
+  -> InitialModel model
+  -> (forall resp. Typeable resp => act Concrete resp -> model Concrete -> resp)
+  -> err
+  -> History act err
+  -> Property
+linearise' transition postcondition model0 mock err = go . unHistory
+  where
+  go :: History' act err -> Property
+  go [] = property True
+  go es = anyP (step model0) (linearTree' model0 mock err es)
+
+  step :: model Concrete -> Tree (Operation act err) -> Property
+  step model (Node (Operation act _ resp _ _) roses) =
+    postcondition model act resp .&&.
+    anyP' (step (transition model act (fmap Concrete resp))) roses
 
 ------------------------------------------------------------------------
 

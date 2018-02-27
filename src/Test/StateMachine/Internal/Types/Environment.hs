@@ -1,5 +1,6 @@
-{-# LANGUAGE Rank2Types          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -44,7 +45,7 @@ import           Test.StateMachine.Types
 newtype Environment =
   Environment {
       unEnvironment :: Map Var Dynamic
-    } deriving (Show)
+    } deriving (Monoid, Show)
 
 -- | Environment errors.
 --

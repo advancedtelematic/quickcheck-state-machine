@@ -1,4 +1,6 @@
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeOperators         #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -17,18 +19,21 @@ module Test.StateMachine.Internal.Utils where
 import           Control.Concurrent.STM
                    (atomically)
 import           Control.Concurrent.STM.TChan
-                   (TChan, tryReadTChan)
+                   (TChan, writeTChan)
+import           Control.Concurrent.STM.TChan
+                   (tryReadTChan)
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
 import           Data.List
                    (group, sort)
 import           Test.QuickCheck
-                   (Gen, Property, Testable, again, chatty,
-                   counterexample, ioProperty, property, shrinking,
-                   stdArgs, whenFail)
+                   (Gen, Property, Testable, again, counterexample,
+                   property, shrinking, whenFail)
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), Counterexample, PropertyOf)
 import qualified Test.QuickCheck.Counterexamples as CE
 import           Test.QuickCheck.Monadic
-                   (PropertyM(MkPropertyM), run)
+                   (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
                    (Property(MkProperty), unProperty)
 import           Test.QuickCheck.Property
@@ -87,6 +92,11 @@ forAllShrinkShowC arb shr shower prop =
     forAllShrinkShow arb shr shower $ \x ->
       CE.unProperty (CE.property (prop x)) (\y -> f (x :&: y))
 
+forAllShow
+  :: Testable prop
+  => Gen a -> (a -> String) -> (a -> prop) -> Property
+forAllShow gen shower = forAllShrinkShow gen (const []) shower
+
 ------------------------------------------------------------------------
 
 -- | Remove duplicate elements from a list.
@@ -111,3 +121,6 @@ getChanContents chan = reverse <$> atomically (go [])
     case mx of
       Just x  -> go $ x : acc
       Nothing -> return acc
+
+writeTChanMBC :: MonadBaseControl IO m => TChan a -> a -> m ()
+writeTChanMBC chan x = liftBaseWith (const (atomically (writeTChan chan x)))
