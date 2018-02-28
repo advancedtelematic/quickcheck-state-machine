@@ -135,8 +135,7 @@ okSemantics sem = fmap Success . sem
 type Generator model act = model Symbolic -> Gen (Untyped act)
 
 -- | Shrinking should preserve the response type of the action.
-type Shrinker act = forall (v :: * -> *) resp.
-  act v resp -> [act v resp]
+type Shrinker act = forall resp. act Symbolic resp -> [act Symbolic resp]
 
 -- | Pre-conditions are checked while generating, at this stage we do
 --   not yet have access to concrete references.

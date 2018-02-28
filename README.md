@@ -368,13 +368,12 @@ Here are some more examples to get you started:
   * CRUD webserver where create returns unique
     ids
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverDb.hs) --
-    create, read, update and delete users in a sqlite database on a webserver
+    create, read, update and delete users in a postgres database on a webserver
     using an API written
     using [Servant](https://github.com/haskell-servant/servant). Creating a user
     will return a unique id, which subsequent reads, updates, and deletes need
     to use. In this example, unlike in the last one, the server is setup and
     torn down once per property rather than generate program.
-
 
 All examples have an associated `Spec` module located in
 the

@@ -10,7 +10,6 @@ library
   exposed-modules:     Bank
                      , CircularBuffer
                      , CrudWebserverDb
-                     , CrudWebserverDbRace
                      , DieHard
                      , MutableReference
                      , MutableReference.Prop
@@ -59,7 +58,6 @@ test-suite quickcheck-state-machine-example-test
   main-is:             Main.hs
   other-modules:       CircularBufferSpec
                      , CrudWebserverDbSpec
-                     , CrudWebserverDbRaceSpec
                      , DieHardSpec
                      , HspecInstance
                      , MutableReferenceSpec
