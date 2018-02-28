@@ -77,8 +77,6 @@ import           Test.QuickCheck.Counterexamples
 import qualified Test.QuickCheck.Counterexamples       as CE
 import           Test.QuickCheck.Monadic
                    (PropertyM, monadic, run)
-import           Test.QuickCheck.Property
-                   (succeeded)
 
 import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
