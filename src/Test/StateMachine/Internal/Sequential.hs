@@ -35,8 +35,6 @@ module Test.StateMachine.Internal.Sequential
 
 import           Control.Concurrent.STM.TChan
                    (TChan, newTChanIO)
-import           Control.Exception.Lifted
-                   (SomeException, catch)
 import           Control.Monad
                    (filterM, when)
 import           Control.Monad.State
@@ -207,8 +205,7 @@ executeProgram' StateMachine{..} hchan pid check = go . unProgram
       writeTChanMBC hchan
         (InvocationEvent (UntypedConcrete cact) (showsPrec1 10 act "") var pid)
 
-      mresp <- lift (semantics' cact
-                 `catch` (\(e :: SomeException) -> return (Info (show e))))
+      mresp <- lift (semantics' cact)
 
       writeTChanMBC hchan
         (ResponseEvent (fmap toDyn mresp) (ppResult mresp) pid)
@@ -234,5 +231,3 @@ executeProgram' StateMachine{..} hchan pid check = go . unProgram
                    , env    = insertConcrete sym (Concrete resp) env
                    })
             go iacts
-
-          Info info    -> return (ExceptionThrown info)
