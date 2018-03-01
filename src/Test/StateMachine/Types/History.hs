@@ -97,8 +97,7 @@ takeInvocations = takeWhile $ \h -> case h of
 
 findCorrespondingResp :: Pid -> History' act err -> [(Result err Dynamic, History' act err)]
 findCorrespondingResp _   [] = []
-findCorrespondingResp pid (ResponseEvent resp _ pid' : es)
-  | pid == pid' && isntInfo resp = [(resp, es)]
+findCorrespondingResp pid (ResponseEvent resp _ pid' : es) | pid == pid' = [(resp, es)]
 findCorrespondingResp pid (e : es) =
   [ (resp, e : es') | (resp, es') <- findCorrespondingResp pid es ]
 

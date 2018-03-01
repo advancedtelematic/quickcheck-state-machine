@@ -41,7 +41,6 @@ module Test.StateMachine
   , monadicParallel
   , runParallelProgram
   , runParallelProgram'
-  , runParallelProgramIncomplete
   , prettyParallelProgram
 
     -- * With counterexamples
@@ -254,7 +253,7 @@ monadicParallelC
   -> (ParallelProgram act -> PropertyM m ())
      -- ^ Predicate that should hold for all parallel programs.
   -> PropertyOf (ParallelProgram act)
-monadicParallelC StateMachine{..} predicate
+monadicParallelC StateMachine {..} predicate
   = fmap (\(prog :&: ()) -> prog)
   . forAllParallelProgramC generator' shrinker' precondition' transition' model'
   $ CE.property
@@ -288,25 +287,6 @@ runParallelProgram' n sm@StateMachine{..} prog =
   replicateM n $ do
     (hist, _reason) <- run (executeParallelProgram sm prog)
     return (hist, linearise transition' postcondition' model' hist)
-
-runParallelProgramIncomplete
-  :: MonadBaseControl IO m
-  => Show1 (act Symbolic)
-  => HTraversable act
-  => Int -- ^ How many times to execute the parallel program.
-  -> StateMachine' model act m err
-     -- ^
-  -> (forall resp. Typeable resp => act Concrete resp -> model Concrete -> resp)
-  -> err
-  -> ParallelProgram act
-  -> PropertyM m [(History act err, Property)]
-runParallelProgramIncomplete _n StateMachine{..} _mock _err _prog =
-  undefined
-  {-
-  replicateM n $ do
-    hist <- run (executeParallelProgram semantics' prog)
-    return (hist, linearise' transition' postcondition' model' mock err hist)
--}
 
 -- | Takes the output of a parallel program runs and pretty prints a
 --   counter example if any of the runs fail.
