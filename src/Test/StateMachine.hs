@@ -48,10 +48,6 @@ module Test.StateMachine
   , monadicSequentialC
   , monadicParallelC
 
-    -- * Without shrinking
-  , monadicSequentialNoShrink
-  , monadicParallelNoShrink
-
     -- * Types
   , module Test.StateMachine.Types
 
@@ -73,8 +69,8 @@ import qualified Data.Map                              as M
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
-                   (Property, Testable, collect, cover, forAll,
-                   ioProperty, property)
+                   (Property, Testable, collect, cover, ioProperty,
+                   property)
 import qualified Test.QuickCheck
 import           Test.QuickCheck.Counterexamples
                    ((:&:)(..), PropertyOf)
@@ -90,7 +86,7 @@ import           Test.StateMachine.Internal.Parallel
 import           Test.StateMachine.Internal.Sequential
 import           Test.StateMachine.Internal.Types
 import           Test.StateMachine.Internal.Utils
-                   (forAllShow, forAllShrinkShowC, whenFailM)
+                   (forAllShrinkShowC, whenFailM)
 import           Test.StateMachine.Types
 import           Test.StateMachine.Types.History
 
@@ -300,60 +296,3 @@ prettyParallelProgram
 prettyParallelProgram prog
   = mapM_ (\(hist, prop) ->
               print (toBoxDrawings prog hist) `whenFailM` prop)
-
-------------------------------------------------------------------------
-
-monadicSequentialNoShrink
-  :: Monad m
-  => Testable a
-  => Show (Untyped act)
-  => HFoldable act
-  => StateMachine' model act m err
-  -> (Program act -> PropertyM m a)
-     -- ^ Predicate that should hold for all programs.
-  -> Property
-monadicSequentialNoShrink StateMachine{..} predicate
-  = forAllProgramNoShrink generator' precondition' transition' model'
-  $ monadic (ioProperty . runner')
-  . predicate
-
-forAllProgramNoShrink
-  :: Show (Untyped act)
-  => HFoldable act
-  => Generator model act
-  -> Precondition model act
-  -> Transition'  model act err
-  -> InitialModel model
-  -> (Program act -> Property)  -- ^ Predicate that should hold for all
-                                --   programs.
-  -> Property
-forAllProgramNoShrink generator precondition transition model =
-  forAll (evalStateT (generateProgram generator precondition transition 0) model)
-
-monadicParallelNoShrink
-  :: MonadBaseControl IO m
-  => Eq (Untyped act)
-  => Show1 (act Symbolic)
-  => HFoldable act
-  => StateMachine' model act m err
-  -> (ParallelProgram act -> PropertyM m ())
-     -- ^ Predicate that should hold for all parallel programs.
-  -> Property
-monadicParallelNoShrink StateMachine{..} predicate
-  = forAllParallelProgramNoShrink generator' precondition' transition' model'
-  $ monadic (ioProperty . runner')
-  . predicate
-
-forAllParallelProgramNoShrink
-  :: HFoldable act
-  => Generator model act
-  -> Precondition model act
-  -> Transition'  model act err
-  -> InitialModel model
-  -> (ParallelProgram act -> Property)  -- ^ Predicate that should hold for all
-                                        --   parallel programs.
-  -> Property
-forAllParallelProgramNoShrink generator precondition transition model =
-  forAllShow
-    (generateParallelProgram generator precondition transition model)
-    (const "")

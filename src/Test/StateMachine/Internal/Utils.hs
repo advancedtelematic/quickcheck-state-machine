@@ -92,11 +92,6 @@ forAllShrinkShowC arb shr shower prop =
     forAllShrinkShow arb shr shower $ \x ->
       CE.unProperty (CE.property (prop x)) (\y -> f (x :&: y))
 
-forAllShow
-  :: Testable prop
-  => Gen a -> (a -> String) -> (a -> prop) -> Property
-forAllShow gen shower = forAllShrinkShow gen (const []) shower
-
 ------------------------------------------------------------------------
 
 -- | Remove duplicate elements from a list.
