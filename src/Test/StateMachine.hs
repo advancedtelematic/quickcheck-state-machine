@@ -33,6 +33,7 @@ module Test.StateMachine
   , runProgram
   , prettyProgram
   , actionNames
+  , actionNames'
   , checkActionNames
 
     -- * Parallel property combinators
@@ -204,6 +205,12 @@ actionNames = M.toList . foldl go M.empty . unProgram
   where
   go :: Map Constructor Int -> Internal act -> Map Constructor Int
   go ih (Internal act _) = M.insertWith (+) (constructor act) 1 ih
+
+actionNames' :: Constructors act => Program act -> [Constructor]
+actionNames'
+  = reverse
+  . foldl (\ih (Internal act _) -> constructor act : ih) []
+  . unProgram
 
 ------------------------------------------------------------------------
 
