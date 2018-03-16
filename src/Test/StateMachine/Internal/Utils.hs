@@ -1,4 +1,6 @@
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeOperators         #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -17,7 +19,11 @@ module Test.StateMachine.Internal.Utils where
 import           Control.Concurrent.STM
                    (atomically)
 import           Control.Concurrent.STM.TChan
-                   (TChan, tryReadTChan)
+                   (TChan, writeTChan)
+import           Control.Concurrent.STM.TChan
+                   (tryReadTChan)
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
 import           Data.List
                    (group, sort)
 import           Test.QuickCheck
@@ -110,3 +116,6 @@ getChanContents chan = reverse <$> atomically (go [])
     case mx of
       Just x  -> go $ x : acc
       Nothing -> return acc
+
+writeTChanMBC :: MonadBaseControl IO m => TChan a -> a -> m ()
+writeTChanMBC chan x = liftBaseWith (const (atomically (writeTChan chan x)))

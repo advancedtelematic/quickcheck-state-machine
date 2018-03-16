@@ -179,5 +179,8 @@ type Semantics' act m err = forall resp. act Concrete resp -> m (Result err resp
 -- | How to run the monad used by the semantics.
 type Runner m = m Property -> IO Property
 
-data Reason = Ok | PreconditionFailed | PostconditionFailed
+data Reason
+  = Ok
+  | PreconditionFailed
+  | PostconditionFailed
   deriving (Eq, Show)
