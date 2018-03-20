@@ -34,8 +34,8 @@ module Test.StateMachine.Internal.Types
 
 import           Data.Bifunctor
                    (bimap)
-import           Data.Monoid
-                   ((<>))
+import           Data.Semigroup
+                   (Semigroup, (<>))
 import           Data.Typeable
                    (Typeable)
 import           Text.Read
@@ -57,6 +57,9 @@ newtype Program act = Program { unProgram :: [Internal act] }
 
 instance Eq (Internal act) => Eq (Program act) where
   Program acts1 == Program acts2 = acts1 == acts2
+
+instance Semigroup (Program act) where
+  Program acts1 <> Program acts2 = Program (acts1 ++ acts2)
 
 instance Monoid (Program act) where
   mempty                                = Program []
