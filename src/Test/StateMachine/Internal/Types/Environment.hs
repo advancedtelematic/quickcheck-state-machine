@@ -33,6 +33,8 @@ import           Data.Dynamic
 import           Data.Map
                    (Map)
 import qualified Data.Map                as M
+import           Data.Semigroup
+                   (Semigroup)
 import           Data.Typeable
                    (Proxy(Proxy), TypeRep, typeRep)
 
@@ -45,7 +47,7 @@ import           Test.StateMachine.Types
 newtype Environment =
   Environment {
       unEnvironment :: Map Var Dynamic
-    } deriving (Monoid, Show)
+    } deriving (Semigroup, Monoid, Show)
 
 -- | Environment errors.
 --

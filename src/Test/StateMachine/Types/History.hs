@@ -34,6 +34,8 @@ module Test.StateMachine.Types.History
 
 import           Data.Dynamic
                    (Dynamic)
+import           Data.Semigroup
+                   (Semigroup)
 import           Data.Tree
                    (Tree(Node))
 import           Data.Typeable
@@ -48,7 +50,7 @@ import           Test.StateMachine.Types
 -- | A history is a trace of a program execution.
 newtype History act err = History
   { unHistory :: History' act err }
-  deriving Monoid
+  deriving (Semigroup, Monoid)
 
 -- | A trace is a list of events.
 type History' act err = [HistoryEvent (UntypedConcrete act) err]
