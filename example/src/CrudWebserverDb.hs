@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -117,6 +118,14 @@ import           Test.StateMachine.TH
                    (deriveShows, deriveTestClasses)
 import           Utils
                    (minimalShrinkHelper, structuralSubset)
+
+#if MIN_VERSION_servant_client(0,13,0)
+import           Servant.Client
+                   (mkClientEnv)
+#else
+mkClientEnv :: Manager -> BaseUrl -> ClientEnv
+mkClientEnv = ClientEnv
+#endif
 
 ------------------------------------------------------------------------
 -- * User datatype
@@ -413,7 +422,7 @@ instance Arbitrary User where
 runner :: Warp.Port -> ReaderT ClientEnv IO Property -> IO Property
 runner port p = do
   mgr <- newManager defaultManagerSettings
-  runReaderT p (ClientEnv mgr (burl port))
+  runReaderT p (mkClientEnv mgr (burl port))
 
 burl :: Warp.Port -> BaseUrl
 burl port = BaseUrl Http "localhost" port ""
@@ -437,7 +446,7 @@ setup bug conn port = liftBaseWith $ \_ -> do
   healthy :: Manager -> Int -> IO ()
   healthy _   0     = error "healthy: server isn't healthy"
   healthy mgr tries = do
-    res <- liftIO $ runClientM healthC (ClientEnv mgr (burl port))
+    res <- liftIO $ runClientM healthC (mkClientEnv mgr (burl port))
     case res of
       Left  _  -> do
         threadDelay 1000000
@@ -510,9 +519,3 @@ deriving instance Eq1 v => Eq (Action v resp)
 
 instance Eq (Untyped Action) where
   Untyped act1 == Untyped act2 = cast act1 == Just act2
-
-------------------------------------------------------------------------
-
--- Reminders:
---   * Change to light theme: SPC T n
---   * Increase terminal font size: S-M-PgUp
