@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b79663298034b3c508718ce8e6d0a193f0a1d42aa4a1e064f637594f6618cd15
+-- hash: dfe82717d05d75a935180308b0ce285b3fd255c1730ba3877f98d0902667c71f
 
 name:           quickcheck-state-machine-simple
 version:        0.0.0
@@ -29,7 +29,10 @@ library
       Lib
       QuickCheckUtils
       Types
-      Types.HFunctor
+      Types.Environment
+      Types.GenSym
+      Types.History
+      Types.Reference
   other-modules:
       Paths_quickcheck_state_machine_simple
   hs-source-dirs:
@@ -38,8 +41,11 @@ library
   build-depends:
       QuickCheck
     , base >=4.7 && <5
+    , constraints
     , containers
     , mtl
+    , pretty-show
+    , rank2classes
     , stm
   default-language: Haskell2010
 
@@ -53,9 +59,12 @@ executable quickcheck-state-machine-simple-exe
   build-depends:
       QuickCheck
     , base >=4.7 && <5
+    , constraints
     , containers
     , mtl
+    , pretty-show
     , quickcheck-state-machine-simple
+    , rank2classes
     , stm
   default-language: Haskell2010
 
@@ -71,8 +80,11 @@ test-suite quickcheck-state-machine-simple-test
   build-depends:
       QuickCheck
     , base >=4.7 && <5
+    , constraints
     , containers
     , mtl
+    , pretty-show
     , quickcheck-state-machine-simple
+    , rank2classes
     , stm
   default-language: Haskell2010

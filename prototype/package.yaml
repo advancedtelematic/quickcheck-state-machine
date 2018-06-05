@@ -29,8 +29,11 @@ description:         Please see the README on GitHub at <https://github.com/gith
 dependencies:
 - base >= 4.7 && < 5
 - containers
+- constraints
 - mtl
+- pretty-show
 - QuickCheck
+- rank2classes
 - stm
 
 library:
