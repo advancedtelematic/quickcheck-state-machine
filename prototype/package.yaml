@@ -27,6 +27,7 @@ ghc-options:
 description:         Please see the README on GitHub at <https://github.com/githubuser/quickcheck-state-machine-simple#readme>
 
 dependencies:
+- ansi-wl-pprint
 - base >= 4.7 && < 5
 - containers
 - constraints
@@ -35,6 +36,7 @@ dependencies:
 - QuickCheck
 - rank2classes
 - stm
+- tree-diff
 
 library:
   source-dirs: src

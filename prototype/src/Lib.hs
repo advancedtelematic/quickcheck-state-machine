@@ -8,24 +8,32 @@ module Lib where
 import           Control.Concurrent.STM
                    (atomically)
 import           Control.Concurrent.STM.TChan
-                   (TChan, writeTChan)
+                   (TChan, newTChanIO, tryReadTChan, writeTChan)
 import           Control.Monad.State
-                   (StateT, evalStateT, get, lift, put)
+                   (State, StateT, evalState, evalStateT, get, lift,
+                   put, runStateT)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
 import           Data.Maybe
                    (fromMaybe)
+import           Data.Monoid
+                   ((<>))
 import           Data.Set
                    (Set)
 import qualified Data.Set                     as S
+import           Data.TreeDiff
+                   (ToExpr, ansiWlBgEditExpr, ediff)
 import qualified Rank2
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, frequency,
                    shrinkList, sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
+import           Text.PrettyPrint.ANSI.Leijen
+                   (Doc)
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Text.Show.Pretty
                    (ppShow)
 
@@ -35,27 +43,28 @@ import           Types
 ------------------------------------------------------------------------
 
 forAllShrinkCommands :: Testable prop
-                     => (Show (cmd Symbolic), Show (resp Symbolic))
+                     => Show (cmd Symbolic)
                      => (Rank2.Foldable cmd, Rank2.Foldable resp)
                      => StateMachine model cmd resp
-                     -> (Commands cmd resp -> prop)     -- ^ Predicate.
+                     -> (Commands cmd -> prop)     -- ^ Predicate.
                      -> Property
 forAllShrinkCommands sm =
   forAllShrinkShow (generateCommands sm) (shrinkCommands sm) ppShow
 
-generateCommands :: StateMachine model cmd resp -> Gen (Commands cmd resp)
+generateCommands :: Rank2.Foldable resp => StateMachine model cmd resp -> Gen (Commands cmd)
 generateCommands sm@StateMachine { initModel } =
   evalStateT (generateCommandsState sm newCounter) initModel
 
-generateCommandsState :: forall model cmd resp. StateMachine model cmd resp
+generateCommandsState :: forall model cmd resp. Rank2.Foldable resp
+                      => StateMachine model cmd resp
                       -> Counter
-                      -> StateT (model Symbolic) Gen (Commands cmd resp)
+                      -> StateT (model Symbolic) Gen (Commands cmd)
 generateCommandsState sm@StateMachine { precondition, transition, mock } counter0 = do
   size0 <- lift (sized (\k -> choose (0, k)))
   Commands <$> go size0 counter0 (generatorFrequency sm)
   where
     go :: Int -> Counter -> (model Symbolic -> Gen (cmd Symbolic))
-       -> StateT (model Symbolic) Gen [Command cmd resp]
+       -> StateT (model Symbolic) Gen [Command cmd]
     go 0    _       _   = return []
     go size counter gen = do
       model <- get
@@ -63,7 +72,7 @@ generateCommandsState sm@StateMachine { precondition, transition, mock } counter
       let (resp, counter') = runGenSym (mock model cmd) counter
       put (transition model cmd resp)
       cmds  <- go (size - 1) counter' gen
-      return (Command cmd resp : cmds)
+      return (Command cmd (getUsedVars resp) : cmds)
 
 generatorFrequency :: forall model cmd resp. StateMachine model cmd resp
                    -> model Symbolic
@@ -81,119 +90,141 @@ getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
 
 -- | Shrink commands in a pre-condition and scope respecting way.
 shrinkCommands :: (Rank2.Foldable cmd, Rank2.Foldable resp)
-               => StateMachine model cmd resp -> Commands cmd resp
-               -> [Commands cmd resp]
-shrinkCommands sm@StateMachine { shrinker }
-  = filter (validCommands sm)
-  . map Commands
+               => StateMachine model cmd resp -> Commands cmd
+               -> [Commands cmd]
+shrinkCommands sm@StateMachine { initModel, shrinker }
+  = map ( flip evalState (initModel, S.empty, newCounter)
+        . filterValidCommands sm
+        . Commands
+        )
   . shrinkList (liftShrinkCommand shrinker)
   . unCommands
 
 liftShrinkCommand :: (cmd Symbolic -> [cmd Symbolic])
-                  -> (Command cmd resp -> [Command cmd resp])
+                  -> (Command cmd -> [Command cmd])
 liftShrinkCommand shrinker (Command cmd resp) =
   [ Command cmd' resp | cmd' <- shrinker cmd ]
 
-validCommands :: forall model cmd resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
-              => StateMachine model cmd resp -> Commands cmd resp -> Bool
-validCommands StateMachine { precondition, transition, initModel } =
-  go initModel S.empty . unCommands
+filterValidCommands :: forall model cmd resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
+                    => StateMachine model cmd resp -> Commands cmd
+                    -> State (model Symbolic, Set Var, Counter) (Commands cmd)
+filterValidCommands StateMachine { precondition, transition, mock } =
+  fmap Commands . go . unCommands
   where
-    go :: model Symbolic -> Set Var -> [Command cmd resp] -> Bool
-    go _     _     []                        = True
-    go model scope (Command cmd resp : cmds) =
-      valid && go (transition model cmd resp) (getUsedVars resp `S.union` scope) cmds
-      where
-        valid = precondition model cmd && getUsedVars cmd `S.isSubsetOf` scope
+    go :: [Command cmd] -> State (model Symbolic, Set Var, Counter) [Command cmd]
+    go []                         = return []
+    go (Command cmd _vars : cmds) = do
+      (model, scope, counter) <- get
+      if precondition model cmd && getUsedVars cmd `S.isSubsetOf` scope
+      then do
+        let (resp, counter') = runGenSym (mock model cmd) counter
+            vars             = getUsedVars resp
+        put ( transition model cmd resp
+            , vars `S.union` scope
+            , counter')
+        ih <- go cmds
+        return (Command cmd vars : ih)
+      else
+        go cmds
 
 modelCheck :: forall model cmd resp m. Monad m => StateMachine model cmd resp
-           -> Commands cmd resp
+           -> Commands cmd
            -> PropertyM m Reason -- XXX: (History cmd, model Symbolic, Reason)
-modelCheck StateMachine { initModel, transition, precondition, postcondition }
-  = run . return . go initModel . unCommands
+modelCheck StateMachine { initModel, transition, precondition, postcondition, mock }
+  = run . return . go initModel newCounter . unCommands
   where
-    go :: model Symbolic -> [Command cmd resp] -> Reason
-    go _ []                        = Ok
-    go m (Command cmd resp : cmds)
+    go :: model Symbolic -> Counter -> [Command cmd] -> Reason
+    go _ _       []                         = Ok
+    go m counter (Command cmd _vars : cmds)
       | not (precondition m cmd) = PreconditionFailed
       | otherwise                =
+          let (resp, counter') = runGenSym (mock m cmd) counter in
           if postcondition m cmd resp
-          then go (transition m cmd resp) cmds
+          then go (transition m cmd resp) counter' cmds
           else PostconditionFailed
 
-runCommands :: StateMachine model cmd resp
-            -> Commands cmd resp
+runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+            => StateMachine model cmd resp
+            -> Commands cmd
             -> PropertyM IO (History cmd resp, model Concrete, Reason)
-runCommands sm = run . runCommandsIO sm
+runCommands sm@StateMachine { initModel } = run . go
+  where
+    go cmds = do
+      hchan                <- newTChanIO
+      (reason, (_, model)) <- runStateT (executeCommands sm hchan (Pid 0) True cmds)
+                                          (emptyEnvironment, initModel)
+      hist                 <- getChanContents hchan
+      return (History hist, model, reason)
+        where
+          getChanContents :: TChan a -> IO [a]
+          getChanContents chan = reverse <$> atomically (go' [])
+            where
+              go' acc = do
+                mx <- tryReadTChan chan
+                case mx of
+                  Just x  -> go' (x : acc)
+                  Nothing -> return acc
 
-runCommandsIO :: StateMachine model cmd resp
-              -> Commands cmd resp
-              -> IO (History cmd resp, model Concrete, Reason)
-runCommandsIO = undefined
-
-prettyPrintHistory :: StateMachine model cmd resp -> History cmd resp -> IO ()
-prettyPrintHistory = undefined
-
-{-
--- | Execute a program and return a history, the final model and a result which
---   contains the information of whether the execution respects the state
---   machine model or not.
-executeProgram
-  :: MonadBaseControl IO m
-  => Show1 (act Symbolic)
-  => HTraversable act
-  => Show err
-  => StateMachine' model act m err
-  -> Program act
-  -> m (History act err, model Concrete, Reason)
-executeProgram sm@StateMachine{..} prog = do
-  hchan <- liftBaseWith (const newTChanIO)
-  let eenv = ExecutionEnv emptyEnvironment model' model'
-  (reason, eenv') <- runStateT (executeProgram' sm hchan (Pid 0) True prog) eenv
-  hist <- liftBaseWith (const (getChanContents hchan))
-  return (History hist, cmodel eenv', reason)
--}
-
-data ExecutionEnv model = ExecutionEnv
-  { env    :: Environment
-  , smodel :: model Symbolic
-  , cmodel :: model Concrete
-  }
-
-executeCommands
-  :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-  => StateMachine model cmd resp
-  -> TChan (Pid, HistoryEvent cmd resp)
-  -> Pid
-  -> Bool -- ^ Check post-condition?
-  -> Commands cmd resp
-  -> StateT (ExecutionEnv model) IO Reason
-executeCommands StateMachine { transition, precondition,
-                               postcondition, semantics } hchan pid check =
+executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+                => StateMachine model cmd resp
+                -> TChan (Pid, HistoryEvent cmd resp)
+                -> Pid
+                -> Bool -- ^ Check post-condition?
+                -> Commands cmd
+                -> StateT (Environment, model Concrete) IO Reason
+executeCommands StateMachine { transition, postcondition, semantics } hchan pid check =
   go . unCommands
   where
-    go []                        = return Ok
-    go (Command cmd resp : cmds) = do
-      ExecutionEnv { env, smodel, cmodel } <- get
-      if not (precondition smodel cmd)
+    go []                         = return Ok
+    go (Command scmd vars : cmds) = do
+      (env, model) <- get
+      let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
+      lift (atomically (writeTChan hchan (pid, Invocation ccmd)))
+      cresp <- lift (semantics ccmd)
+      lift (atomically (writeTChan hchan (pid, Response cresp)))
+      if check && not (postcondition model ccmd cresp)
       then
-        return PreconditionFailed
+        return PostconditionFailed
       else do
-        let ccmd = fromRight (error "executeCommands: impossible") (reify env cmd)
-        lift (atomically (writeTChan hchan (pid, Invocation cmd)))
-        cresp <- lift (semantics ccmd)
-        lift (atomically (writeTChan hchan (pid, Response cresp)))
-        if check && not (postcondition cmodel ccmd cresp)
-        then
-          return PostconditionFailed
-        else do
-          put ExecutionEnv
-                { smodel = transition smodel  cmd  resp
-                , cmodel = transition cmodel ccmd cresp
-                , env    = insertConcretes (S.toList (getUsedVars resp))
-                                           (getUsedConcrete cresp) env
-                }
-          go cmds
+        put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+            , transition model ccmd cresp
+            )
+        go cmds
+          where
+            getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
+            getUsedConcrete = Rank2.foldMap (\(Concrete x u) -> [toDyn (x, u)])
 
-getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
-getUsedConcrete = Rank2.foldMap (\(Concrete x u) -> [toDyn (x, u)])
+-- XXX: use makeOperations to rule out impossible error...
+prettyPrintHistory :: forall model cmd resp. ToExpr (model Concrete)
+                   => (Show (cmd Concrete), Show (resp Concrete))
+                   => StateMachine model cmd resp
+                   -> History cmd resp
+                   -> IO ()
+prettyPrintHistory StateMachine { initModel, transition }
+  = PP.putDoc
+  . go initModel Nothing
+  . unHistory
+  where
+    modelDiff :: model Concrete -> Maybe (model Concrete) -> Doc
+    modelDiff model = ansiWlBgEditExpr . flip ediff model . fromMaybe model
+
+    go :: model Concrete -> Maybe (model Concrete) -> [(Pid, HistoryEvent cmd resp)]
+       -> Doc
+    go current previous []                                                      =
+      PP.line <> modelDiff current previous <> PP.line <> PP.line
+    go current previous ((Pid pid, Invocation cmd) : (_, Response resp) : hist) =
+      mconcat
+        [ PP.line
+        , modelDiff current previous
+        , PP.line, PP.line
+        , PP.string "   == "
+        , PP.string (show cmd)
+        , PP.string " ==> "
+        , PP.string (show resp)
+        , PP.string " [ "
+        , PP.int pid
+        , PP.string " ]"
+        , PP.line
+        , go (transition current cmd resp) (Just current) hist
+        ]
+    go _ _ _ = error "prettyPrintHistory: impossible."

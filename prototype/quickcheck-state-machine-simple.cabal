@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: dfe82717d05d75a935180308b0ce285b3fd255c1730ba3877f98d0902667c71f
+-- hash: 8b46888aa79ba8dbd6608cbc8b9412960a6195425a1007ad709c23e988c83c73
 
 name:           quickcheck-state-machine-simple
 version:        0.0.0
@@ -40,6 +40,7 @@ library
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   build-depends:
       QuickCheck
+    , ansi-wl-pprint
     , base >=4.7 && <5
     , constraints
     , containers
@@ -47,6 +48,7 @@ library
     , pretty-show
     , rank2classes
     , stm
+    , tree-diff
   default-language: Haskell2010
 
 executable quickcheck-state-machine-simple-exe
@@ -58,6 +60,7 @@ executable quickcheck-state-machine-simple-exe
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
+    , ansi-wl-pprint
     , base >=4.7 && <5
     , constraints
     , containers
@@ -66,6 +69,7 @@ executable quickcheck-state-machine-simple-exe
     , quickcheck-state-machine-simple
     , rank2classes
     , stm
+    , tree-diff
   default-language: Haskell2010
 
 test-suite quickcheck-state-machine-simple-test
@@ -79,6 +83,7 @@ test-suite quickcheck-state-machine-simple-test
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
+    , ansi-wl-pprint
     , base >=4.7 && <5
     , constraints
     , containers
@@ -87,4 +92,5 @@ test-suite quickcheck-state-machine-simple-test
     , quickcheck-state-machine-simple
     , rank2classes
     , stm
+    , tree-diff
   default-language: Haskell2010

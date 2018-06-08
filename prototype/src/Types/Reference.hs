@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
@@ -5,11 +6,14 @@
 
 module Types.Reference where
 
+import           Data.TreeDiff
+                   (Expr(App), ToExpr, toExpr)
 import           Data.Typeable
                    (Typeable)
 import           Data.Unique
-                   (Unique, newUnique)
-
+                   (Unique, hashUnique, newUnique)
+import           GHC.Generics
+                   (Generic)
 import qualified Rank2
 
 ------------------------------------------------------------------------
@@ -27,16 +31,40 @@ deriving instance Ord  (Symbolic a)
 data Concrete a where
   Concrete :: Typeable a => a -> Unique -> Concrete a
 
+newtype UniqueWrapper = UniqueWrapper Unique
+
+instance Show UniqueWrapper where
+  show (UniqueWrapper u) = show (hashUnique u)
+
+instance Show (Concrete a) where
+  showsPrec p (Concrete _x u) = showParen (p > appPrec) $
+    showString "Concrete <opaque> " .
+    showsPrec (appPrec + 1) (UniqueWrapper u)
+      where
+        appPrec = 10
+
 instance Eq (Concrete a) where
   Concrete _ u1 == Concrete _ u2 = u1 == u2
 
 instance Ord (Concrete a) where
   Concrete _ u1 `compare` Concrete _ u2 = u1 `compare` u2
 
+instance ToExpr (Concrete a) where
+  toExpr (Concrete _x u) = App "Concrete" [App "<opaque>" [], App (show (hashUnique u)) [] ]
+
 data Reference a r = Reference (r a)
+  deriving Generic
+
+instance ToExpr (r a) => ToExpr (Reference a r)
+
+instance Rank2.Functor (Reference a) where
+  f <$> Reference r = Reference (f r)
 
 instance Rank2.Foldable (Reference a) where
   foldMap f (Reference r) = f r
+
+instance Rank2.Traversable (Reference a) where
+  traverse f (Reference r) = Reference <$> f r
 
 instance Eq (r a) => Eq (Reference a r) where
   Reference r1 == Reference r2 = r1 == r2
@@ -44,7 +72,7 @@ instance Eq (r a) => Eq (Reference a r) where
 instance Ord (r a) => Ord (Reference a r) where
   Reference r1 `compare` Reference r2 = r1 `compare` r2
 
-instance Show (Reference a Symbolic) where
+instance Show (r a) => Show (Reference a r) where
   showsPrec p (Reference v) = showParen (p > appPrec) $
     showString "Reference " .
     showsPrec p v

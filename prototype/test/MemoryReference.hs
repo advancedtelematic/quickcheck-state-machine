@@ -1,9 +1,11 @@
-{-# LANGUAGE ExplicitNamespaces  #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE MonoLocalBinds      #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE ExplicitNamespaces   #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE MonoLocalBinds       #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module MemoryReference where
 
@@ -12,19 +14,25 @@ import           Data.Constraint
 import           Data.Constraint.Forall
                    (ForallF, instF)
 import           Data.IORef
+                   (IORef, newIORef, readIORef, writeIORef)
 import           Data.Map
                    (Map)
 import qualified Data.Map                as M
+import           Data.TreeDiff
+                   (ToExpr)
+import           GHC.Generics
+                   (Generic)
 import qualified Rank2
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Lib
+import           QuickCheckUtils
 import           Types
-                   (Concrete, GenSym, Reference(..), Result(Ok),
-                   StateMachine(StateMachine), Symbolic, concrete,
-                   genSym, reference)
+                   (Concrete(..), GenSym, Reason(Ok), Reference(..),
+                   StateMachine(StateMachine), Symbolic,
+                   concrete, genSym, reference)
 
 ------------------------------------------------------------------------
 
@@ -34,11 +42,22 @@ data Command r
   | Write (Reference (IORef Int) r) Int
 
 deriving instance Show (Command Symbolic)
+deriving instance Show (Command Concrete)
+
+instance Rank2.Functor Command where
+  _ <$> Create      = Create
+  f <$> Read ref    = Read  (f Rank2.<$> ref)
+  f <$> Write ref x = Write (f Rank2.<$> ref) x
 
 instance Rank2.Foldable Command where
   foldMap _ Create        = mempty
   foldMap f (Read ref)    = Rank2.foldMap f ref
   foldMap f (Write ref _) = Rank2.foldMap f ref
+
+instance Rank2.Traversable Command where
+  traverse _ Create        = pure Create
+  traverse f (Read ref)    = Read  <$> Rank2.traverse f ref
+  traverse f (Write ref x) = Write <$> Rank2.traverse f ref <*> pure x
 
 data Response r
   = Created (Reference (IORef Int) r)
@@ -46,6 +65,7 @@ data Response r
   | Written
 
 deriving instance Show (Response Symbolic)
+deriving instance Show (Response Concrete)
 
 instance Rank2.Foldable Response where
   foldMap f (Created ref) = Rank2.foldMap f ref
@@ -53,6 +73,11 @@ instance Rank2.Foldable Response where
   foldMap _ Written       = mempty
 
 newtype Model r = Model (Map (Reference (IORef Int) r) Int)
+  deriving (Generic)
+
+deriving instance Show (r (IORef Int)) => Show (Model r)
+
+instance ToExpr (Model Concrete)
 
 initModel :: Model r
 initModel = Model M.empty
@@ -91,7 +116,7 @@ semantics :: Command Concrete -> IO (Response Concrete)
 semantics cmd = case cmd of
   Create      -> Created   <$> (reference =<< newIORef 0)
   Read ref    -> ReadValue <$> readIORef  (concrete ref)
-  Write ref x -> Written   <$  writeIORef (concrete ref) x
+  Write ref x -> Written   <$  writeIORef (concrete ref) (if x == 5 then x + 1 else x)
 
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
 mock (Model m) cmd = case cmd of
@@ -124,3 +149,8 @@ prop_modelCheck = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
   res <- modelCheck sm cmds
   -- prettyPrintHistory sm hist `whenFailM` (res === Ok)
   return (res === Ok)
+
+prop_sequential :: Property
+prop_sequential = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
+  (hist, _model, res) <- runCommands sm cmds
+  prettyPrintHistory sm hist `whenFailM` (res === Ok)

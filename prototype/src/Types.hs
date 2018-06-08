@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE MonoLocalBinds       #-}
 {-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -7,7 +8,6 @@ module Types
   ( StateMachine(..)
   , Command(..)
   , Commands(..)
-  , unCommands
   , Reason(..)
   , module Types.Environment
   , module Types.GenSym
@@ -17,9 +17,8 @@ module Types
 
 import           Data.Constraint.Forall
                    (ForallF)
-import           Data.Map
-                   (Map)
-import qualified Data.Map               as M
+import           Data.Set
+                   (Set)
 import           Test.QuickCheck
                    (Gen)
 
@@ -43,15 +42,14 @@ data StateMachine model cmd resp = StateMachine
   , mock          :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
   }
 
-data Command cmd resp = Command (cmd Symbolic) (resp Symbolic)
+data Command cmd = Command !(cmd Symbolic) !(Set Var)
 
-deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) =>
-  Show (Command cmd resp)
+deriving instance Show (cmd Symbolic) => Show (Command cmd)
 
-data Commands cmd resp = Commands { unCommands :: [Command cmd resp] }
+data Commands cmd = Commands
+  { unCommands :: [Command cmd] }
 
-deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) =>
-  Show (Commands cmd resp)
+deriving instance Show (cmd Symbolic) => Show (Commands cmd)
 
 data Reason = Ok | PreconditionFailed | PostconditionFailed
   deriving (Eq, Show)
