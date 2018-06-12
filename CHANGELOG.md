@@ -1,3 +1,22 @@
+#### 0.4.0 (2018-?-?)
+
+  * Major rewrite, addressing many issues:
+
+    - The output of sequential runs now shows a diff of how the model changed in
+      each step (related to issue #77);
+
+    - The datatype of actions was renamed to commands and no longer is a GADT
+      (discussed in issue #170, also makes issue #196 obsolete);
+
+    - Commands can now return multiple references (issue #197);
+
+    - Less boilerplate code is now needed when defining generators (issue #178);
+
+    - Global invariants can now more easily be expressed (issue #200);
+
+    - Make equality of `Reference` is now independent of the contents (issue
+      #203).
+
 #### 0.3.1 (2018-1-15)
 
   * Remove upper bounds for dependencies, to easier keep up with

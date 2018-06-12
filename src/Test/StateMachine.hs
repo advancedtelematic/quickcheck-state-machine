@@ -40,7 +40,6 @@ module Test.StateMachine
 
   ) where
 
-
 import           Test.StateMachine.Parallel
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
