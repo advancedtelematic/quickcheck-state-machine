@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveFoldable       #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE DeriveTraversable    #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE MonoLocalBinds       #-}
 {-# LANGUAGE Rank2Types           #-}
@@ -8,6 +11,9 @@ module Types
   ( StateMachine(..)
   , Command(..)
   , Commands(..)
+  , ParallelCommandsF(..)
+  , ParallelCommands
+  , Pair(..)
   , Reason(..)
   , module Types.Environment
   , module Types.GenSym
@@ -53,3 +59,13 @@ deriving instance Show (cmd Symbolic) => Show (Commands cmd)
 
 data Reason = Ok | PreconditionFailed | PostconditionFailed
   deriving (Eq, Show)
+
+data ParallelCommandsF t cmd = ParallelCommands
+  { prefix   :: !(Commands cmd)
+  , suffixes :: [t (Commands cmd)]
+  }
+
+data Pair a = Pair !a !a
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+type ParallelCommands = ParallelCommandsF Pair

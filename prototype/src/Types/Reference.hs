@@ -50,7 +50,8 @@ instance Ord (Concrete a) where
   Concrete _ u1 `compare` Concrete _ u2 = u1 `compare` u2
 
 instance ToExpr (Concrete a) where
-  toExpr (Concrete _x u) = App "Concrete" [App "<opaque>" [], App (show (hashUnique u)) [] ]
+  toExpr (Concrete _x u) =
+    App "Concrete" [App "<opaque>" [], App (show (hashUnique u)) [] ]
 
 data Reference a r = Reference (r a)
   deriving Generic

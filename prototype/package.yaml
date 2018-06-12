@@ -28,6 +28,7 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - ansi-wl-pprint
+- async
 - base >= 4.7 && < 5
 - containers
 - constraints
@@ -40,17 +41,6 @@ dependencies:
 
 library:
   source-dirs: src
-
-executables:
-  quickcheck-state-machine-simple-exe:
-    main:                Main.hs
-    source-dirs:         app
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - quickcheck-state-machine-simple
 
 tests:
   quickcheck-state-machine-simple-test:

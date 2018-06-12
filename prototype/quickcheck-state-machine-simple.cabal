@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8b46888aa79ba8dbd6608cbc8b9412960a6195425a1007ad709c23e988c83c73
+-- hash: f1496da3c7a2f5c51926e1e28dce64f92c3d5a9d6c4a5916c57e50a483cd5072
 
 name:           quickcheck-state-machine-simple
 version:        0.0.0
@@ -27,6 +27,7 @@ source-repository head
 library
   exposed-modules:
       Lib
+      Parallel
       QuickCheckUtils
       Types
       Types.Environment
@@ -41,32 +42,12 @@ library
   build-depends:
       QuickCheck
     , ansi-wl-pprint
+    , async
     , base >=4.7 && <5
     , constraints
     , containers
     , mtl
     , pretty-show
-    , rank2classes
-    , stm
-    , tree-diff
-  default-language: Haskell2010
-
-executable quickcheck-state-machine-simple-exe
-  main-is: Main.hs
-  other-modules:
-      Paths_quickcheck_state_machine_simple
-  hs-source-dirs:
-      app
-  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      QuickCheck
-    , ansi-wl-pprint
-    , base >=4.7 && <5
-    , constraints
-    , containers
-    , mtl
-    , pretty-show
-    , quickcheck-state-machine-simple
     , rank2classes
     , stm
     , tree-diff
@@ -84,6 +65,7 @@ test-suite quickcheck-state-machine-simple-test
   build-depends:
       QuickCheck
     , ansi-wl-pprint
+    , async
     , base >=4.7 && <5
     , constraints
     , containers

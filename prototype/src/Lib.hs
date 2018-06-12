@@ -3,7 +3,20 @@
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Lib where
+module Lib
+  ( forAllShrinkCommands
+  , generateCommands
+  , generateCommandsState
+  , getUsedVars
+  , shrinkCommands
+  , filterValidCommands
+  , modelCheck
+  , runCommands
+  , getChanContents
+  , executeCommands
+  , prettyPrintHistory
+  )
+  where
 
 import           Control.Concurrent.STM
                    (atomically)
@@ -74,16 +87,16 @@ generateCommandsState sm@StateMachine { precondition, transition, mock } counter
       cmds  <- go (size - 1) counter' gen
       return (Command cmd (getUsedVars resp) : cmds)
 
-generatorFrequency :: forall model cmd resp. StateMachine model cmd resp
-                   -> model Symbolic
-                   -> Gen (cmd Symbolic)
-generatorFrequency StateMachine { generator, weight } model =
-  frequency =<< sequence (map go (generator model))
-  where
-    go :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
-    go gen = do
-      cmd <- gen
-      return (fromMaybe (\_ _ -> 1) weight model cmd, gen)
+    generatorFrequency :: forall model cmd resp. StateMachine model cmd resp
+                       -> model Symbolic
+                       -> Gen (cmd Symbolic)
+    generatorFrequency StateMachine { generator, weight } model =
+      frequency =<< sequence (map go (generator model))
+      where
+        go :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
+        go gen = do
+          cmd <- gen
+          return (fromMaybe (\_ _ -> 1) weight model cmd, gen)
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
@@ -155,15 +168,15 @@ runCommands sm@StateMachine { initModel } = run . go
                                           (emptyEnvironment, initModel)
       hist                 <- getChanContents hchan
       return (History hist, model, reason)
-        where
-          getChanContents :: TChan a -> IO [a]
-          getChanContents chan = reverse <$> atomically (go' [])
-            where
-              go' acc = do
-                mx <- tryReadTChan chan
-                case mx of
-                  Just x  -> go' (x : acc)
-                  Nothing -> return acc
+
+getChanContents :: TChan a -> IO [a]
+getChanContents chan = reverse <$> atomically (go' [])
+  where
+    go' acc = do
+      mx <- tryReadTChan chan
+      case mx of
+        Just x  -> go' (x : acc)
+        Nothing -> return acc
 
 executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                 => StateMachine model cmd resp
