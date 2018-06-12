@@ -27,12 +27,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
-import           Lib
-import           QuickCheckUtils
-import           Types
-                   (Concrete(..), GenSym, Reason(Ok), Reference(..),
-                   StateMachine(StateMachine), Symbolic,
-                   concrete, genSym, reference)
+import           Test.StateMachine
 
 ------------------------------------------------------------------------
 

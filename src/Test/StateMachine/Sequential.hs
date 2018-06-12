@@ -65,8 +65,8 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Text.Show.Pretty
                    (ppShow)
 
-import           QuickCheckUtils
-import           Types
+import           Test.StateMachine.Types
+import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
@@ -256,3 +256,45 @@ prettyPrintHistory StateMachine { initModel, transition }
         , go (transition current cmd resp) (Just current) hist
         ]
     go _ _ _ = error "prettyPrintHistory: impossible."
+
+  {-
+prettyProgram
+  :: MonadIO m
+  => Show (model Concrete)
+  => StateMachine model cmd resp
+  -> History cmd resp
+  -> Property
+  -> PropertyM m ()
+prettyProgram StateMachine{ initModel, transition } hist prop =
+  putStrLn (ppHistory model' transition' hist) `whenFailM` prop
+-}
+
+------------------------------------------------------------------------
+
+
+  {-
+-- | Print distribution of actions and fail if some actions have not been
+--   executed.
+checkActionNames :: Constructors act => Program act -> Property -> Property
+checkActionNames prog
+  = collect names
+  . cover (length names == numOfConstructors) 1 "coverage"
+  where
+    names = actionNames prog
+    numOfConstructors = nConstructors prog
+
+-- | Returns the frequency of actions in a program.
+actionNames :: forall act. Constructors act => Program act -> [(Constructor, Int)]
+actionNames = M.toList . foldl go M.empty . unProgram
+  where
+  go :: Map Constructor Int -> Internal act -> Map Constructor Int
+  go ih (Internal act _) = M.insertWith (+) (constructor act) 1 ih
+
+actionNames' :: Constructors act => Program act -> [Constructor]
+actionNames'
+  = reverse
+  . foldl (\ih (Internal act _) -> constructor act : ih) []
+  . unProgram
+-}
+
+------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f1496da3c7a2f5c51926e1e28dce64f92c3d5a9d6c4a5916c57e50a483cd5072
+-- hash: f1ea8af0088c6532b36400159c20d3338f65587e3012fc2e859e5989a0988aab
 
 name:           quickcheck-state-machine-simple
 version:        0.0.0
@@ -13,7 +13,6 @@ author:         Author name here
 maintainer:     example@example.com
 copyright:      2018 Author name here
 license:        BSD2
-license-file:   LICENSE
 build-type:     Simple
 cabal-version:  >= 1.10
 extra-source-files:

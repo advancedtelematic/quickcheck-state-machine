@@ -7,7 +7,19 @@
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Types
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Types
+-- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-----------------------------------------------------------------------------
+
+module Test.StateMachine.Types
   ( StateMachine(..)
   , Command(..)
   , Commands(..)

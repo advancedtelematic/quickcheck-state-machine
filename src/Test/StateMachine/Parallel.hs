@@ -1,13 +1,10 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE Rank2Types            #-}
-{-# LANGUAGE RecordWildCards       #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE Rank2Types          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Test.StateMachine.Internal.Parallel
+-- Module      :  Test.StateMachine.Parallel
 -- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
 -- License     :  BSD-style (see the file LICENSE)
 --
@@ -20,18 +17,18 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Internal.Parallel
-  ( generateParallelProgram
-  , shrinkParallelProgram
-  , validParallelProgram
-  , executeParallelProgram
-  , linearise
-  , toBoxDrawings
+module Test.StateMachine.Parallel
+  ( generateParallelCommands
+  -- , shrinkParallelProgram
+  -- , validParallelProgram
+  , runParallelCommands
+  -- , linearise
+  -- , toBoxDrawings
   ) where
 
 import           Control.Arrow
                    ((***))
-import           Control.Concurrent.Async.Lifted
+import           Control.Concurrent.Async
                    (concurrently)
 import           Control.Concurrent.STM.TChan
                    (newTChanIO)
@@ -39,8 +36,6 @@ import           Control.Monad
                    (foldM)
 import           Control.Monad.State
                    (runStateT)
-import           Control.Monad.Trans.Control
-                   (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
                    (bimap)
 import           Data.Functor.Classes
@@ -51,39 +46,78 @@ import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                                     as S
+import qualified Data.Set                     as S
 import           Data.Tree
                    (Tree(Node))
+import qualified Rank2
+import           Test.QuickCheck.Monadic (PropertyM, run)
 import           Test.QuickCheck
-                   (Gen, Property, choose, property, shrinkList, sized,
-                   (.&&.))
-import           Text.PrettyPrint.ANSI.Leijen
-                   (Doc)
+                   (Gen, choose, shrinkList, sized)
 
-import           Test.StateMachine.Internal.Sequential
-import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Types.Environment
-import           Test.StateMachine.Internal.Utils
-import           Test.StateMachine.Internal.Utils.BoxDrawer
+import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import           Test.StateMachine.Types.History
 
 ------------------------------------------------------------------------
 
--- | Generate a parallel program whose actions all respect their
---   pre-conditions.
-generateParallelProgram
-  :: Generator    model act
-  -> Precondition model act
-  -> Transition'  model act err
-  -> model Symbolic
-  -> Gen (ParallelProgram act)
-generateParallelProgram generator precondition transition model = do
-  Program is         <- generateProgram' generator precondition transition model
+generateParallelCommands :: forall model cmd resp. Rank2.Foldable resp
+                         => StateMachine model cmd resp
+                         -> Gen (ParallelCommands cmd)
+generateParallelCommands sm@StateMachine { initModel } = do
+  Commands cmds      <- generateCommands sm
   prefixLength       <- sized (\k -> choose (0, k `div` 3))
-  let (prefix, rest) =  bimap Program Program (splitAt prefixLength is)
-  return (ParallelProgram prefix
-    (splitProgram precondition transition (advanceModel transition model prefix) rest))
+  let (prefix, rest) =  bimap Commands Commands (splitAt prefixLength cmds)
+  return (ParallelCommands prefix
+            (makeSuffixes (advanceModel sm initModel prefix) rest))
+  where
+    makeSuffixes :: model Symbolic -> Commands cmd -> [Pair (Commands cmd)]
+    makeSuffixes model0 = go model0 [] . unCommands
+      where
+        go _     acc []   = reverse acc
+        go model acc cmds = go (advanceModel sm model (Commands safe))
+                                (Pair (Commands safe1) (Commands safe2) : acc)
+                                rest
+          where
+            (safe, rest)   = spanSafe model [] cmds
+            (safe1, safe2) = splitAt (length safe `div` 2) safe
+
+        suffixLength = 5
+
+        spanSafe _     safe []                         = (reverse safe, [])
+        spanSafe model safe (cmd@(Command _ _) : cmds)
+          | length safe <= suffixLength &&
+              parallelSafe sm model (Commands (cmd : safe)) =
+                spanSafe model (cmd : safe) cmds
+          | otherwise = (reverse safe, cmd : cmds)
+
+parallelSafe :: StateMachine model cmd resp -> model Symbolic -> Commands cmd
+             -> Bool
+parallelSafe StateMachine { precondition, transition } model0
+  = and
+  . map (preconditionsHold model0)
+  . permutations
+  . unCommands
+  where
+    preconditionsHold _     []                         = True
+    preconditionsHold model (Command cmd _vars : cmds)
+      =  precondition model cmd
+      && preconditionsHold (transition model cmd undefined) cmds
+
+-- XXX: is it good enough to start from a fresh counter every time?
+advanceModel :: StateMachine model cmd resp
+             -> model Symbolic -> Commands cmd -> model Symbolic
+advanceModel StateMachine { transition, mock } model0 =
+  go model0 newCounter . unCommands
+  where
+    go model _       []                         = model
+    go model counter (Command cmd _vars : cmds) =
+      let
+        (resp, counter') = runGenSym (mock model cmd) counter
+      in
+        go (transition model cmd resp) counter' cmds
+
+------------------------------------------------------------------------
+
+{-
 
 -- | Shrink a parallel program in a pre-condition and scope respecting
 --   way.
@@ -177,58 +211,53 @@ validSuffixes precondition transition model0 scope0 = go model0 scope0
     && go (advanceModel transition model prog) scope' progs
     where
     scope' = boundVars prog `S.union` scope
+-}
 
--- | Run a parallel program, by first executing the prefix sequentially
---   and then the suffixes in parallel, and return the history (or
---   trace) of the execution.
-executeParallelProgram
-  :: MonadBaseControl IO m
-  => HTraversable act
-  => Show1 (act Symbolic)
-  => Show err
-  => StateMachine' model act m err
-  -> ParallelProgram act
-  -> m (History act err, Reason)
-executeParallelProgram sm@StateMachine{..} (ParallelProgram prefix suffixes) = do
+runParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+                    => StateMachine model cmd resp
+                    -> ParallelCommands cmd
+                    -> PropertyM IO (History cmd resp, Reason)
+runParallelCommands sm = run . executeParallelCommands sm
 
-  hchan <- liftBaseWith (const newTChanIO)
+executeParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+                        => StateMachine model cmd resp
+                        -> ParallelCommands cmd
+                        -> IO (History cmd resp, Reason)
+executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) = do
 
-  (reason0, eenv0) <- runStateT
-    (executeProgram' sm hchan (Pid 0) True prefix)
-    (ExecutionEnv emptyEnvironment model' model')
+  hchan <- newTChanIO
+
+  (reason0, (env0, _cmodel)) <- runStateT
+    (executeCommands sm hchan (Pid 0) True prefix)
+    (emptyEnvironment, initModel)
 
   if reason0 /= Ok
   then do
-    hist <- liftBaseWith (const (getChanContents hchan))
+    hist <- getChanContents hchan
     return (History hist, reason0)
   else do
-    (reason, _) <- foldM (go hchan) (reason0, eenv0) suffixes
-    hist <- liftBaseWith (const (getChanContents hchan))
+    (reason, _) <- foldM (go hchan) (reason0, env0) suffixes
+    hist <- getChanContents hchan
     return (History hist, reason)
   where
-  go hchan (_, eenv) (prog1, prog2) = do
-    ((reason1, eenv1), (reason2, eenv2)) <- concurrently
-      (runStateT (executeProgram' sm hchan (Pid 1) False prog1) eenv)
-      (runStateT (executeProgram' sm hchan (Pid 2) False prog2) eenv)
-    return ( reason1 `combineReason` reason2
-           , combineEnv eenv1 eenv2 transition' prog2
-           )
-    where
-    combineReason :: Reason -> Reason -> Reason
-    combineReason Ok r2 = r2
-    combineReason r1 _  = r1
+    go hchan (_, env) (Pair cmds1 cmds2) = do
+      ((reason1, (env1, _)), (reason2, (env2, _))) <- concurrently
 
-combineEnv
-  :: ExecutionEnv model
-  -> ExecutionEnv model
-  -> Transition' model act err
-  -> Program act
-  -> ExecutionEnv model
-combineEnv (ExecutionEnv env1 smodel1 cmodel1) (ExecutionEnv env2 _ _) transition prog
-  = ExecutionEnv (env1 <> env2) (advanceModel transition smodel1 prog) cmodel1
+        -- XXX: Post-conditions not checked, so we can pass in initModel here...
+        -- It would be better if we made executeCommands take a Maybe model
+        -- instead of the boolean...
 
-  -- We don't care about the concrete model when executing parallel
-  -- programs, as we are not checking post-conditions.
+        (runStateT (executeCommands sm hchan (Pid 1) False cmds1) (env, initModel))
+        (runStateT (executeCommands sm hchan (Pid 2) False cmds2) (env, initModel))
+      return ( reason1 `combineReason` reason2
+             , env1 <> env2
+             )
+      where
+        combineReason :: Reason -> Reason -> Reason
+        combineReason Ok r2 = r2
+        combineReason r1 _  = r1
+
+{-
 
 ------------------------------------------------------------------------
 
@@ -288,55 +317,46 @@ toBoxDrawings (ParallelProgram prefix suffixes) = toBoxDrawings'' allVars
       evT :: [(EventType, Pid)]
       evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
 
-------------------------------------------------------------------------
+-}
 
-splitProgram
-  :: Precondition model act
-  -> Transition'  model act err
-  -> model Symbolic
-  -> Program act
-  -> [(Program act, Program act)]
-splitProgram precondition transition model0 = go model0 [] . unProgram
-  where
-  go _     acc []    = reverse acc
-  go model acc iacts = go (advanceModel transition model (Program safe))
-                          ((Program safe1, Program safe2) : acc)
-                          rest
-    where
-    (safe, rest)   = spanSafe model [] iacts
-    (safe1, safe2) = splitAt (length safe `div` 2) safe
+{-
+runParallelProgram
+  :: MonadBaseControl IO m
+  => Show1 (act Symbolic)
+  => Show err
+  => HTraversable act
+  => StateMachine' model act m err
+     -- ^
+  -> ParallelProgram act
+  -> PropertyM m [(History act err, Property)]
+runParallelProgram = runParallelProgram' 10
 
-  spanSafe _     safe []                            = (reverse safe, [])
-  spanSafe model safe (iact@(Internal _ _) : iacts)
-    | length safe <= 5 && parallelSafe precondition transition model (Program (iact : safe))
-        = spanSafe model (iact : safe) iacts
-    | otherwise
-        = (reverse safe, iact : iacts)
+runParallelProgram'
+  :: MonadBaseControl IO m
+  => Show1 (act Symbolic)
+  => Show err
+  => HTraversable act
+  => Int -- ^ How many times to execute the parallel program.
+  -> StateMachine' model act m err
+     -- ^
+  -> ParallelProgram act
+  -> PropertyM m [(History act err, Property)]
+runParallelProgram' n sm@StateMachine{..} prog =
+  replicateM n $ do
+    (hist, _reason) <- run (executeParallelProgram sm prog)
+    return (hist, linearise transition' postcondition' model' hist)
 
-parallelSafe
-  :: Precondition model act
-  -> Transition' model act err
-  -> model Symbolic
-  -> Program act
-  -> Bool
-parallelSafe precondition transition model0
-  = and
-  . map (preconditionsHold model0)
-  . permutations
-  . unProgram
-  where
-  preconditionsHold _     []                         = True
-  preconditionsHold model (Internal act sym : iacts)
-    =  precondition model act
-    && preconditionsHold (transition model act (Success sym)) iacts
+-- | Takes the output of a parallel program runs and pretty prints a
+--   counter example if any of the runs fail.
+prettyParallelProgram
+  :: MonadIO m
+  => HFoldable act
+  => Show (Untyped act)
+  => ParallelProgram act
+  -> [(History act err, Property)] -- ^ Output of 'runParallelProgram.
+  -> PropertyM m ()
+prettyParallelProgram prog
+  = mapM_ (\(hist, prop) ->
+              print (toBoxDrawings prog hist) `whenFailM` prop)
 
-advanceModel
-  :: Transition' model act err
-  -> model Symbolic
-  -> Program act
-  -> model Symbolic
-advanceModel transition model0 = go model0 . unProgram
-  where
-  go model []                         = model
-  go model (Internal act sym : iacts) =
-    go (transition model act (Success sym)) iacts
+-}

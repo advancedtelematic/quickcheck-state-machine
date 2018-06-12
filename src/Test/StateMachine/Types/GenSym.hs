@@ -1,13 +1,32 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Types.GenSym where
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Types.GenSym
+-- Copyright   :  (C) 2018, HERE Europe B.V.
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-----------------------------------------------------------------------------
+
+module Test.StateMachine.Types.GenSym
+  ( GenSym
+  , runGenSym
+  , genSym
+  , Counter
+  , newCounter
+  )
+  where
 
 import           Control.Monad.State
                    (State, get, put, runState)
 import           Data.Typeable
                    (Typeable)
 
-import           Types.Reference
+import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 

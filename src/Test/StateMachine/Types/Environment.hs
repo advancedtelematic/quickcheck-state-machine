@@ -18,7 +18,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Types.Environment
+module Test.StateMachine.Types.Environment
   ( Environment(..)
   , EnvironmentError(..)
   , emptyEnvironment
@@ -40,7 +40,7 @@ import           Data.Typeable
                    (Proxy(Proxy), TypeRep, typeRep)
 import qualified Rank2
 
-import           Types.Reference
+import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 

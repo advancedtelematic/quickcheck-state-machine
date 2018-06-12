@@ -1,10 +1,3 @@
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE Rank2Types                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Test.StateMachine.Types.History
@@ -20,31 +13,23 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Types.History
-  ( History(..)
-  , History'
-  , ppHistory
-  , HistoryEvent(..)
-  , getProcessIdEvent
-  , UntypedConcrete(..)
-  , Operation(..)
-  , linearTree
-  )
-  where
+module Test.StateMachine.Types.History where
 
-import           Data.Dynamic
-                   (Dynamic)
-import           Data.Semigroup
-                   (Semigroup)
-import           Data.Tree
-                   (Tree(Node))
-import           Data.Typeable
-                   (Typeable)
+import Test.StateMachine.Types.References
 
-import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.Internal.Types.Environment
-import           Test.StateMachine.Types
+------------------------------------------------------------------------
 
+newtype History cmd resp = History
+  { unHistory :: [(Pid, HistoryEvent cmd resp)] }
+
+newtype Pid = Pid Int
+  deriving Show
+
+data HistoryEvent cmd resp
+  = Invocation !(cmd  Concrete)
+  | Response   !(resp Concrete)
+
+{-
 ------------------------------------------------------------------------
 
 -- | A history is a trace of a program execution.
@@ -138,3 +123,4 @@ linearTree es =
   -- Hmm, is this enough?
   matchInv pid (InvocationEvent _ _ _ pid') = pid == pid'
   matchInv _   _                            = False
+-}

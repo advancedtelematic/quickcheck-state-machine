@@ -135,7 +135,7 @@ script:
   set -ex
   case "$BUILD" in
     stack)
-      travis_retry travis_wait 25 stack $ARGS --stack-yaml=example/stack.yaml test --pedantic --haddock --no-haddock-deps --test-arguments="--color"
+      travis_retry travis_wait 25 stack $ARGS test --pedantic --haddock --no-haddock-deps --test-arguments="--color"
       ;;
     cabal)
       cabal install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES

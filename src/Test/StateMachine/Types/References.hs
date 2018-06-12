@@ -1,9 +1,8 @@
-{-# LANGUAGE DeriveFoldable             #-}
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DeriveTraversable          #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -20,132 +19,84 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Types.References
-  ( Reference(..)
-  , concrete
-  , opaque
-  , Opaque(..)
-  , Symbolic(..)
-  , Concrete(..)
-  , Var(..)
-  ) where
+module Test.StateMachine.Types.References where
 
-import           Data.Functor.Classes
-                   (Eq1(..), Ord1(..), Show1(..), compare1, eq1,
-                   showsPrec1)
+import           Data.TreeDiff
+                   (Expr(App), ToExpr, toExpr)
 import           Data.Typeable
                    (Typeable)
-
-import           Test.StateMachine.Types.HFunctor
-
-------------------------------------------------------------------------
-
--- | References are the potential or actual result of executing an action. They
---   are parameterised by either `Symbolic` or `Concrete` depending on the
---   phase of the test.
---
---   `Symbolic` variables are the potential results of actions. These are used
---   when generating the sequence of actions to execute. They allow actions
---   which occur later in the sequence to make use of the result of an action
---   which came earlier in the sequence.
---
---   `Concrete` variables are the actual results of actions. These are used
---   during test execution. They provide access to the actual runtime value of
---   a variable.
---
-newtype Reference v a = Reference (v a)
-
--- | Take the value from a concrete variable.
---
-concrete :: Reference Concrete a -> a
-concrete (Reference (Concrete x)) = x
-
--- | Take the value from an opaque concrete variable.
---
-opaque :: Reference Concrete (Opaque a) -> a
-opaque (Reference (Concrete (Opaque x))) = x
-
-instance (Eq1 v, Eq a) => Eq (Reference v a) where
-  (==) (Reference x) (Reference y) = eq1 x y
-
-instance (Ord1 v, Ord a) => Ord (Reference v a) where
-  compare (Reference x) (Reference y) = compare1 x y
-
-instance (Show1 v, Show a) => Show (Reference v a) where
-  showsPrec p (Reference v) = showParen (p > appPrec) $
-      showString "Reference " .
-      showsPrec1 p v
-    where
-      appPrec = 10
-
-deriving instance Read (v a) => Read (Reference v a)
-
-instance HTraversable Reference where
-  htraverse f (Reference v) = fmap Reference (f v)
-
-instance HFunctor  Reference
-instance HFoldable Reference
+import           Data.Unique
+                   (Unique, hashUnique, newUnique)
+import           GHC.Generics
+                   (Generic)
+import qualified Rank2
 
 ------------------------------------------------------------------------
 
--- | Opaque values.
---
---   Useful if you want to put something without a 'Show' instance inside
---   something which you'd like to be able to display.
---
-newtype Opaque a = Opaque
-  { unOpaque :: a
-  } deriving (Eq, Ord)
-
-instance Show (Opaque a) where
-  showsPrec _ (Opaque _) = showString "Opaque"
-
--- | Symbolic variable names.
---
 newtype Var = Var Int
-  deriving (Eq, Ord, Show, Num, Read)
+  deriving (Eq, Ord, Show)
 
--- | Symbolic values.
---
 data Symbolic a where
   Symbolic :: Typeable a => Var -> Symbolic a
 
-deriving instance Eq  (Symbolic a)
-deriving instance Ord (Symbolic a)
 deriving instance Show (Symbolic a)
-deriving instance Typeable a => Read (Symbolic a)
-deriving instance Foldable Symbolic
+deriving instance Eq   (Symbolic a)
+deriving instance Ord  (Symbolic a)
 
-instance Eq1 Symbolic where
-  liftEq _ (Symbolic x) (Symbolic y) = x == y
+data Concrete a where
+  Concrete :: Typeable a => a -> Unique -> Concrete a
 
-instance Ord1 Symbolic where
-  liftCompare _ (Symbolic x) (Symbolic y) = compare x y
+newtype UniqueWrapper = UniqueWrapper Unique
 
-instance Show1 Symbolic where
-  liftShowsPrec _ _ p (Symbolic x) =
-    showParen (p > appPrec) $
-      showString "Symbolic " .
-      showsPrec (appPrec + 1) x
-    where
-      appPrec = 10
+instance Show UniqueWrapper where
+  show (UniqueWrapper u) = show (hashUnique u)
 
--- | Concrete values.
---
-newtype Concrete a where
-  Concrete :: a -> Concrete a
-  deriving (Eq, Ord, Show, Read, Functor, Foldable, Traversable)
+instance Show (Concrete a) where
+  showsPrec p (Concrete _x u) = showParen (p > appPrec) $
+    showString "Concrete <opaque> " .
+    showsPrec (appPrec + 1) (UniqueWrapper u)
+      where
+        appPrec = 10
 
-instance Eq1 Concrete where
-  liftEq eq (Concrete x) (Concrete y) = eq x y
+instance Eq (Concrete a) where
+  Concrete _ u1 == Concrete _ u2 = u1 == u2
 
-instance Ord1 Concrete where
-  liftCompare comp (Concrete x) (Concrete y) = comp x y
+instance Ord (Concrete a) where
+  Concrete _ u1 `compare` Concrete _ u2 = u1 `compare` u2
 
-instance Show1 Concrete where
-  liftShowsPrec sp _ p (Concrete x) =
-    showParen (p > appPrec) $
-      showString "Concrete " .
-      sp (appPrec + 1) x
-    where
-      appPrec = 10
+instance ToExpr (Concrete a) where
+  toExpr (Concrete _x u) =
+    App "Concrete" [App "<opaque>" [], App (show (hashUnique u)) [] ]
+
+data Reference a r = Reference (r a)
+  deriving Generic
+
+instance ToExpr (r a) => ToExpr (Reference a r)
+
+instance Rank2.Functor (Reference a) where
+  f <$> Reference r = Reference (f r)
+
+instance Rank2.Foldable (Reference a) where
+  foldMap f (Reference r) = f r
+
+instance Rank2.Traversable (Reference a) where
+  traverse f (Reference r) = Reference <$> f r
+
+instance Eq (r a) => Eq (Reference a r) where
+  Reference r1 == Reference r2 = r1 == r2
+
+instance Ord (r a) => Ord (Reference a r) where
+  Reference r1 `compare` Reference r2 = r1 `compare` r2
+
+instance Show (r a) => Show (Reference a r) where
+  showsPrec p (Reference v) = showParen (p > appPrec) $
+    showString "Reference " .
+    showsPrec p v
+      where
+        appPrec = 10
+
+reference :: Typeable a => a -> IO (Reference a Concrete)
+reference x = Reference <$> (Concrete x <$> newUnique)
+
+concrete :: Reference a Concrete -> a
+concrete (Reference (Concrete x _)) = x

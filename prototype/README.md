@@ -1,1 +1,0 @@
-# quickcheck-state-machine-simple

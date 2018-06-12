@@ -4,7 +4,22 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module Types.Reference where
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Types.References
+-- Copyright   :  (C) 2017, Jacob Stanley
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- This module contains reference related types. It's taken almost verbatim from
+-- the Hedgehog <https://hackage.haskell.org/package/hedgehog library>.
+--
+-----------------------------------------------------------------------------
+
+module Test.StateMachine.Types.References where
 
 import           Data.TreeDiff
                    (Expr(App), ToExpr, toExpr)
