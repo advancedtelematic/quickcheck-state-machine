@@ -30,6 +30,7 @@ module Test.StateMachine.Sequential
   , getChanContents
   , executeCommands
   , prettyPrintHistory
+  , prettyCommands
   )
   where
 
@@ -38,8 +39,8 @@ import           Control.Concurrent.STM
 import           Control.Concurrent.STM.TChan
                    (TChan, newTChanIO, tryReadTChan, writeTChan)
 import           Control.Monad.State
-                   (State, StateT, evalState, evalStateT, get, lift,
-                   put, runStateT)
+                   (MonadIO, State, StateT, evalState, evalStateT, get,
+                   lift, put, runStateT)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
@@ -257,17 +258,13 @@ prettyPrintHistory StateMachine { initModel, transition }
         ]
     go _ _ _ = error "prettyPrintHistory: impossible."
 
-  {-
-prettyProgram
-  :: MonadIO m
-  => Show (model Concrete)
-  => StateMachine model cmd resp
-  -> History cmd resp
-  -> Property
-  -> PropertyM m ()
-prettyProgram StateMachine{ initModel, transition } hist prop =
-  putStrLn (ppHistory model' transition' hist) `whenFailM` prop
--}
+prettyCommands :: (MonadIO m, ToExpr (model Concrete))
+               => (Show (cmd Concrete), Show (resp Concrete))
+               => StateMachine model cmd resp
+               -> History cmd resp
+               -> Property
+               -> PropertyM m ()
+prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 
 ------------------------------------------------------------------------
 

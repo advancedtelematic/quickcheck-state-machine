@@ -19,7 +19,7 @@ module Test.StateMachine
     forAllShrinkCommands
   , modelCheck
   , runCommands
-  , prettyPrintHistory
+  , prettyCommands
 
     -- * Parallel property combinators
   , module Test.StateMachine.Parallel
@@ -34,13 +34,8 @@ module Test.StateMachine
   , Reason(..)
   , GenSym
   , genSym
-
-    -- * Utils
-  , module Test.StateMachine.Utils
-
   ) where
 
 import           Test.StateMachine.Parallel
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import           Test.StateMachine.Utils

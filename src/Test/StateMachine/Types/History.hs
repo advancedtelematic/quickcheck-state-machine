@@ -32,49 +32,6 @@ data HistoryEvent cmd resp
 {-
 ------------------------------------------------------------------------
 
--- | A history is a trace of a program execution.
-newtype History act err = History
-  { unHistory :: History' act err }
-  deriving (Semigroup, Monoid)
-
--- | A trace is a list of events.
-type History' act err = [HistoryEvent (UntypedConcrete act) err]
-
--- | An event is either an invocation or a response.
-data HistoryEvent act err
-  = InvocationEvent act                  String Var Pid
-  | ResponseEvent   (Result err Dynamic) String     Pid
-
--- | Untyped concrete actions.
-data UntypedConcrete (act :: (* -> *) -> * -> *) where
-  UntypedConcrete :: (Show resp, Typeable resp) =>
-    act Concrete resp -> UntypedConcrete act
-
--- | Pretty print a history.
-ppHistory
-  :: forall model act err
-  .  Show (model Concrete)
-  => Show err
-  => model Concrete -> Transition' model act err -> History act err -> String
-ppHistory model0 transition
-  = showsPrec 10 model0
-  . go model0
-  . makeOperations
-  . unHistory
-  where
-  go :: model Concrete -> [Operation act err] -> String
-  go _     []                                                 = "\n"
-  go model (Operation act astr resp rstr _ : ops) =
-    let model1 = transition model act (fmap Concrete resp) in
-    "\n\n    " ++ astr ++ (case resp of
-        Success _ -> " --> "
-        Fail _    -> " -/-> ") ++ rstr ++ "\n\n" ++ show model1 ++ go model1 ops
-
--- | Get the process id of an event.
-getProcessIdEvent :: HistoryEvent act err -> Pid
-getProcessIdEvent (InvocationEvent _ _ _ pid) = pid
-getProcessIdEvent (ResponseEvent   _ _ pid)   = pid
-
 takeInvocations :: [HistoryEvent a b] -> [HistoryEvent a b]
 takeInvocations = takeWhile $ \h -> case h of
   InvocationEvent {} -> True

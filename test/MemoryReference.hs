@@ -148,4 +148,4 @@ prop_modelCheck = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
 prop_sequential :: Property
 prop_sequential = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
   (hist, _model, res) <- runCommands sm cmds
-  prettyPrintHistory sm hist `whenFailM` (res === Ok)
+  prettyCommands sm hist (res === Ok)
