@@ -135,9 +135,9 @@ weight (Model model) _      | M.null model = 0
 shrinker :: Command Symbolic -> [Command Symbolic]
 shrinker _ = []
 
-sm :: StateMachine Model Command Response
+sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition Nothing
-       generator (Just weight) shrinker semantics mock
+       generator (Just weight) shrinker semantics id mock
 
 prop_modelCheck :: Property
 prop_modelCheck = forAllShrinkCommands sm $ \cmds -> monadicIO $ do

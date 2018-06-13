@@ -38,7 +38,7 @@ import           Data.Constraint.Forall
 import           Data.Set
                    (Set)
 import           Test.QuickCheck
-                   (Gen)
+                   (Gen, Property)
 
 import           Test.StateMachine.Types.Environment
 import           Test.StateMachine.Types.GenSym
@@ -47,7 +47,7 @@ import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 
-data StateMachine model cmd resp = StateMachine
+data StateMachine model cmd m resp = StateMachine
   { initModel     :: forall r. model r
   , transition    :: forall r. ForallF Ord r => model r -> cmd r -> resp r -> model r
   , precondition  :: model Symbolic -> cmd Symbolic -> Bool
@@ -56,7 +56,8 @@ data StateMachine model cmd resp = StateMachine
   , generator     :: model Symbolic -> [Gen (cmd Symbolic)]
   , weight        :: Maybe (model Symbolic -> cmd Symbolic -> Int)
   , shrinker      :: cmd Symbolic -> [cmd Symbolic]
-  , semantics     :: cmd Concrete -> IO (resp Concrete)
+  , semantics     :: cmd Concrete -> m (resp Concrete)
+  , runner        :: m Property -> IO Property
   , mock          :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
   }
 

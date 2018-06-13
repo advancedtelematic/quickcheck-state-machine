@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -28,7 +29,7 @@ module Test.StateMachine.Parallel
 
 import           Control.Arrow
                    ((***))
-import           Control.Concurrent.Async
+import           Control.Concurrent.Async.Lifted
                    (concurrently)
 import           Control.Concurrent.STM.TChan
                    (newTChanIO)
@@ -36,6 +37,8 @@ import           Control.Monad
                    (foldM)
 import           Control.Monad.State
                    (runStateT)
+import           Control.Monad.Trans.Control
+                   (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
                    (bimap)
 import           Data.Functor.Classes
@@ -46,21 +49,22 @@ import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                     as S
+import qualified Data.Set                        as S
 import           Data.Tree
                    (Tree(Node))
 import qualified Rank2
-import           Test.QuickCheck.Monadic (PropertyM, run)
 import           Test.QuickCheck
                    (Gen, choose, shrinkList, sized)
+import           Test.QuickCheck.Monadic
+                   (PropertyM, run)
 
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
-generateParallelCommands :: forall model cmd resp. Rank2.Foldable resp
-                         => StateMachine model cmd resp
+generateParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
+                         => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd)
 generateParallelCommands sm@StateMachine { initModel } = do
   Commands cmds      <- generateCommands sm
@@ -89,7 +93,7 @@ generateParallelCommands sm@StateMachine { initModel } = do
                 spanSafe model (cmd : safe) cmds
           | otherwise = (reverse safe, cmd : cmds)
 
-parallelSafe :: StateMachine model cmd resp -> model Symbolic -> Commands cmd
+parallelSafe :: StateMachine model cmd m resp -> model Symbolic -> Commands cmd
              -> Bool
 parallelSafe StateMachine { precondition, transition } model0
   = and
@@ -103,7 +107,7 @@ parallelSafe StateMachine { precondition, transition } model0
       && preconditionsHold (transition model cmd undefined) cmds
 
 -- XXX: is it good enough to start from a fresh counter every time?
-advanceModel :: StateMachine model cmd resp
+advanceModel :: StateMachine model cmd m resp
              -> model Symbolic -> Commands cmd -> model Symbolic
 advanceModel StateMachine { transition, mock } model0 =
   go model0 newCounter . unCommands
@@ -214,18 +218,20 @@ validSuffixes precondition transition model0 scope0 = go model0 scope0
 -}
 
 runParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                    => StateMachine model cmd resp
+                    => MonadBaseControl IO m
+                    => StateMachine model cmd m resp
                     -> ParallelCommands cmd
-                    -> PropertyM IO (History cmd resp, Reason)
+                    -> PropertyM m (History cmd resp, Reason)
 runParallelCommands sm = run . executeParallelCommands sm
 
 executeParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                        => StateMachine model cmd resp
+                        => MonadBaseControl IO m
+                        => StateMachine model cmd m resp
                         -> ParallelCommands cmd
-                        -> IO (History cmd resp, Reason)
+                        -> m (History cmd resp, Reason)
 executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) = do
 
-  hchan <- newTChanIO
+  hchan <- liftBaseWith (const newTChanIO)
 
   (reason0, (env0, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) True prefix)
@@ -233,11 +239,11 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
 
   if reason0 /= Ok
   then do
-    hist <- getChanContents hchan
+    hist <- liftBaseWith (const (getChanContents hchan))
     return (History hist, reason0)
   else do
     (reason, _) <- foldM (go hchan) (reason0, env0) suffixes
-    hist <- getChanContents hchan
+    hist <- liftBaseWith (const (getChanContents hchan))
     return (History hist, reason)
   where
     go hchan (_, env) (Pair cmds1 cmds2) = do
