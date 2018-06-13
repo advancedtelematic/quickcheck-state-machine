@@ -56,7 +56,6 @@ import           Data.Set
 import qualified Data.Set                     as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExpr, ediff)
-import qualified Rank2
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, frequency,
                    shrinkList, sized, suchThat)
@@ -68,6 +67,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import           Text.Show.Pretty
                    (ppShow)
 
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Types
 import           Test.StateMachine.Utils
 

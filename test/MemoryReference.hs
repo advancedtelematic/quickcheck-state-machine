@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE MonoLocalBinds       #-}
+{-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -21,12 +22,12 @@ import qualified Data.Map                as M
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
-                   (Generic)
-import qualified Rank2
+                   (Generic, Generic1)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
+import qualified Test.StateMachine.Rank2Generic as Rank2
 import           Test.StateMachine
 
 ------------------------------------------------------------------------
@@ -35,37 +36,27 @@ data Command r
   = Create
   | Read  (Reference (IORef Int) r)
   | Write (Reference (IORef Int) r) Int
+  deriving Generic1
 
 deriving instance Show (Command Symbolic)
 deriving instance Show (Command Concrete)
 
-instance Rank2.Functor Command where
-  _ <$> Create      = Create
-  f <$> Read ref    = Read  (f Rank2.<$> ref)
-  f <$> Write ref x = Write (f Rank2.<$> ref) x
+instance Rank2.Functor Command
 
-instance Rank2.Foldable Command where
-  foldMap _ Create        = mempty
-  foldMap f (Read ref)    = Rank2.foldMap f ref
-  foldMap f (Write ref _) = Rank2.foldMap f ref
+instance Rank2.Foldable Command
 
-instance Rank2.Traversable Command where
-  traverse _ Create        = pure Create
-  traverse f (Read ref)    = Read  <$> Rank2.traverse f ref
-  traverse f (Write ref x) = Write <$> Rank2.traverse f ref <*> pure x
+instance Rank2.Traversable Command
 
 data Response r
   = Created (Reference (IORef Int) r)
   | ReadValue Int
   | Written
+  deriving Generic1
 
 deriving instance Show (Response Symbolic)
 deriving instance Show (Response Concrete)
 
-instance Rank2.Foldable Response where
-  foldMap f (Created ref) = Rank2.foldMap f ref
-  foldMap _ (ReadValue _) = mempty
-  foldMap _ Written       = mempty
+instance Rank2.Foldable Response
 
 newtype Model r = Model (Map (Reference (IORef Int) r) Int)
   deriving (Generic)

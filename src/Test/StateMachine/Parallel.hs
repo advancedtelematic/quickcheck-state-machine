@@ -52,7 +52,6 @@ import           Data.Set
 import qualified Data.Set                        as S
 import           Data.Tree
                    (Tree(Node))
-import qualified Rank2
 import           Test.QuickCheck
                    (Gen, choose, shrinkList, sized)
 import           Test.QuickCheck.Monadic
@@ -60,6 +59,7 @@ import           Test.QuickCheck.Monadic
 
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 

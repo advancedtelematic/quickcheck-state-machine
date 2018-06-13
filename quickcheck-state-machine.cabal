@@ -33,6 +33,7 @@ library
                      , Test.StateMachine.Types.Environment
                      , Test.StateMachine.Types.GenSym
                      , Test.StateMachine.Types.History
+                     , Test.StateMachine.Types.Rank2
                      , Test.StateMachine.Types.References
                      , Test.StateMachine.Utils
                      , Test.StateMachine.Z
@@ -50,7 +51,6 @@ library
         mtl >=2.2.1,
         pretty-show,
         QuickCheck >=2.9.2,
-        rank2classes,
         stm >=2.4.4.1,
         tree-diff
   default-language:    Haskell2010
