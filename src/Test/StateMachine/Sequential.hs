@@ -203,10 +203,10 @@ executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                 => StateMachine model cmd m resp
                 -> TChan (Pid, HistoryEvent cmd resp)
                 -> Pid
-                -> Bool -- ^ Check post-condition?
+                -> Bool -- ^ Check invariant and post-condition?
                 -> Commands cmd
                 -> StateT (Environment, model Concrete) m Reason
-executeCommands StateMachine { transition, postcondition, semantics } hchan pid check =
+executeCommands StateMachine { transition, postcondition, invariant, semantics } hchan pid check =
   go . unCommands
   where
     go []                         = return Ok
@@ -219,14 +219,16 @@ executeCommands StateMachine { transition, postcondition, semantics } hchan pid 
       if check && not (postcondition model ccmd cresp)
       then
         return PostconditionFailed
-      else do
-        put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
-            , transition model ccmd cresp
-            )
-        go cmds
-          where
-            getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
-            getUsedConcrete = Rank2.foldMap (\(Concrete x u) -> [toDyn (x, u)])
+      else if check && not (fromMaybe (const True) invariant model)
+           then return InvariantBroken
+           else do
+             put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+                 , transition model ccmd cresp
+                 )
+             go cmds
+        where
+          getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
+          getUsedConcrete = Rank2.foldMap (\(Concrete x u) -> [toDyn (x, u)])
 
 -- XXX: use makeOperations to rule out impossible error...
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)

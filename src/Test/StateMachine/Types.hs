@@ -52,7 +52,7 @@ data StateMachine model cmd m resp = StateMachine
   , transition    :: forall r. ForallF Ord r => model r -> cmd r -> resp r -> model r
   , precondition  :: model Symbolic -> cmd Symbolic -> Bool
   , postcondition :: forall r. ForallF Ord r => model r -> cmd r -> resp r -> Bool
-  , invariant     :: forall r. Maybe (model r -> Bool)
+  , invariant     :: Maybe (model Concrete -> Bool)
   , generator     :: model Symbolic -> [Gen (cmd Symbolic)]
   , weight        :: Maybe (model Symbolic -> cmd Symbolic -> Int)
   , shrinker      :: cmd Symbolic -> [cmd Symbolic]
@@ -70,7 +70,7 @@ data Commands cmd = Commands
 
 deriving instance Show (cmd Symbolic) => Show (Commands cmd)
 
-data Reason = Ok | PreconditionFailed | PostconditionFailed
+data Reason = Ok | PreconditionFailed | PostconditionFailed | InvariantBroken
   deriving (Eq, Show)
 
 data ParallelCommandsF t cmd = ParallelCommands
