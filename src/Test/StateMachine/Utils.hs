@@ -17,7 +17,12 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Utils where
+module Test.StateMachine.Utils
+  ( liftProperty
+  , whenFailM
+  , forAllShrinkShow
+  )
+  where
 
 import           Test.QuickCheck
                    (Gen, Property, Testable, again, counterexample,
