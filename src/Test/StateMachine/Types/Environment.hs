@@ -33,13 +33,13 @@ import           Data.Dynamic
                    (Dynamic, Typeable, dynTypeRep, fromDynamic)
 import           Data.Map
                    (Map)
-import qualified Data.Map                as M
+import qualified Data.Map                           as M
 import           Data.Semigroup
                    (Semigroup)
 import           Data.Typeable
                    (Proxy(Proxy), TypeRep, typeRep)
-import qualified Rank2
 
+import qualified Test.StateMachine.Types.Rank2      as Rank2
 import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------

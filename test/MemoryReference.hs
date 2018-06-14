@@ -1,8 +1,10 @@
+{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE ExplicitNamespaces   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE MonoLocalBinds       #-}
+{-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -21,12 +23,12 @@ import qualified Data.Map                as M
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
-                   (Generic)
-import qualified Rank2
+                   (Generic, Generic1)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine
 
 ------------------------------------------------------------------------
@@ -35,37 +37,19 @@ data Command r
   = Create
   | Read  (Reference (IORef Int) r)
   | Write (Reference (IORef Int) r) Int
+  deriving (Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
 
 deriving instance Show (Command Symbolic)
 deriving instance Show (Command Concrete)
-
-instance Rank2.Functor Command where
-  _ <$> Create      = Create
-  f <$> Read ref    = Read  (f Rank2.<$> ref)
-  f <$> Write ref x = Write (f Rank2.<$> ref) x
-
-instance Rank2.Foldable Command where
-  foldMap _ Create        = mempty
-  foldMap f (Read ref)    = Rank2.foldMap f ref
-  foldMap f (Write ref _) = Rank2.foldMap f ref
-
-instance Rank2.Traversable Command where
-  traverse _ Create        = pure Create
-  traverse f (Read ref)    = Read  <$> Rank2.traverse f ref
-  traverse f (Write ref x) = Write <$> Rank2.traverse f ref <*> pure x
 
 data Response r
   = Created (Reference (IORef Int) r)
   | ReadValue Int
   | Written
+  deriving (Generic1, Rank2.Foldable)
 
 deriving instance Show (Response Symbolic)
 deriving instance Show (Response Concrete)
-
-instance Rank2.Foldable Response where
-  foldMap f (Created ref) = Rank2.foldMap f ref
-  foldMap _ (ReadValue _) = mempty
-  foldMap _ Written       = mempty
 
 newtype Model r = Model (Map (Reference (IORef Int) r) Int)
   deriving (Generic)
@@ -111,7 +95,7 @@ semantics :: Command Concrete -> IO (Response Concrete)
 semantics cmd = case cmd of
   Create      -> Created   <$> (reference =<< newIORef 0)
   Read ref    -> ReadValue <$> readIORef  (concrete ref)
-  Write ref x -> Written   <$  writeIORef (concrete ref) (if x == 5 then x + 1 else x)
+  Write ref x -> Written   <$  writeIORef (concrete ref) (if x == 5 then x + 0 else x)
 
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
 mock (Model m) cmd = case cmd of
@@ -148,4 +132,4 @@ prop_modelCheck = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
 prop_sequential :: Property
 prop_sequential = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
   (hist, _model, res) <- runCommands sm cmds
-  prettyCommands sm hist (res === Ok)
+  prettyCommands sm hist (checkActionNames cmds (res === Ok))

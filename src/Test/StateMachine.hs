@@ -20,6 +20,7 @@ module Test.StateMachine
   , modelCheck
   , runCommands
   , prettyCommands
+  , checkActionNames
 
     -- * Parallel property combinators
   , module Test.StateMachine.Parallel

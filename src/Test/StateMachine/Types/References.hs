@@ -29,7 +29,8 @@ import           Data.Unique
                    (Unique, hashUnique, newUnique)
 import           GHC.Generics
                    (Generic)
-import qualified Rank2
+
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 
@@ -74,7 +75,7 @@ data Reference a r = Reference (r a)
 instance ToExpr (r a) => ToExpr (Reference a r)
 
 instance Rank2.Functor (Reference a) where
-  f <$> Reference r = Reference (f r)
+  fmap f (Reference r) = Reference (f r)
 
 instance Rank2.Foldable (Reference a) where
   foldMap f (Reference r) = f r
