@@ -32,6 +32,8 @@ module Test.StateMachine
   , Reference
   , concrete
   , reference
+  , Opaque(..)
+  , opaque
   , Reason(..)
   , GenSym
   , genSym

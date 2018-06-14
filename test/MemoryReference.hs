@@ -11,39 +11,36 @@
 
 module MemoryReference where
 
-import           Data.Constraint
-                   (type (:-)(Sub), Dict(Dict))
-import           Data.Constraint.Forall
-                   (ForallF, instF)
+import           Data.Functor.Classes
+                   (Eq1, Show1)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
-import           Data.Map
-                   (Map)
-import qualified Data.Map                as M
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Test.QuickCheck
+                   (Gen, Property, arbitrary, elements, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
-import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine
+import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.Z
 
 ------------------------------------------------------------------------
 
 data Command r
   = Create
-  | Read  (Reference (IORef Int) r)
-  | Write (Reference (IORef Int) r) Int
+  | Read  (Reference (Opaque (IORef Int)) r)
+  | Write (Reference (Opaque (IORef Int)) r) Int
   deriving (Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
 
 deriving instance Show (Command Symbolic)
 deriving instance Show (Command Concrete)
 
 data Response r
-  = Created (Reference (IORef Int) r)
+  = Created (Reference (Opaque (IORef Int)) r)
   | ReadValue Int
   | Written
   deriving (Generic1, Rank2.Foldable)
@@ -51,70 +48,60 @@ data Response r
 deriving instance Show (Response Symbolic)
 deriving instance Show (Response Concrete)
 
-newtype Model r = Model (Map (Reference (IORef Int) r) Int)
+newtype Model r = Model (Fun (Reference (Opaque (IORef Int)) r) Int)
   deriving (Generic)
-
-deriving instance Show (r (IORef Int)) => Show (Model r)
 
 instance ToExpr (Model Concrete)
 
 initModel :: Model r
-initModel = Model M.empty
+initModel = Model empty
 
-transition :: forall r. ForallF Ord r => Model r -> Command r -> Response r -> Model r
+transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
 transition m@(Model model) cmd resp = case (cmd, resp) of
-  (Create, Created ref)  -> case instF of
-                              Sub (Dict :: Dict (Ord (r (IORef Int)))) ->
-                                Model (M.insert ref 0 model)
+  (Create, Created ref)  -> Model (model .! ref .= 0)
   (Read _, ReadValue _)  -> m
-  (Write ref x, Written) -> case instF of
-                              Sub (Dict :: Dict (Ord (r (IORef Int)))) ->
-                                Model (M.insert ref x model)
+  (Write ref x, Written) -> Model (model .! ref .= x)
   _                      -> error "transition: impossible."
 
 precondition :: Model Symbolic -> Command Symbolic -> Bool
 precondition (Model m) cmd = case cmd of
   Create      -> True
-  Read  ref   -> M.member ref m
-  Write ref _ -> M.member ref m
+  Read  ref   -> ref `elem` domain m
+  Write ref _ -> ref `elem` domain m
 
-postcondition :: forall r. ForallF Ord r => Model r -> Command r -> Response r -> Bool
+postcondition :: (Show1 r, Eq1 r) => Model r -> Command r -> Response r -> Bool
 postcondition (Model m) cmd resp = case (cmd, resp) of
-  (Create,        Created ref) -> case instF of
-                                    Sub (Dict :: Dict (Ord (r (IORef Int)))) ->
-                                      m' M.! ref == 0
+  (Create,        Created ref) -> m' ! ref == 0
     where
       Model m' = transition (Model m) cmd resp
-  (Read ref,      ReadValue v) -> case instF of
-                                    Sub (Dict :: Dict (Ord (r (IORef Int)))) ->
-                                      v == m M.! ref
+  (Read ref,      ReadValue v) -> v == m ! ref
   (Write _ref _x, Written)     -> True
   _                            -> False
 
 semantics :: Command Concrete -> IO (Response Concrete)
 semantics cmd = case cmd of
-  Create      -> Created   <$> (reference =<< newIORef 0)
-  Read ref    -> ReadValue <$> readIORef  (concrete ref)
-  Write ref x -> Written   <$  writeIORef (concrete ref) (if x == 5 then x + 0 else x)
+  Create      -> Created   <$> (reference . Opaque <$> newIORef 0)
+  Read ref    -> ReadValue <$> readIORef  (opaque ref)
+  Write ref x -> Written   <$  writeIORef (opaque ref) (if x == 5 then x + 0 else x)
 
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
 mock (Model m) cmd = case cmd of
   Create    -> Created   <$> genSym
-  Read ref  -> ReadValue <$> pure (m M.! ref)
+  Read ref  -> ReadValue <$> pure (m ! ref)
   Write _ _ -> pure Written
 
 generator :: Model Symbolic -> [Gen (Command Symbolic)]
 generator (Model model) =
   [ pure Create
-  , Read  <$> elements (M.keys model)
-  , Write <$> elements (M.keys model) <*> arbitrary
+  , Read  <$> elements (domain model)
+  , Write <$> elements (domain model) <*> arbitrary
   ]
 
 weight :: Model Symbolic -> Command Symbolic -> Int
-weight (Model model) Create | M.null model = 10
-                            | otherwise    = 1
-weight (Model model) _      | M.null model = 0
-                            | otherwise    = 5
+weight (Model model) Create | null model = 10
+                            | otherwise  = 1
+weight (Model model) _      | null model = 0
+                            | otherwise  = 5
 
 shrinker :: Command Symbolic -> [Command Symbolic]
 shrinker _ = []

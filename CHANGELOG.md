@@ -14,9 +14,6 @@
 
     - Global invariants can now more easily be expressed (issue #200);
 
-    - Make equality of `Reference` is now independent of the contents (issue
-      #203).
-
 #### 0.3.1 (2018-1-15)
 
   * Remove upper bounds for dependencies, to easier keep up with

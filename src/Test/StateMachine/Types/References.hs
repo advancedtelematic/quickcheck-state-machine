@@ -21,6 +21,9 @@
 
 module Test.StateMachine.Types.References where
 
+import           Data.Functor.Classes
+                   (Eq1, Ord1, Show1, liftCompare, liftEq,
+                   liftShowsPrec, showsPrec1, compare1, eq1)
 import           Data.TreeDiff
                    (Expr(App), ToExpr, toExpr)
 import           Data.Typeable
@@ -44,9 +47,40 @@ deriving instance Show (Symbolic a)
 deriving instance Eq   (Symbolic a)
 deriving instance Ord  (Symbolic a)
 
-data Concrete a where
-  Concrete :: Typeable a => a -> Unique -> Concrete a
+instance Show1 Symbolic where
+  liftShowsPrec _ _ p (Symbolic x) =
+    showParen (p > appPrec) $
+      showString "Symbolic " .
+      showsPrec (appPrec + 1) x
+    where
+      appPrec = 10
 
+instance Eq1 Symbolic where
+  liftEq _ (Symbolic x) (Symbolic y) = x == y
+
+instance Ord1 Symbolic where
+  liftCompare _ (Symbolic x) (Symbolic y) = compare x y
+
+data Concrete a where
+  Concrete :: Typeable a => a -> Concrete a
+
+deriving instance Show a => Show (Concrete a)
+
+instance Show1 Concrete where
+  liftShowsPrec sp _ p (Concrete x) =
+    showParen (p > appPrec) $
+      showString "Concrete " .
+      sp (appPrec + 1) x
+    where
+      appPrec = 10
+
+instance Eq1 Concrete where
+  liftEq eq (Concrete x) (Concrete y) = eq x y
+
+instance Ord1 Concrete where
+  liftCompare comp (Concrete x) (Concrete y) = comp x y
+
+{-
 newtype UniqueWrapper = UniqueWrapper Unique
 
 instance Show UniqueWrapper where
@@ -64,15 +98,16 @@ instance Eq (Concrete a) where
 
 instance Ord (Concrete a) where
   Concrete _ u1 `compare` Concrete _ u2 = u1 `compare` u2
+-}
 
-instance ToExpr (Concrete a) where
-  toExpr (Concrete _x u) =
-    App "Concrete" [App "<opaque>" [], App (show (hashUnique u)) [] ]
+instance ToExpr a => ToExpr (Concrete a) where
+  toExpr (Concrete x) = App "Concrete" [toExpr x]
 
 data Reference a r = Reference (r a)
   deriving Generic
 
-instance ToExpr (r a) => ToExpr (Reference a r)
+instance ToExpr (r a) => ToExpr (Reference a r) where
+  toExpr (Reference r) = App "Reference" [toExpr r]
 
 instance Rank2.Functor (Reference a) where
   fmap f (Reference r) = Reference (f r)
@@ -83,21 +118,43 @@ instance Rank2.Foldable (Reference a) where
 instance Rank2.Traversable (Reference a) where
   traverse f (Reference r) = Reference <$> f r
 
-instance Eq (r a) => Eq (Reference a r) where
-  Reference r1 == Reference r2 = r1 == r2
+instance (Eq a, Eq1 r) => Eq (Reference a r) where
+  Reference x == Reference y = eq1 x y
 
-instance Ord (r a) => Ord (Reference a r) where
-  Reference r1 `compare` Reference r2 = r1 `compare` r2
+instance (Ord a, Ord1 r) => Ord (Reference a r) where
+  compare (Reference x) (Reference y) = compare1 x y
 
-instance Show (r a) => Show (Reference a r) where
+instance (Show1 r, Show a) => Show (Reference a r) where
   showsPrec p (Reference v) = showParen (p > appPrec) $
+      showString "Reference " .
+      showsPrec1 p v
+    where
+      appPrec = 10
+
+  {-
+instance Show (Reference a r) where
+  showsPrec p (Reference x u) = showParen (p > appPrec) $
     showString "Reference " .
     showsPrec p v
       where
         appPrec = 10
+-}
 
-reference :: Typeable a => a -> IO (Reference a Concrete)
-reference x = Reference <$> (Concrete x <$> newUnique)
+reference :: Typeable a => a -> Reference a Concrete
+reference = Reference . Concrete
 
 concrete :: Reference a Concrete -> a
-concrete (Reference (Concrete x _)) = x
+concrete (Reference (Concrete x)) = x
+
+opaque :: Reference (Opaque a) Concrete -> a
+opaque (Reference (Concrete (Opaque x))) = x
+
+newtype Opaque a = Opaque
+  { unOpaque :: a }
+  deriving (Eq, Ord)
+
+instance Show (Opaque a) where
+  showsPrec _ (Opaque _) = showString "Opaque"
+
+instance ToExpr (Opaque a) where
+  toExpr _ = App "Opaque" []

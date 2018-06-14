@@ -1,10 +1,10 @@
 {-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE TypeOperators    #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE PolyKinds    #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -51,33 +51,37 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
-import           Data.Map (Map)
-import qualified Data.Map as M
+import           Data.Map
+                   (Map)
+import qualified Data.Map                      as M
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
                    ((<>))
+import           Data.Proxy
+                   (Proxy(Proxy))
 import           Data.Set
                    (Set)
-import qualified Data.Set                     as S
+import qualified Data.Set                      as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExpr, ediff)
 import           GHC.Generics
-                   (conName, (:*:)((:*:)), (:+:)(L1, R1), Generic1, K1(K1), C, D, unRec1, unM1, S, Constructor,
-                   M1(M1), Rec1(Rec1), Rep1, U1(U1), from1)
+                   ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D,
+                   Generic1, K1(K1), M1(M1), Rec1(Rec1), Rep1, S,
+                   U1(U1), conName, from1, unM1, unRec1)
 import           Test.QuickCheck
-                   (cover, collect, Gen, Property, Testable, choose, frequency,
-                   shrinkList, sized, suchThat)
+                   (Gen, Property, Testable, choose, collect, cover,
+                   frequency, shrinkList, sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
-import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import qualified Text.PrettyPrint.ANSI.Leijen  as PP
 import           Text.Show.Pretty
                    (ppShow)
 
-import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Types
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
@@ -237,7 +241,7 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
              go cmds
         where
           getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
-          getUsedConcrete = Rank2.foldMap (\(Concrete x u) -> [toDyn (x, u)])
+          getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
 
 -- XXX: use makeOperations to rule out impossible error...
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
