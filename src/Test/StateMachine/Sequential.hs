@@ -1,4 +1,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE TypeOperators    #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE PolyKinds    #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -31,6 +34,7 @@ module Test.StateMachine.Sequential
   , executeCommands
   , prettyPrintHistory
   , prettyCommands
+  , checkActionNames
   )
   where
 
@@ -47,6 +51,8 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
+import           Data.Map (Map)
+import qualified Data.Map as M
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
@@ -56,8 +62,11 @@ import           Data.Set
 import qualified Data.Set                     as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExpr, ediff)
+import           GHC.Generics
+                   (conName, (:*:)((:*:)), (:+:)(L1, R1), Generic1, K1(K1), C, D, unRec1, unM1, S, Constructor,
+                   M1(M1), Rec1(Rec1), Rep1, U1(U1), from1)
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, frequency,
+                   (cover, collect, Gen, Property, Testable, choose, frequency,
                    shrinkList, sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
@@ -276,24 +285,56 @@ prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 ------------------------------------------------------------------------
 
 
-  {-
 -- | Print distribution of actions and fail if some actions have not been
 --   executed.
-checkActionNames :: Constructors act => Program act -> Property -> Property
-checkActionNames prog
+checkActionNames :: (Generic1 cmd, GConName (Rep1 cmd))
+                 => Commands cmd -> Property -> Property
+checkActionNames cmds
   = collect names
   . cover (length names == numOfConstructors) 1 "coverage"
   where
-    names = actionNames prog
-    numOfConstructors = nConstructors prog
+    names = actionNames cmds
+    numOfConstructors = 3 -- XXX
 
 -- | Returns the frequency of actions in a program.
-actionNames :: forall act. Constructors act => Program act -> [(Constructor, Int)]
-actionNames = M.toList . foldl go M.empty . unProgram
+actionNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
+            => Commands cmd -> [(String, Int)]
+actionNames = M.toList . foldl go M.empty . unCommands
   where
-  go :: Map Constructor Int -> Internal act -> Map Constructor Int
-  go ih (Internal act _) = M.insertWith (+) (constructor act) 1 ih
+    go :: Map String Int -> Command cmd -> Map String Int
+    go ih (Command cmd _) = M.insertWith (+) (gconName (from1 cmd)) 1 ih
 
+class GConName f where
+  gconName   :: f a -> String
+  -- gconNumber :: f a -> Int
+
+instance GConName U1 where
+  gconName _ = ""
+
+instance GConName (K1 i c) where
+  gconName _ = ""
+
+instance (Constructor c, GConName f) => GConName (M1 C c f) where
+  gconName = conName
+
+instance GConName f => GConName (M1 D d f) where
+  gconName = gconName . unM1
+
+instance GConName f => GConName (M1 S d f) where
+  gconName = gconName . unM1
+
+
+instance (GConName f, GConName g) => GConName (f :+: g) where
+  gconName (L1 x) = gconName x
+  gconName (R1 y) = gconName y
+
+instance (GConName f, GConName g) => GConName (f :*: g) where
+  gconName (x :*: y) = gconName x ++ gconName y
+
+instance GConName f => GConName (Rec1 f) where
+  gconName = gconName . unRec1
+
+{-
 actionNames' :: Constructors act => Program act -> [Constructor]
 actionNames'
   = reverse
@@ -302,3 +343,7 @@ actionNames'
 -}
 
 ------------------------------------------------------------------------
+
+
+instance GConName (Reference a) where
+  gconName _ = ""
