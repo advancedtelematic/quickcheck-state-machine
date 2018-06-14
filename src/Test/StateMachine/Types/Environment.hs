@@ -78,8 +78,8 @@ reifyDynamic dyn =
   case fromDynamic dyn of
     Nothing ->
       Left (EnvironmentTypeError (typeRep (Proxy :: Proxy a)) (dynTypeRep dyn))
-    Just (x, u) ->
-      Right (Concrete x u)
+    Just x ->
+      Right (Concrete x)
 
 -- | Turns an environment in to a function for looking up a concrete value from
 --   a symbolic one.

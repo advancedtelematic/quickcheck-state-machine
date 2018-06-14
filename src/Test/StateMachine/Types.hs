@@ -33,8 +33,8 @@ module Test.StateMachine.Types
   , module Test.StateMachine.Types.References
   ) where
 
-import           Data.Constraint.Forall
-                   (ForallF)
+import           Data.Functor.Classes
+                   (Ord1, Show1)
 import           Data.Set
                    (Set)
 import           Test.QuickCheck
@@ -49,9 +49,9 @@ import           Test.StateMachine.Types.References
 
 data StateMachine model cmd m resp = StateMachine
   { initModel     :: forall r. model r
-  , transition    :: forall r. ForallF Ord r => model r -> cmd r -> resp r -> model r
+  , transition    :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
   , precondition  :: model Symbolic -> cmd Symbolic -> Bool
-  , postcondition :: forall r. ForallF Ord r => model r -> cmd r -> resp r -> Bool
+  , postcondition :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> Bool
   , invariant     :: Maybe (model Concrete -> Bool)
   , generator     :: model Symbolic -> [Gen (cmd Symbolic)]
   , weight        :: Maybe (model Symbolic -> cmd Symbolic -> Int)
