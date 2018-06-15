@@ -58,8 +58,6 @@ import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
                    ((<>))
-import           Data.Proxy
-                   (Proxy(Proxy))
 import           Data.Set
                    (Set)
 import qualified Data.Set                      as S
@@ -67,8 +65,8 @@ import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExpr, ediff)
 import           GHC.Generics
                    ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D,
-                   Generic1, K1(K1), M1(M1), Rec1(Rec1), Rep1, S,
-                   U1(U1), conName, from1, unM1, unRec1)
+                   Generic1, K1, M1, Rec1, Rep1, S,
+                   U1, conName, from1, unM1, unRec1)
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
                    frequency, shrinkList, sized, suchThat)
@@ -104,29 +102,26 @@ generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       => StateMachine model cmd m resp
                       -> Counter
                       -> StateT (model Symbolic) Gen (Commands cmd)
-generateCommandsState sm@StateMachine { precondition, transition, mock } counter0 = do
+generateCommandsState StateMachine { generator, weight, precondition,
+                                     transition, mock } counter0 = do
   size0 <- lift (sized (\k -> choose (0, k)))
-  Commands <$> go size0 counter0 (generatorFrequency sm)
+  Commands <$> go size0 counter0
   where
-    go :: Int -> Counter -> (model Symbolic -> Gen (cmd Symbolic))
-       -> StateT (model Symbolic) Gen [Command cmd]
-    go 0    _       _   = return []
-    go size counter gen = do
+    go :: Int -> Counter -> StateT (model Symbolic) Gen [Command cmd]
+    go 0    _       = return []
+    go size counter = do
       model <- get
-      cmd   <- lift (gen model `suchThat` precondition model)
+      cmd   <- lift (generatorFrequency model `suchThat` precondition model)
       let (resp, counter') = runGenSym (mock model cmd) counter
       put (transition model cmd resp)
-      cmds  <- go (size - 1) counter' gen
+      cmds  <- go (size - 1) counter'
       return (Command cmd (getUsedVars resp) : cmds)
 
-    generatorFrequency :: forall model cmd m resp. StateMachine model cmd m resp
-                       -> model Symbolic
-                       -> Gen (cmd Symbolic)
-    generatorFrequency StateMachine { generator, weight } model =
-      frequency =<< sequence (map go (generator model))
+    generatorFrequency :: model Symbolic -> Gen (cmd Symbolic)
+    generatorFrequency model = frequency =<< sequence (map g (generator model))
       where
-        go :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
-        go gen = do
+        g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
+        g gen = do
           cmd <- gen
           return (fromMaybe (\_ _ -> 1) weight model cmd, gen)
 
@@ -318,7 +313,7 @@ instance GConName U1 where
 instance GConName (K1 i c) where
   gconName _ = ""
 
-instance (Constructor c, GConName f) => GConName (M1 C c f) where
+instance Constructor c => GConName (M1 C c f) where
   gconName = conName
 
 instance GConName f => GConName (M1 D d f) where
