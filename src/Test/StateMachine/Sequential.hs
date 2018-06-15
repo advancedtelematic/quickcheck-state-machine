@@ -28,7 +28,7 @@ module Test.StateMachine.Sequential
   , getUsedVars
   , shrinkCommands
   , filterValidCommands
-  , modelCheck
+  -- , modelCheck
   , runCommands
   , getChanContents
   , executeCommands
@@ -123,7 +123,9 @@ generateCommandsState StateMachine { generator, weight, precondition,
         g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
         g gen = do
           cmd <- gen
-          return (if precondition model cmd then fromMaybe (\_ _ -> 1) weight model cmd else 0, gen)
+          return (if precondition model cmd
+                  then fromMaybe (\_ _ -> 1) weight model cmd
+                  else 0, gen)
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
@@ -167,6 +169,7 @@ filterValidCommands StateMachine { precondition, transition, mock } =
       else
         go cmds
 
+{-
 modelCheck :: forall model cmd resp m. Monad m => StateMachine model cmd m resp
            -> Commands cmd
            -> PropertyM m Reason -- XXX: (History cmd, model Symbolic, Reason)
@@ -182,6 +185,7 @@ modelCheck StateMachine { initModel, transition, precondition, postcondition, mo
           if postcondition m cmd resp
           then go (transition m cmd resp) counter' cmds
           else PostconditionFailed
+-}
 
 runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
             => MonadBaseControl IO m

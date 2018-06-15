@@ -51,7 +51,7 @@ data StateMachine model cmd m resp = StateMachine
   { initModel     :: forall r. model r
   , transition    :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
   , precondition  :: model Symbolic -> cmd Symbolic -> Bool
-  , postcondition :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> Bool
+  , postcondition :: model Concrete -> cmd Concrete -> resp Concrete -> Bool
   , invariant     :: Maybe (model Concrete -> Bool)
   , generator     :: model Symbolic -> [Gen (cmd Symbolic)]
   , weight        :: Maybe (model Symbolic -> cmd Symbolic -> Int)
