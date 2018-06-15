@@ -122,7 +122,7 @@ generateCommandsState StateMachine { generator, weight, precondition,
       where
         g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
         g gen = do
-          cmd <- gen
+          cmd <- gen `suchThat` precondition model
           return (fromMaybe (\_ _ -> 1) weight model cmd, gen)
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
