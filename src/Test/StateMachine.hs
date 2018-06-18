@@ -22,6 +22,7 @@ module Test.StateMachine
   , prettyCommands
   , checkCommandNames
   , commandNames
+  , commandNamesInOrder
 
     -- * Parallel property combinators
   , module Test.StateMachine.Parallel

@@ -35,6 +35,7 @@ module Test.StateMachine.Sequential
   , prettyPrintHistory
   , prettyCommands
   , commandNames
+  , commandNamesInOrder
   , checkCommandNames
   )
   where
@@ -337,13 +338,12 @@ instance (GConName f, GConName g) => GConName (f :*: g) where
 instance GConName f => GConName (Rec1 f) where
   gconName = gconName . unRec1
 
-{-
-actionNames' :: Constructors act => Program act -> [Constructor]
-actionNames'
-  = reverse
-  . foldl (\ih (Internal act _) -> constructor act : ih) []
-  . unProgram
--}
+commandNamesInOrder :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
+                    => Commands cmd -> [String]
+commandNamesInOrder = reverse . foldl go [] . unCommands
+  where
+    go :: [String] -> Command cmd -> [String]
+    go ih (Command cmd _) = gconName (from1 cmd) : ih
 
 ------------------------------------------------------------------------
 
