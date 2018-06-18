@@ -34,8 +34,8 @@ module Test.StateMachine.Sequential
   , executeCommands
   , prettyPrintHistory
   , prettyCommands
-  , actionNames
-  , checkActionNames
+  , commandNames
+  , checkCommandNames
   )
   where
 
@@ -289,21 +289,20 @@ prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 ------------------------------------------------------------------------
 
 
--- | Print distribution of actions and fail if some actions have not been
---   executed.
-checkActionNames :: (Generic1 cmd, GConName (Rep1 cmd))
-                 => Commands cmd -> Property -> Property
-checkActionNames cmds
+-- | Print distribution of commands and fail if some commands have not
+--   been executed.
+checkCommandNames :: (Generic1 cmd, GConName (Rep1 cmd))
+                  => Commands cmd -> Property -> Property
+checkCommandNames cmds
   = collect names
   . cover (length names == numOfConstructors) 1 "coverage"
   where
-    names = actionNames cmds
+    names = commandNames cmds
     numOfConstructors = 3 -- XXX
 
--- | Returns the frequency of actions in a program.
-actionNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
+commandNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
             => Commands cmd -> [(String, Int)]
-actionNames = M.toList . foldl go M.empty . unCommands
+commandNames = M.toList . foldl go M.empty . unCommands
   where
     go :: Map String Int -> Command cmd -> Map String Int
     go ih (Command cmd _) = M.insertWith (+) (gconName (from1 cmd)) 1 ih

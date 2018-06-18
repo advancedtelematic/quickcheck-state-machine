@@ -112,11 +112,11 @@ sm = StateMachine initModel transition precondition postcondition Nothing
 
 prop_modelCheck :: Property
 prop_modelCheck = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
-  res <- modelCheck sm cmds
+  res <- undefined -- modelCheck sm cmds
   -- prettyPrintHistory sm hist `whenFailM` (res === Ok)
   return (res === Ok)
 
 prop_sequential :: Property
 prop_sequential = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
   (hist, _model, res) <- runCommands sm cmds
-  prettyCommands sm hist (checkActionNames cmds (res === Ok))
+  prettyCommands sm hist (checkCommandNames cmds (res === Ok))
