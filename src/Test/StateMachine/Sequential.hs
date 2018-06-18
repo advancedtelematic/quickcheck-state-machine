@@ -34,6 +34,7 @@ module Test.StateMachine.Sequential
   , executeCommands
   , prettyPrintHistory
   , prettyCommands
+  , actionNames
   , checkActionNames
   )
   where
