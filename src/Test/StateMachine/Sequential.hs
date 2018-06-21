@@ -125,9 +125,7 @@ generateCommandsState StateMachine { generator, weight, precondition,
         g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
         g gen = do
           cmd <- gen
-          return (if precondition model cmd
-                  then fromMaybe (\_ _ -> 1) weight model cmd
-                  else 0, gen)
+          return (fromMaybe (\_ _ -> 1) weight model cmd, return cmd)
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
