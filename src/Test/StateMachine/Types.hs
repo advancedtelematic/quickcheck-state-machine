@@ -1,11 +1,12 @@
-{-# LANGUAGE DeriveFoldable       #-}
-{-# LANGUAGE DeriveFunctor        #-}
-{-# LANGUAGE DeriveTraversable    #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE MonoLocalBinds       #-}
-{-# LANGUAGE Rank2Types           #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MonoLocalBinds             #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -26,6 +27,8 @@ module Test.StateMachine.Types
   , ParallelCommandsF(..)
   , ParallelCommands
   , Pair(..)
+  , fromPair
+  , toPair
   , Reason(..)
   , module Test.StateMachine.Types.Environment
   , module Test.StateMachine.Types.GenSym
@@ -65,8 +68,9 @@ data Command cmd = Command !(cmd Symbolic) !(Set Var)
 
 deriving instance Show (cmd Symbolic) => Show (Command cmd)
 
-data Commands cmd = Commands
+newtype Commands cmd = Commands
   { unCommands :: [Command cmd] }
+  deriving Monoid
 
 deriving instance Show (cmd Symbolic) => Show (Commands cmd)
 
@@ -78,7 +82,19 @@ data ParallelCommandsF t cmd = ParallelCommands
   , suffixes :: [t (Commands cmd)]
   }
 
-data Pair a = Pair !a !a
+deriving instance (Show (cmd Symbolic), Show (t (Commands cmd))) =>
+  Show (ParallelCommandsF t cmd)
+
+data Pair a = Pair
+  { proj1 :: !a
+  , proj2 :: !a
+  }
   deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+
+fromPair :: Pair a -> (a, a)
+fromPair (Pair x y) = (x, y)
+
+toPair :: (a, a) -> Pair a
+toPair (x, y) = Pair x y
 
 type ParallelCommands = ParallelCommandsF Pair

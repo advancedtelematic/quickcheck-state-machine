@@ -28,8 +28,6 @@ import           Data.TreeDiff
                    (Expr(App), ToExpr, toExpr)
 import           Data.Typeable
                    (Typeable)
-import           Data.Unique
-                   (Unique, hashUnique, newUnique)
 import           GHC.Generics
                    (Generic)
 
@@ -80,26 +78,6 @@ instance Eq1 Concrete where
 instance Ord1 Concrete where
   liftCompare comp (Concrete x) (Concrete y) = comp x y
 
-{-
-newtype UniqueWrapper = UniqueWrapper Unique
-
-instance Show UniqueWrapper where
-  show (UniqueWrapper u) = show (hashUnique u)
-
-instance Show (Concrete a) where
-  showsPrec p (Concrete _x u) = showParen (p > appPrec) $
-    showString "Concrete <opaque> " .
-    showsPrec (appPrec + 1) (UniqueWrapper u)
-      where
-        appPrec = 10
-
-instance Eq (Concrete a) where
-  Concrete _ u1 == Concrete _ u2 = u1 == u2
-
-instance Ord (Concrete a) where
-  Concrete _ u1 `compare` Concrete _ u2 = u1 `compare` u2
--}
-
 instance ToExpr a => ToExpr (Concrete a) where
   toExpr (Concrete x) = App "Concrete" [toExpr x]
 
@@ -130,15 +108,6 @@ instance (Show1 r, Show a) => Show (Reference a r) where
       showsPrec1 p v
     where
       appPrec = 10
-
-  {-
-instance Show (Reference a r) where
-  showsPrec p (Reference x u) = showParen (p > appPrec) $
-    showString "Reference " .
-    showsPrec p v
-      where
-        appPrec = 10
--}
 
 reference :: Typeable a => a -> Reference a Concrete
 reference = Reference . Concrete

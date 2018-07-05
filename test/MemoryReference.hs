@@ -99,7 +99,7 @@ generator (Model model) =
 
 weight :: Model Symbolic -> Command Symbolic -> Int
 weight (Model model) Create | null model = 10
-                            | otherwise  = 1
+                            | otherwise  = 5
 weight (Model model) _      | null model = 0
                             | otherwise  = 5
 

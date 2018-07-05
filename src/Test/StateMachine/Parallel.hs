@@ -23,7 +23,7 @@ module Test.StateMachine.Parallel
   -- , shrinkParallelProgram
   -- , validParallelProgram
   , runParallelCommands
-  -- , linearise
+  , linearise
   -- , toBoxDrawings
   ) where
 
@@ -34,9 +34,9 @@ import           Control.Concurrent.Async.Lifted
 import           Control.Concurrent.STM.TChan
                    (newTChanIO)
 import           Control.Monad
-                   (foldM)
+                   (foldM, replicateM)
 import           Control.Monad.State
-                   (runStateT)
+                   (State, runStateT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
@@ -49,17 +49,17 @@ import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                        as S
 import           Data.Tree
                    (Tree(Node))
 import           Test.QuickCheck
-                   (Gen, choose, shrinkList, sized)
+                   (Gen, Property, choose, property, shrinkList, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import qualified Test.StateMachine.Types.Rank2   as Rank2
+import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
@@ -71,48 +71,53 @@ generateParallelCommands sm@StateMachine { initModel } = do
   prefixLength       <- sized (\k -> choose (0, k `div` 3))
   let (prefix, rest) =  bimap Commands Commands (splitAt prefixLength cmds)
   return (ParallelCommands prefix
-            (makeSuffixes (advanceModel sm initModel prefix) rest))
+            (makeSuffixes (advanceModel sm initModel newCounter prefix) rest))
   where
-    makeSuffixes :: model Symbolic -> Commands cmd -> [Pair (Commands cmd)]
-    makeSuffixes model0 = go model0 [] . unCommands
+    makeSuffixes :: (model Symbolic, Counter) -> Commands cmd -> [Pair (Commands cmd)]
+    makeSuffixes (model0, counter0) = go (model0, counter0) [] . unCommands
       where
-        go _     acc []   = reverse acc
-        go model acc cmds = go (advanceModel sm model (Commands safe))
-                                (Pair (Commands safe1) (Commands safe2) : acc)
-                                rest
+        go _                acc []   = reverse acc
+        go (model, counter) acc cmds = go (advanceModel sm model counter (Commands safe))
+                                          (Pair (Commands safe1) (Commands safe2) : acc)
+                                          rest
           where
-            (safe, rest)   = spanSafe model [] cmds
+            (safe, rest)   = spanSafe model counter [] cmds
             (safe1, safe2) = splitAt (length safe `div` 2) safe
 
         suffixLength = 5
 
-        spanSafe _     safe []                         = (reverse safe, [])
-        spanSafe model safe (cmd@(Command _ _) : cmds)
+        spanSafe :: model Symbolic -> Counter -> [Command cmd] -> [Command cmd]
+                 -> ([Command cmd], [Command cmd])
+        spanSafe _     _       safe []                         = (reverse safe, [])
+        spanSafe model counter safe (cmd@(Command _ _) : cmds)
           | length safe <= suffixLength &&
-              parallelSafe sm model (Commands (cmd : safe)) =
-                spanSafe model (cmd : safe) cmds
+              parallelSafe sm model counter (Commands (cmd : safe)) =
+                spanSafe model counter (cmd : safe) cmds
           | otherwise = (reverse safe, cmd : cmds)
 
-parallelSafe :: StateMachine model cmd m resp -> model Symbolic -> Commands cmd
-             -> Bool
-parallelSafe StateMachine { precondition, transition } model0
+parallelSafe :: StateMachine model cmd m resp -> model Symbolic
+             -> Counter -> Commands cmd -> Bool
+parallelSafe StateMachine { precondition, transition, mock } model0 counter0
   = and
-  . map (preconditionsHold model0)
+  . map (preconditionsHold model0 counter0)
   . permutations
   . unCommands
   where
-    preconditionsHold _     []                         = True
-    preconditionsHold model (Command cmd _vars : cmds)
-      =  precondition model cmd
-      && preconditionsHold (transition model cmd undefined) cmds
+    preconditionsHold _     _       []                         = True
+    preconditionsHold model counter (Command cmd _vars : cmds) =
+      let
+        (resp, counter') = runGenSym (mock model cmd) counter
+      in
+        precondition model cmd &&
+          preconditionsHold (transition model cmd resp) counter' cmds
 
--- XXX: is it good enough to start from a fresh counter every time?
 advanceModel :: StateMachine model cmd m resp
-             -> model Symbolic -> Commands cmd -> model Symbolic
-advanceModel StateMachine { transition, mock } model0 =
-  go model0 newCounter . unCommands
+             -> model Symbolic -> Counter -> Commands cmd
+             -> (model Symbolic, Counter)
+advanceModel StateMachine { transition, mock } model0 counter0 =
+  go model0 counter0 . unCommands
   where
-    go model _       []                         = model
+    go model counter []                         = (model, counter)
     go model counter (Command cmd _vars : cmds) =
       let
         (resp, counter') = runGenSym (mock model cmd) counter
@@ -121,44 +126,37 @@ advanceModel StateMachine { transition, mock } model0 =
 
 ------------------------------------------------------------------------
 
-{-
-
 -- | Shrink a parallel program in a pre-condition and scope respecting
 --   way.
 shrinkParallelProgram
-  :: forall act model err
-  .  HFoldable act
-  => Eq (Untyped act)
-  => Shrinker act
-  -> Precondition model act
-  -> Transition' model act err
-  -> model Symbolic
-  -> (ParallelProgram act -> [ParallelProgram act])
-shrinkParallelProgram shrinker precondition transition model (ParallelProgram prefix suffixes)
-  = filter (validParallelProgram precondition transition model)
-      [ ParallelProgram prefix' suffixes'
-      | (prefix', suffixes') <- shrinkPair' shrinkProgram' shrinkSuffixes (prefix, suffixes)
+  :: forall cmd model m resp. (Rank2.Foldable cmd, Eq (cmd Symbolic))
+  => StateMachine model cmd m resp
+  -> (ParallelCommands cmd -> [ParallelCommands cmd])
+shrinkParallelProgram StateMachine { shrinker, precondition, transition, initModel } (ParallelCommands prefix suffixes)
+  = undefined -- XXX filter (validParallelProgram precondition transition model)
+      [ ParallelCommands prefix' suffixes'
+      | (prefix', suffixes') <- shrinkPair' shrinkCommands' shrinkSuffixes (prefix, map fromPair suffixes)
       ]
       ++
       shrinkMoveSuffixToPrefix
   where
-  shrinkProgram' :: Program act -> [Program act]
-  shrinkProgram'
-    = map Program
-    . shrinkList (liftShrinkInternal shrinker)
-    . unProgram
+  shrinkCommands' :: Commands cmd -> [Commands cmd]
+  shrinkCommands'
+    = map Commands
+    . shrinkList (liftShrinkCommand shrinker)
+    . unCommands
 
-  shrinkSuffixes :: [(Program act, Program act)] -> [[(Program act, Program act)]]
-  shrinkSuffixes = shrinkList (shrinkPair shrinkProgram')
+  shrinkSuffixes :: [(Commands cmd, Commands cmd)] -> [[(Commands cmd, Commands cmd)]]
+  shrinkSuffixes = shrinkList (shrinkPair shrinkCommands')
 
-  shrinkMoveSuffixToPrefix :: [ParallelProgram act]
+  shrinkMoveSuffixToPrefix :: [ParallelCommands cmd]
   shrinkMoveSuffixToPrefix = case suffixes of
     []                   -> []
     (suffix : suffixes') ->
-      [ ParallelProgram (prefix <> Program [prefix'])
-                        (bimap Program Program suffix' : suffixes')
-      | (prefix', suffix') <- pickOneReturnRest2 (unProgram (fst suffix),
-                                                  unProgram (snd suffix))
+      [ ParallelCommands (prefix <> Commands [prefix'])
+                         (fmap Commands (toPair suffix') : suffixes')
+      | (prefix', suffix') <- pickOneReturnRest2 (unCommands (proj1 suffix),
+                                                  unCommands (proj2 suffix))
       ]
 
   pickOneReturnRest :: [a] -> [(a, [a])]
@@ -169,6 +167,12 @@ shrinkParallelProgram shrinker precondition transition model (ParallelProgram pr
   pickOneReturnRest2 (xs, ys) =
     map (id *** flip (,) ys) (pickOneReturnRest xs) ++
     map (id ***      (,) xs) (pickOneReturnRest ys)
+
+filterValidParallelCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
+                            => StateMachine model cmd m resp -> ParallelCommands cmd
+                            -> State (model Symbolic, Set Var, Counter) (ParallelCommands cmd)
+filterValidParallelCommands StateMachine { precondition, transition, mock } (ParallelCommands prefix suffixes) = undefined
+{-
 
 validParallelProgram
   :: HFoldable act
@@ -217,12 +221,25 @@ validSuffixes precondition transition model0 scope0 = go model0 scope0
     scope' = boundVars prog `S.union` scope
 -}
 
+------------------------------------------------------------------------
+
 runParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                     => MonadBaseControl IO m
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd
-                    -> PropertyM m (History cmd resp, Reason)
-runParallelCommands sm = run . executeParallelCommands sm
+                    -> PropertyM m [(History cmd resp, Bool)]
+runParallelCommands sm = runParallelCommandsNTimes 10 sm
+
+runParallelCommandsNTimes :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+                          => MonadBaseControl IO m
+                          => Int -- ^ How many times to execute the parallel program.
+                          -> StateMachine model cmd m resp
+                          -> ParallelCommands cmd
+                          -> PropertyM m [(History cmd resp, Bool)]
+runParallelCommandsNTimes n sm cmds =
+  replicateM n $ do
+    (hist, _reason) <- run (executeParallelCommands sm cmds)
+    return (hist, linearise sm hist)
 
 executeParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                         => MonadBaseControl IO m
@@ -263,34 +280,30 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
         combineReason Ok r2 = r2
         combineReason r1 _  = r1
 
-{-
-
 ------------------------------------------------------------------------
 
 -- | Try to linearise a history of a parallel program execution using a
 --   sequential model. See the *Linearizability: a correctness condition for
 --   concurrent objects* paper linked to from the README for more info.
-linearise
-  :: forall model act err
-  .  Transition'    model act err
-  -> Postcondition' model act err
-  -> InitialModel model
-  -> History act err
-  -> Property
-linearise transition postcondition model0 = go . unHistory
+linearise :: forall model cmd m resp. StateMachine model cmd m resp
+          -> History cmd resp -> Bool
+linearise StateMachine { transition,  postcondition, initModel } = go . unHistory
   where
-  go :: History' act err -> Property
-  go [] = property True
-  go es = anyP (step model0) (linearTree es)
+    go :: [(Pid, HistoryEvent cmd resp)] -> Bool
+    go [] = True
+    go es = any (step initModel) (interleavings es)
 
-  step :: model Concrete -> Tree (Operation act err) -> Property
-  step model (Node (Operation act _ resp _ _) roses) =
-    postcondition model act resp .&&.
-    anyP' (step (transition model act (fmap Concrete resp))) roses
+    step :: model Concrete -> Tree (Operation cmd resp) -> Bool
+    step model (Node (Operation cmd resp _) roses) =
+      postcondition model cmd resp &&
+        any' (step (transition model cmd resp)) roses
 
-anyP' :: (a -> Property) -> [a] -> Property
-anyP' _ [] = property True
-anyP' p xs = anyP p xs
+any' :: (a -> Bool) -> [a] -> Bool
+any' _ [] = True
+any' p xs = any p xs
+
+
+{-
 
 ------------------------------------------------------------------------
 
@@ -325,33 +338,8 @@ toBoxDrawings (ParallelProgram prefix suffixes) = toBoxDrawings'' allVars
 
 -}
 
+
 {-
-runParallelProgram
-  :: MonadBaseControl IO m
-  => Show1 (act Symbolic)
-  => Show err
-  => HTraversable act
-  => StateMachine' model act m err
-     -- ^
-  -> ParallelProgram act
-  -> PropertyM m [(History act err, Property)]
-runParallelProgram = runParallelProgram' 10
-
-runParallelProgram'
-  :: MonadBaseControl IO m
-  => Show1 (act Symbolic)
-  => Show err
-  => HTraversable act
-  => Int -- ^ How many times to execute the parallel program.
-  -> StateMachine' model act m err
-     -- ^
-  -> ParallelProgram act
-  -> PropertyM m [(History act err, Property)]
-runParallelProgram' n sm@StateMachine{..} prog =
-  replicateM n $ do
-    (hist, _reason) <- run (executeParallelProgram sm prog)
-    return (hist, linearise transition' postcondition' model' hist)
-
 -- | Takes the output of a parallel program runs and pretty prints a
 --   counter example if any of the runs fail.
 prettyParallelProgram

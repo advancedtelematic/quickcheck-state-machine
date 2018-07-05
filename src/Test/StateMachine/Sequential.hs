@@ -27,6 +27,7 @@ module Test.StateMachine.Sequential
   , generateCommandsState
   , getUsedVars
   , shrinkCommands
+  , liftShrinkCommand
   , filterValidCommands
   -- , modelCheck
   , runCommands
@@ -242,7 +243,6 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
           getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
           getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
 
--- XXX: use makeOperations to rule out impossible error...
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
                    => (Show (cmd Concrete), Show (resp Concrete))
                    => StateMachine model cmd m resp
@@ -251,16 +251,16 @@ prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
 prettyPrintHistory StateMachine { initModel, transition }
   = PP.putDoc
   . go initModel Nothing
+  . makeOperations
   . unHistory
   where
     modelDiff :: model Concrete -> Maybe (model Concrete) -> Doc
     modelDiff model = ansiWlBgEditExpr . flip ediff model . fromMaybe model
 
-    go :: model Concrete -> Maybe (model Concrete) -> [(Pid, HistoryEvent cmd resp)]
-       -> Doc
-    go current previous []                                                      =
+    go :: model Concrete -> Maybe (model Concrete) -> [Operation cmd resp] -> Doc
+    go current previous []                             =
       PP.line <> modelDiff current previous <> PP.line <> PP.line
-    go current previous ((Pid pid, Invocation cmd) : (_, Response resp) : hist) =
+    go current previous (Operation cmd resp pid : ops) =
       mconcat
         [ PP.line
         , modelDiff current previous
@@ -270,12 +270,11 @@ prettyPrintHistory StateMachine { initModel, transition }
         , PP.string " ==> "
         , PP.string (show resp)
         , PP.string " [ "
-        , PP.int pid
+        , PP.int (unPid pid)
         , PP.string " ]"
         , PP.line
-        , go (transition current cmd resp) (Just current) hist
+        , go (transition current cmd resp) (Just current) ops
         ]
-    go _ _ _ = error "prettyPrintHistory: impossible."
 
 prettyCommands :: (MonadIO m, ToExpr (model Concrete))
                => (Show (cmd Concrete), Show (resp Concrete))
@@ -300,7 +299,7 @@ checkCommandNames cmds
     numOfConstructors = 3 -- XXX
 
 commandNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
-            => Commands cmd -> [(String, Int)]
+             => Commands cmd -> [(String, Int)]
 commandNames = M.toList . foldl go M.empty . unCommands
   where
     go :: Map String Int -> Command cmd -> Map String Int
@@ -344,7 +343,6 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
     go ih (Command cmd _) = gconName (from1 cmd) : ih
 
 ------------------------------------------------------------------------
-
 
 instance GConName (Reference a) where
   gconName _ = ""
