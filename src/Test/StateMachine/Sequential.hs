@@ -226,7 +226,7 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
     go (Command scmd vars : cmds) = do
       (env, model) <- get
       let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
-      liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd))))
+      liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
       cresp <- lift (semantics ccmd)
       liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
       if check && not (postcondition model ccmd cresp)

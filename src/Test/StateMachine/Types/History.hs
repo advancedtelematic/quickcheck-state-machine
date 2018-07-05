@@ -15,6 +15,7 @@
 
 module Test.StateMachine.Types.History
   ( History(..)
+  , History'
   , Pid(..)
   , HistoryEvent(..)
   , Operation(..)
@@ -23,6 +24,8 @@ module Test.StateMachine.Types.History
   )
   where
 
+import           Data.Set
+                   (Set)
 import           Data.Tree
                    (Forest, Tree(Node))
 
@@ -39,15 +42,15 @@ newtype Pid = Pid { unPid :: Int }
   deriving (Eq, Show)
 
 data HistoryEvent cmd resp
-  = Invocation !(cmd  Concrete)
+  = Invocation !(cmd  Concrete) !(Set Var)
   | Response   !(resp Concrete)
 
 ------------------------------------------------------------------------
 
 takeInvocations :: History' cmd resp -> [(Pid, cmd Concrete)]
-takeInvocations []                             = []
-takeInvocations ((pid, Invocation cmd) : hist) = (pid, cmd) : takeInvocations hist
-takeInvocations ((_,   Response     _) : _)    = []
+takeInvocations []                               = []
+takeInvocations ((pid, Invocation cmd _) : hist) = (pid, cmd) : takeInvocations hist
+takeInvocations ((_,   Response     _)   : _)    = []
 
 findResponse :: Pid -> History' cmd resp -> [(resp Concrete, History' cmd resp)]
 findResponse _   []                                         = []
@@ -63,7 +66,7 @@ data Operation cmd resp = Operation (cmd Concrete) (resp Concrete) Pid
 
 makeOperations :: History' cmd resp -> [Operation cmd resp]
 makeOperations [] = []
-makeOperations ((pid1, Invocation cmd) : (pid2, Response resp) : hist)
+makeOperations ((pid1, Invocation cmd _) : (pid2, Response resp) : hist)
   | pid1 == pid2 = Operation cmd resp pid1 : makeOperations hist
   | otherwise    = error "makeOperations: pid mismatch."
 makeOperations _ = error "makeOperations: impossible."
@@ -78,8 +81,8 @@ interleavings es =
   , (resp, es') <- findResponse pid (filter1 (not . matchInvocation pid) es)
   ]
   where
-    matchInvocation pid (pid', Invocation _) = pid == pid'
-    matchInvocation _   _                    = False
+    matchInvocation pid (pid', Invocation _ _) = pid == pid'
+    matchInvocation _   _                      = False
 
     filter1 :: (a -> Bool) -> [a] -> [a]
     filter1 _ []                   = []

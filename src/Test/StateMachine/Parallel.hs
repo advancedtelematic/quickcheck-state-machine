@@ -24,7 +24,8 @@ module Test.StateMachine.Parallel
   -- , validParallelProgram
   , runParallelCommands
   , linearise
-  -- , toBoxDrawings
+  , toBoxDrawings
+  , prettyParallelCommands
   ) where
 
 import           Control.Arrow
@@ -36,7 +37,7 @@ import           Control.Concurrent.STM.TChan
 import           Control.Monad
                    (foldM, replicateM)
 import           Control.Monad.State
-                   (State, runStateT)
+                   (MonadIO, State, runStateT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
@@ -49,13 +50,17 @@ import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
+import qualified Data.Set                        as S
 import           Data.Tree
                    (Tree(Node))
 import           Test.QuickCheck
                    (Gen, Property, choose, property, shrinkList, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
+import           Text.PrettyPrint.ANSI.Leijen
+                   (Doc)
 
+import           Test.StateMachine.BoxDrawer
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types.Rank2   as Rank2
@@ -95,6 +100,8 @@ generateParallelCommands sm@StateMachine { initModel } = do
                 spanSafe model counter (cmd : safe) cmds
           | otherwise = (reverse safe, cmd : cmds)
 
+-- | A list of commands is parallel safe if the pre-conditions for all commands
+--   hold in all permutations of the list.
 parallelSafe :: StateMachine model cmd m resp -> model Symbolic
              -> Counter -> Commands cmd -> Bool
 parallelSafe StateMachine { precondition, transition, mock } model0 counter0
@@ -111,8 +118,11 @@ parallelSafe StateMachine { precondition, transition, mock } model0 counter0
         precondition model cmd &&
           preconditionsHold (transition model cmd resp) counter' cmds
 
+-- | Apply the transition of some commands to a model.
 advanceModel :: StateMachine model cmd m resp
-             -> model Symbolic -> Counter -> Commands cmd
+             -> model Symbolic  -- ^ The model.
+             -> Counter
+             -> Commands cmd    -- ^ The commands.
              -> (model Symbolic, Counter)
 advanceModel StateMachine { transition, mock } model0 counter0 =
   go model0 counter0 . unCommands
@@ -132,10 +142,12 @@ shrinkParallelProgram
   :: forall cmd model m resp. (Rank2.Foldable cmd, Eq (cmd Symbolic))
   => StateMachine model cmd m resp
   -> (ParallelCommands cmd -> [ParallelCommands cmd])
-shrinkParallelProgram StateMachine { shrinker, precondition, transition, initModel } (ParallelCommands prefix suffixes)
+shrinkParallelProgram StateMachine { shrinker, precondition, transition, initModel }
+                      (ParallelCommands prefix suffixes)
   = undefined -- XXX filter (validParallelProgram precondition transition model)
       [ ParallelCommands prefix' suffixes'
-      | (prefix', suffixes') <- shrinkPair' shrinkCommands' shrinkSuffixes (prefix, map fromPair suffixes)
+      | (prefix', suffixes') <- shrinkPair' shrinkCommands' shrinkSuffixes
+                                            (prefix, map fromPair suffixes)
       ]
       ++
       shrinkMoveSuffixToPrefix
@@ -191,11 +203,6 @@ validParallelProgram precondition transition model (ParallelProgram prefix suffi
 boundVars :: Program act -> Set Var
 boundVars
   = foldMap (\(Internal _ (Symbolic var)) -> S.singleton var)
-  . unProgram
-
-usedVars :: HFoldable act => Program act -> Set Var
-usedVars
-  = foldMap (\(Internal act _) -> hfoldMap (\(Symbolic var) -> S.singleton var) act)
   . unProgram
 
 validSuffixes
@@ -302,55 +309,49 @@ any' :: (a -> Bool) -> [a] -> Bool
 any' _ [] = True
 any' p xs = any p xs
 
-
-{-
-
 ------------------------------------------------------------------------
+
+-- | Takes the output of parallel program runs and pretty prints a
+--   counterexample if any of the runs fail.
+prettyParallelCommands :: (MonadIO m, Rank2.Foldable cmd)
+                       => (Show (cmd Concrete), Show (resp Concrete))
+                       => ParallelCommands cmd
+                       -> [(History cmd resp, Property)] -- ^ Output of 'runParallelProgram.
+                       -> PropertyM m ()
+prettyParallelCommands cmds =
+  mapM_ (\(hist, prop) -> print (toBoxDrawings cmds hist) `whenFailM` prop)
 
 -- | Draw an ASCII diagram of the history of a parallel program. Useful for
 --   seeing how a race condition might have occured.
-toBoxDrawings :: HFoldable act => ParallelProgram act -> History act err -> Doc
-toBoxDrawings (ParallelProgram prefix suffixes) = toBoxDrawings'' allVars
+toBoxDrawings :: forall cmd resp. Rank2.Foldable cmd
+              => (Show (cmd Concrete), Show (resp Concrete))
+              => ParallelCommands cmd -> History cmd resp -> Doc
+toBoxDrawings (ParallelCommands prefix suffixes) = toBoxDrawings'' allVars
   where
-  allVars = usedVars prefix `S.union` foldMap usedVars (parallelProgramToList suffixes)
+    allVars = getAllUsedVars prefix `S.union`
+                foldMap (foldMap getAllUsedVars) suffixes
 
-  toBoxDrawings'' :: Set Var -> History act err -> Doc
-  toBoxDrawings'' knownVars (History h) = exec evT (fmap out <$> Fork l p r)
-    where
-      (p, h') = partition (\e -> getProcessIdEvent e == Pid 0) h
-      (l, r)  = partition (\e -> getProcessIdEvent e == Pid 1) h'
+    toBoxDrawings'' :: Set Var -> History cmd resp -> Doc
+    toBoxDrawings'' knownVars (History h) = exec evT (fmap (out . snd) <$> Fork l p r)
+      where
+        (p, h') = partition (\e -> fst e == Pid 0) h
+        (l, r)  = partition (\e -> fst e == Pid 1) h'
 
-      out :: HistoryEvent act err -> String
-      out (InvocationEvent _ str var _)
-        | var `S.member` knownVars = show var ++ " ← " ++ str
-        | otherwise = str
-      out (ResponseEvent _ str _) = str
+        out :: HistoryEvent cmd resp -> String
+        out (Invocation cmd vars)
+          | vars `S.isSubsetOf` knownVars = show (S.toList vars) ++ " ← " ++ show cmd
+          | otherwise                     = show cmd
+        out (Response resp) = show resp
 
-      toEventType :: [HistoryEvent act err] -> [(EventType, Pid)]
-      toEventType = map go
-        where
-        go e = case e of
-          InvocationEvent _ _ _ pid -> (Open,  pid)
-          ResponseEvent   _ _   pid -> (Close, pid)
+        toEventType :: History' cmd resp -> [(EventType, Pid)]
+        toEventType = map go
+          where
+            go e = case e of
+              (pid, Invocation _ _) -> (Open,  pid)
+              (pid, Response   _)   -> (Close, pid)
 
-      evT :: [(EventType, Pid)]
-      evT = toEventType (filter (\e -> getProcessIdEvent e `elem` map Pid [1,2]) h)
+        evT :: [(EventType, Pid)]
+        evT = toEventType (filter (\e -> fst e `elem` map Pid [1, 2]) h)
 
--}
-
-
-{-
--- | Takes the output of a parallel program runs and pretty prints a
---   counter example if any of the runs fail.
-prettyParallelProgram
-  :: MonadIO m
-  => HFoldable act
-  => Show (Untyped act)
-  => ParallelProgram act
-  -> [(History act err, Property)] -- ^ Output of 'runParallelProgram.
-  -> PropertyM m ()
-prettyParallelProgram prog
-  = mapM_ (\(hist, prop) ->
-              print (toBoxDrawings prog hist) `whenFailM` prop)
-
--}
+getAllUsedVars :: Rank2.Foldable cmd => Commands cmd -> Set Var
+getAllUsedVars = foldMap (\(Command cmd _) -> getUsedVars cmd) . unCommands
