@@ -24,6 +24,7 @@
 module Test.StateMachine.Sequential
   ( forAllShrinkCommands
   , generateCommands
+  , debugGenerateCommands
   , generateCommandsState
   , getUsedVars
   , shrinkCommands
@@ -65,11 +66,14 @@ import           Data.Set
                    (Set)
 import qualified Data.Set                      as S
 import           Data.TreeDiff
-                   (ToExpr, ansiWlBgEditExpr, ediff)
+                   (ToExpr, ansiWlBgEditExpr, ediff, prettyExpr,
+                   toExpr)
+import           Debug.Trace
+                   (trace, traceShow)
 import           GHC.Generics
                    ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D,
-                   Generic1, K1, M1, Rec1, Rep1, S,
-                   U1, conName, from1, unM1, unRec1)
+                   Generic1, K1, M1, Rec1, Rep1, S, U1, conName, from1,
+                   unM1, unRec1)
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
                    frequency, shrinkList, sized, suchThat)
@@ -88,7 +92,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 forAllShrinkCommands :: Testable prop
-                     => Show (cmd Symbolic)
+                     => (Show (cmd Symbolic), ToExpr (model Symbolic))
                      => (Rank2.Foldable cmd, Rank2.Foldable resp)
                      => StateMachine model cmd m resp
                      -> (Commands cmd -> prop)     -- ^ Predicate.
@@ -96,17 +100,26 @@ forAllShrinkCommands :: Testable prop
 forAllShrinkCommands sm =
   forAllShrinkShow (generateCommands sm) (shrinkCommands sm) ppShow
 
-generateCommands :: Rank2.Foldable resp
+generateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
+                 => Rank2.Foldable resp
                  => StateMachine model cmd m resp -> Gen (Commands cmd)
 generateCommands sm@StateMachine { initModel } =
-  evalStateT (generateCommandsState sm newCounter) initModel
+  evalStateT (generateCommandsState sm newCounter False) initModel
+
+debugGenerateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
+                      => Rank2.Foldable resp
+                      => StateMachine model cmd m resp -> Gen (Commands cmd)
+debugGenerateCommands sm@StateMachine { initModel } =
+  evalStateT (generateCommandsState sm newCounter True) initModel
 
 generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
+                      => (Show (cmd Symbolic), ToExpr (model Symbolic))
                       => StateMachine model cmd m resp
                       -> Counter
+                      -> Bool    -- ^ Print debug output?
                       -> StateT (model Symbolic) Gen (Commands cmd)
 generateCommandsState StateMachine { generator, weight, precondition,
-                                     transition, mock } counter0 = do
+                                     transition, mock } counter0 debug = do
   size0 <- lift (sized (\k -> choose (0, k)))
   Commands <$> go size0 counter0
   where
@@ -114,8 +127,10 @@ generateCommandsState StateMachine { generator, weight, precondition,
     go 0    _       = return []
     go size counter = do
       model <- get
-      cmd   <- lift (generatorFrequency model `suchThat` precondition model)
-      let (resp, counter') = runGenSym (mock model cmd) counter
+      -- when debug (traceShowM model)
+      cmd   <- traceShow (prettyExpr (toExpr model)) $ lift (generatorFrequency model `suchThat` precondition model)
+      -- when debug (traceShowM cmd)
+      let (resp, counter') = trace ("\n\n" ++ show cmd ++ "\n\n") $ runGenSym (mock model cmd) counter
       put (transition model cmd resp)
       cmds  <- go (size - 1) counter'
       return (Command cmd (getUsedVars resp) : cmds)

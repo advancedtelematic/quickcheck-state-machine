@@ -49,8 +49,9 @@ deriving instance Show (Response Symbolic)
 deriving instance Show (Response Concrete)
 
 newtype Model r = Model (Fun (Reference (Opaque (IORef Int)) r) Int)
-  deriving (Generic)
+  deriving Generic
 
+instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)
 
 initModel :: Model r

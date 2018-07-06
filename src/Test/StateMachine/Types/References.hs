@@ -1,8 +1,9 @@
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -22,8 +23,8 @@
 module Test.StateMachine.Types.References where
 
 import           Data.Functor.Classes
-                   (Eq1, Ord1, Show1, liftCompare, liftEq,
-                   liftShowsPrec, showsPrec1, compare1, eq1)
+                   (Eq1, Ord1, Show1, compare1, eq1, liftCompare,
+                   liftEq, liftShowsPrec, showsPrec1)
 import           Data.TreeDiff
                    (Expr(App), ToExpr, toExpr)
 import           Data.Typeable
@@ -36,7 +37,7 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 ------------------------------------------------------------------------
 
 newtype Var = Var Int
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, ToExpr)
 
 data Symbolic a where
   Symbolic :: Typeable a => Var -> Symbolic a
@@ -52,6 +53,9 @@ instance Show1 Symbolic where
       showsPrec (appPrec + 1) x
     where
       appPrec = 10
+
+instance ToExpr a => ToExpr (Symbolic a) where
+  toExpr (Symbolic x) = App "Symbolic" [toExpr x]
 
 instance Eq1 Symbolic where
   liftEq _ (Symbolic x) (Symbolic y) = x == y

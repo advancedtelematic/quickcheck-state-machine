@@ -53,6 +53,8 @@ import           Data.Set
 import qualified Data.Set                        as S
 import           Data.Tree
                    (Tree(Node))
+import           Data.TreeDiff
+                   (ToExpr)
 import           Test.QuickCheck
                    (Gen, Property, choose, property, shrinkList, sized)
 import           Test.QuickCheck.Monadic
@@ -69,6 +71,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 generateParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
+                         => (Show (cmd Symbolic), ToExpr (model Symbolic))
                          => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd)
 generateParallelCommands sm@StateMachine { initModel } = do
