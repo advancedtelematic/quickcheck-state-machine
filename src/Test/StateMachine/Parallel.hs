@@ -75,7 +75,7 @@ generateParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
                          => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd)
 generateParallelCommands sm@StateMachine { initModel } = do
-  Commands cmds      <- generateCommands sm
+  Commands cmds      <- generateCommands sm Nothing
   prefixLength       <- sized (\k -> choose (0, k `div` 3))
   let (prefix, rest) =  bimap Commands Commands (splitAt prefixLength cmds)
   return (ParallelCommands prefix

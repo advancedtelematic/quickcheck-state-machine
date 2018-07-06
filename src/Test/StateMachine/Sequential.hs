@@ -95,32 +95,36 @@ forAllShrinkCommands :: Testable prop
                      => (Show (cmd Symbolic), ToExpr (model Symbolic))
                      => (Rank2.Foldable cmd, Rank2.Foldable resp)
                      => StateMachine model cmd m resp
+                     -> Maybe Int -- ^ Minimum number of commands.
                      -> (Commands cmd -> prop)     -- ^ Predicate.
                      -> Property
-forAllShrinkCommands sm =
-  forAllShrinkShow (generateCommands sm) (shrinkCommands sm) ppShow
+forAllShrinkCommands sm mnum =
+  forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
 generateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
                  => Rank2.Foldable resp
-                 => StateMachine model cmd m resp -> Gen (Commands cmd)
-generateCommands sm@StateMachine { initModel } =
-  evalStateT (generateCommandsState sm newCounter False) initModel
+                 => StateMachine model cmd m resp
+                 -> Maybe Int -- ^ Minimum number of commands.
+                 -> Gen (Commands cmd)
+generateCommands sm@StateMachine { initModel } mnum =
+  evalStateT (generateCommandsState sm newCounter False mnum) initModel
 
 debugGenerateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
                       => Rank2.Foldable resp
                       => StateMachine model cmd m resp -> Gen (Commands cmd)
 debugGenerateCommands sm@StateMachine { initModel } =
-  evalStateT (generateCommandsState sm newCounter True) initModel
+  evalStateT (generateCommandsState sm newCounter True Nothing) initModel
 
 generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       => (Show (cmd Symbolic), ToExpr (model Symbolic))
                       => StateMachine model cmd m resp
                       -> Counter
-                      -> Bool    -- ^ Print debug output?
+                      -> Bool      -- ^ Print debug output?
+                      -> Maybe Int -- ^ Minimum number of commands.
                       -> StateT (model Symbolic) Gen (Commands cmd)
 generateCommandsState StateMachine { generator, weight, precondition,
-                                     transition, mock } counter0 debug = do
-  size0 <- lift (sized (\k -> choose (0, k)))
+                                     transition, mock } counter0 debug mnum = do
+  size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0
   where
     go :: Int -> Counter -> StateT (model Symbolic) Gen [Command cmd]

@@ -112,12 +112,12 @@ sm = StateMachine initModel transition precondition postcondition Nothing
        generator (Just weight) shrinker semantics id mock
 
 prop_modelCheck :: Property
-prop_modelCheck = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
+prop_modelCheck = forAllShrinkCommands sm Nothing $ \cmds -> monadicIO $ do
   res <- undefined -- modelCheck sm cmds
   -- prettyPrintHistory sm hist `whenFailM` (res === Ok)
   return (res === Ok)
 
 prop_sequential :: Property
-prop_sequential = forAllShrinkCommands sm $ \cmds -> monadicIO $ do
+prop_sequential = forAllShrinkCommands sm Nothing $ \cmds -> monadicIO $ do
   (hist, _model, res) <- runCommands sm cmds
   prettyCommands sm hist (checkCommandNames cmds (res === Ok))
