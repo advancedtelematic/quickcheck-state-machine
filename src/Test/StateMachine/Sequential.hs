@@ -24,12 +24,11 @@
 module Test.StateMachine.Sequential
   ( forAllShrinkCommands
   , generateCommands
-  , debugGenerateCommands
   , generateCommandsState
   , getUsedVars
   , shrinkCommands
   , liftShrinkCommand
-  , filterValidCommands
+  , validCommands
   -- , modelCheck
   , runCommands
   , getChanContents
@@ -107,23 +106,16 @@ generateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Gen (Commands cmd)
 generateCommands sm@StateMachine { initModel } mnum =
-  evalStateT (generateCommandsState sm newCounter False mnum) initModel
-
-debugGenerateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
-                      => Rank2.Foldable resp
-                      => StateMachine model cmd m resp -> Gen (Commands cmd)
-debugGenerateCommands sm@StateMachine { initModel } =
-  evalStateT (generateCommandsState sm newCounter True Nothing) initModel
+  evalStateT (generateCommandsState sm newCounter mnum) initModel
 
 generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       => (Show (cmd Symbolic), ToExpr (model Symbolic))
                       => StateMachine model cmd m resp
                       -> Counter
-                      -> Bool      -- ^ Print debug output?
                       -> Maybe Int -- ^ Minimum number of commands.
                       -> StateT (model Symbolic) Gen (Commands cmd)
 generateCommandsState StateMachine { generator, weight, precondition,
-                                     transition, mock } counter0 debug mnum = do
+                                     transition, mock } counter0 mnum = do
   size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0
   where
@@ -131,10 +123,8 @@ generateCommandsState StateMachine { generator, weight, precondition,
     go 0    _       = return []
     go size counter = do
       model <- get
-      -- when debug (traceShowM model)
-      cmd   <- traceShow (prettyExpr (toExpr model)) $ lift (generatorFrequency model `suchThat` precondition model)
-      -- when debug (traceShowM cmd)
-      let (resp, counter') = trace ("\n\n" ++ show cmd ++ "\n\n") $ runGenSym (mock model cmd) counter
+      cmd   <- lift (generatorFrequency model `suchThat` precondition model)
+      let (resp, counter') = runGenSym (mock model cmd) counter
       put (transition model cmd resp)
       cmds  <- go (size - 1) counter'
       return (Command cmd (getUsedVars resp) : cmds)
@@ -155,10 +145,9 @@ shrinkCommands :: (Rank2.Foldable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp -> Commands cmd
                -> [Commands cmd]
 shrinkCommands sm@StateMachine { initModel, shrinker }
-  = map ( flip evalState (initModel, S.empty, newCounter)
-        . filterValidCommands sm
-        . Commands
-        )
+  = filterMaybe ( flip evalState (initModel, S.empty, newCounter)
+                . validCommands sm
+                . Commands)
   . shrinkList (liftShrinkCommand shrinker)
   . unCommands
 
@@ -167,14 +156,20 @@ liftShrinkCommand :: (cmd Symbolic -> [cmd Symbolic])
 liftShrinkCommand shrinker (Command cmd resp) =
   [ Command cmd' resp | cmd' <- shrinker cmd ]
 
-filterValidCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
-                    => StateMachine model cmd m resp -> Commands cmd
-                    -> State (model Symbolic, Set Var, Counter) (Commands cmd)
-filterValidCommands StateMachine { precondition, transition, mock } =
-  fmap Commands . go . unCommands
+filterMaybe :: (a -> Maybe b) -> [a] -> [b]
+filterMaybe _ []       = []
+filterMaybe f (x : xs) = case f x of
+  Nothing ->     filterMaybe f xs
+  Just y  -> y : filterMaybe f xs
+
+validCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
+              => StateMachine model cmd m resp -> Commands cmd
+              -> State (model Symbolic, Set Var, Counter) (Maybe (Commands cmd))
+validCommands StateMachine { precondition, transition, mock } =
+  fmap (fmap Commands) . go . unCommands
   where
-    go :: [Command cmd] -> State (model Symbolic, Set Var, Counter) [Command cmd]
-    go []                         = return []
+    go :: [Command cmd] -> State (model Symbolic, Set Var, Counter) (Maybe [Command cmd])
+    go []                         = return (Just [])
     go (Command cmd _vars : cmds) = do
       (model, scope, counter) <- get
       if precondition model cmd && getUsedVars cmd `S.isSubsetOf` scope
@@ -184,10 +179,12 @@ filterValidCommands StateMachine { precondition, transition, mock } =
         put ( transition model cmd resp
             , vars `S.union` scope
             , counter')
-        ih <- go cmds
-        return (Command cmd vars : ih)
+        mih <- go cmds
+        case mih of
+          Nothing -> return Nothing
+          Just ih -> return (Just (Command cmd vars : ih))
       else
-        go cmds
+        return Nothing
 
 {-
 modelCheck :: forall model cmd resp m. Monad m => StateMachine model cmd m resp
