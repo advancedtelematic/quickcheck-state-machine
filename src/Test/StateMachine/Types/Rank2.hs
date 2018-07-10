@@ -20,8 +20,6 @@ module Test.StateMachine.Types.Rank2
 
 import qualified Control.Applicative as Rank1
 import qualified Control.Monad       as Rank1
-import qualified Data.Foldable       as Rank1
-import qualified Data.Traversable    as Rank1
 import           GHC.Generics
                    ((:*:)((:*:)), (:+:)(L1, R1), Generic1, K1(K1),
                    M1(M1), Rec1(Rec1), Rep1, U1(U1), from1, to1)

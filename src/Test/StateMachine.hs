@@ -16,7 +16,7 @@
 module Test.StateMachine
 
   ( -- * Sequential property combinators
-    forAllShrinkCommands
+    forAllCommands
   -- , modelCheck
   , runCommands
   , prettyCommands
@@ -24,8 +24,10 @@ module Test.StateMachine
   , commandNames
   , commandNamesInOrder
 
-    -- * Parallel property combinators
-  , module Test.StateMachine.Parallel
+  -- * Parallel property combinators
+  , forAllParallelCommands
+  , runParallelCommands
+  , prettyParallelCommands
 
     -- * Types
   , StateMachine(StateMachine)

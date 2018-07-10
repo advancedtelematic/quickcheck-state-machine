@@ -22,13 +22,14 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Sequential
-  ( forAllShrinkCommands
+  ( forAllCommands
   , generateCommands
   , generateCommandsState
   , getUsedVars
   , shrinkCommands
   , liftShrinkCommand
   , validCommands
+  , filterMaybe
   -- , modelCheck
   , runCommands
   , getChanContents
@@ -65,10 +66,7 @@ import           Data.Set
                    (Set)
 import qualified Data.Set                      as S
 import           Data.TreeDiff
-                   (ToExpr, ansiWlBgEditExpr, ediff, prettyExpr,
-                   toExpr)
-import           Debug.Trace
-                   (trace, traceShow)
+                   (ToExpr, ansiWlBgEditExpr, ediff)
 import           GHC.Generics
                    ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D,
                    Generic1, K1, M1, Rec1, Rep1, S, U1, conName, from1,
@@ -90,18 +88,17 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
-forAllShrinkCommands :: Testable prop
-                     => (Show (cmd Symbolic), ToExpr (model Symbolic))
-                     => (Rank2.Foldable cmd, Rank2.Foldable resp)
-                     => StateMachine model cmd m resp
-                     -> Maybe Int -- ^ Minimum number of commands.
-                     -> (Commands cmd -> prop)     -- ^ Predicate.
-                     -> Property
-forAllShrinkCommands sm mnum =
+forAllCommands :: Testable prop
+               => Show (cmd Symbolic)
+               => (Rank2.Foldable cmd, Rank2.Foldable resp)
+               => StateMachine model cmd m resp
+               -> Maybe Int -- ^ Minimum number of commands.
+               -> (Commands cmd -> prop)     -- ^ Predicate.
+               -> Property
+forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
-generateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
-                 => Rank2.Foldable resp
+generateCommands :: Rank2.Foldable resp
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Gen (Commands cmd)
@@ -109,7 +106,6 @@ generateCommands sm@StateMachine { initModel } mnum =
   evalStateT (generateCommandsState sm newCounter mnum) initModel
 
 generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
-                      => (Show (cmd Symbolic), ToExpr (model Symbolic))
                       => StateMachine model cmd m resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.

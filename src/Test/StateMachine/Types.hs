@@ -24,6 +24,7 @@ module Test.StateMachine.Types
   ( StateMachine(..)
   , Command(..)
   , Commands(..)
+  , lengthCommands
   , ParallelCommandsF(..)
   , ParallelCommands
   , Pair(..)
@@ -36,6 +37,7 @@ module Test.StateMachine.Types
   , module Test.StateMachine.Types.References
   ) where
 
+import           Data.Semigroup (Semigroup)
 import           Data.Functor.Classes
                    (Ord1, Show1)
 import           Data.Set
@@ -70,9 +72,12 @@ deriving instance Show (cmd Symbolic) => Show (Command cmd)
 
 newtype Commands cmd = Commands
   { unCommands :: [Command cmd] }
-  deriving Monoid
+  deriving (Semigroup, Monoid)
 
 deriving instance Show (cmd Symbolic) => Show (Commands cmd)
+
+lengthCommands :: Commands cmd -> Int
+lengthCommands = length . unCommands
 
 data Reason = Ok | PreconditionFailed | PostconditionFailed | InvariantBroken
   deriving (Eq, Show)

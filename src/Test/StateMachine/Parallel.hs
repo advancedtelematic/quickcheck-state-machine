@@ -19,9 +19,11 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Parallel
-  ( generateParallelCommands
-  -- , shrinkParallelProgram
-  -- , validParallelProgram
+  ( forAllParallelCommands
+  , generateParallelCommands
+  , shrinkParallelCommands
+  , validParallelCommands
+  , prop_splitCombine
   , runParallelCommands
   , linearise
   , toBoxDrawings
@@ -37,15 +39,15 @@ import           Control.Concurrent.STM.TChan
 import           Control.Monad
                    (foldM, replicateM)
 import           Control.Monad.State
-                   (MonadIO, State, runStateT)
+                   (MonadIO, State, evalState, put, runStateT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Bifunctor
                    (bimap)
-import           Data.Functor.Classes
-                   (Show1)
 import           Data.List
                    (partition, permutations)
+import           Data.List.Split
+                   (splitPlacesBlanks)
 import           Data.Monoid
                    ((<>))
 import           Data.Set
@@ -53,12 +55,13 @@ import           Data.Set
 import qualified Data.Set                        as S
 import           Data.Tree
                    (Tree(Node))
-import           Data.TreeDiff
-                   (ToExpr)
 import           Test.QuickCheck
-                   (Gen, Property, choose, property, shrinkList, sized)
+                   (Gen, Property, Testable, choose, property,
+                   shrinkList, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
+import           Text.Show.Pretty
+                   (ppShow)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 
@@ -70,8 +73,16 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
+forAllParallelCommands :: Testable prop
+                       => Show (cmd Symbolic)
+                       => (Rank2.Foldable cmd, Rank2.Foldable resp)
+                       => StateMachine model cmd m resp
+                       -> (ParallelCommands cmd -> prop)     -- ^ Predicate.
+                       -> Property
+forAllParallelCommands sm =
+  forAllShrinkShow (generateParallelCommands sm) (shrinkParallelCommands sm) ppShow
+
 generateParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
-                         => (Show (cmd Symbolic), ToExpr (model Symbolic))
                          => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd)
 generateParallelCommands sm@StateMachine { initModel } = do
@@ -141,95 +152,91 @@ advanceModel StateMachine { transition, mock } model0 counter0 =
 
 -- | Shrink a parallel program in a pre-condition and scope respecting
 --   way.
-shrinkParallelProgram
-  :: forall cmd model m resp. (Rank2.Foldable cmd, Eq (cmd Symbolic))
+shrinkParallelCommands
+  :: forall cmd model m resp. Rank2.Foldable cmd
+  => Rank2.Foldable resp
   => StateMachine model cmd m resp
   -> (ParallelCommands cmd -> [ParallelCommands cmd])
-shrinkParallelProgram StateMachine { shrinker, precondition, transition, initModel }
-                      (ParallelCommands prefix suffixes)
-  = undefined -- XXX filter (validParallelProgram precondition transition model)
-      [ ParallelCommands prefix' suffixes'
+shrinkParallelCommands sm@StateMachine { shrinker, initModel }
+                       (ParallelCommands prefix suffixes)
+  = filterMaybe (flip evalState (initModel, S.empty, newCounter) . validParallelCommands sm)
+      [ ParallelCommands prefix' (map toPair suffixes')
       | (prefix', suffixes') <- shrinkPair' shrinkCommands' shrinkSuffixes
                                             (prefix, map fromPair suffixes)
       ]
       ++
       shrinkMoveSuffixToPrefix
   where
-  shrinkCommands' :: Commands cmd -> [Commands cmd]
-  shrinkCommands'
-    = map Commands
-    . shrinkList (liftShrinkCommand shrinker)
-    . unCommands
+    shrinkCommands' :: Commands cmd -> [Commands cmd]
+    shrinkCommands'
+      = map Commands
+      . shrinkList (liftShrinkCommand shrinker)
+      . unCommands
 
-  shrinkSuffixes :: [(Commands cmd, Commands cmd)] -> [[(Commands cmd, Commands cmd)]]
-  shrinkSuffixes = shrinkList (shrinkPair shrinkCommands')
+    shrinkSuffixes :: [(Commands cmd, Commands cmd)] -> [[(Commands cmd, Commands cmd)]]
+    shrinkSuffixes = shrinkList (shrinkPair shrinkCommands')
 
-  shrinkMoveSuffixToPrefix :: [ParallelCommands cmd]
-  shrinkMoveSuffixToPrefix = case suffixes of
-    []                   -> []
-    (suffix : suffixes') ->
-      [ ParallelCommands (prefix <> Commands [prefix'])
-                         (fmap Commands (toPair suffix') : suffixes')
-      | (prefix', suffix') <- pickOneReturnRest2 (unCommands (proj1 suffix),
-                                                  unCommands (proj2 suffix))
-      ]
+    shrinkMoveSuffixToPrefix :: [ParallelCommands cmd]
+    shrinkMoveSuffixToPrefix = case suffixes of
+      []                   -> []
+      (suffix : suffixes') ->
+        [ ParallelCommands (prefix <> Commands [prefix'])
+                           (fmap Commands (toPair suffix') : suffixes')
+        | (prefix', suffix') <- pickOneReturnRest2 (unCommands (proj1 suffix),
+                                                    unCommands (proj2 suffix))
+        ]
 
-  pickOneReturnRest :: [a] -> [(a, [a])]
-  pickOneReturnRest []       = []
-  pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
+    pickOneReturnRest :: [a] -> [(a, [a])]
+    pickOneReturnRest []       = []
+    pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
 
-  pickOneReturnRest2 :: ([a], [a]) -> [(a, ([a],[a]))]
-  pickOneReturnRest2 (xs, ys) =
-    map (id *** flip (,) ys) (pickOneReturnRest xs) ++
-    map (id ***      (,) xs) (pickOneReturnRest ys)
+    pickOneReturnRest2 :: ([a], [a]) -> [(a, ([a],[a]))]
+    pickOneReturnRest2 (xs, ys) =
+      map (id *** flip (,) ys) (pickOneReturnRest xs) ++
+      map (id ***      (,) xs) (pickOneReturnRest ys)
 
-filterValidParallelCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
-                            => StateMachine model cmd m resp -> ParallelCommands cmd
-                            -> State (model Symbolic, Set Var, Counter) (ParallelCommands cmd)
-filterValidParallelCommands StateMachine { precondition, transition, mock } (ParallelCommands prefix suffixes) = undefined
-{-
+validParallelCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
+                      => StateMachine model cmd m resp -> ParallelCommands cmd
+                      -> State (model Symbolic, Set Var, Counter) (Maybe (ParallelCommands cmd))
+validParallelCommands sm@StateMachine { initModel } (ParallelCommands prefix suffixes) = do
+  let prefixLength       = lengthCommands prefix
+      leftSuffixes       = map (\(Pair l _r) -> l) suffixes
+      rightSuffixes      = map (\(Pair _l r) -> r) suffixes
+      leftSuffixLengths  = map lengthCommands leftSuffixes
+      rightSuffixLengths = map lengthCommands rightSuffixes
+      leftSuffix         = mconcat leftSuffixes
+      rightSuffix        = mconcat rightSuffixes
+  mleft  <- validCommands sm (prefix <> leftSuffix)
+  put (initModel, S.empty, newCounter)
+  mright <- validCommands sm (prefix <> rightSuffix)
+  case (mleft, mright) of
+    (Just left, Just right) -> do
+      let (prefix' : leftSuffixes')  = splitPlacesBlanks (prefixLength : leftSuffixLengths)
+                                                         (unCommands left)
+          (_       : rightSuffixes') = splitPlacesBlanks (prefixLength : rightSuffixLengths)
+                                                         (unCommands right)
+          suffixes' = zipWith Pair (map Commands leftSuffixes')
+                                   (map Commands rightSuffixes')
+          (model', counter') = advanceModel sm initModel newCounter (Commands prefix')
 
-validParallelProgram
-  :: HFoldable act
-  => Precondition model act
-  -> Transition' model act err
-  -> model Symbolic
-  -> ParallelProgram act
-  -> Bool
-validParallelProgram precondition transition model (ParallelProgram prefix suffixes)
-  =  validProgram  precondition transition model prefix
-  && validSuffixes precondition transition prefixModel prefixScope (parallelProgramToList suffixes)
+      if parallelSafeMany sm model' counter' suffixes'
+      then return (Just (ParallelCommands (Commands prefix') suffixes'))
+      else return Nothing
+    (_, _)                  -> return Nothing
+
+parallelSafeMany :: StateMachine model cmd m resp -> model Symbolic
+                 -> Counter -> [Pair (Commands cmd)] -> Bool
+parallelSafeMany sm = go
   where
-  prefixModel = advanceModel transition model prefix
-  prefixScope = boundVars prefix
+    go _ _ []                                   = True
+    go model counter (Pair cmds1 cmds2 : cmdss) = parallelSafe sm model counter cmds
+                                                && go model' counter' cmdss
+      where
+        cmds               = cmds1 <> cmds2
+        (model', counter') = advanceModel sm model counter cmds
 
-boundVars :: Program act -> Set Var
-boundVars
-  = foldMap (\(Internal _ (Symbolic var)) -> S.singleton var)
-  . unProgram
-
-validSuffixes
-  :: forall act model err
-  .  HFoldable act
-  => Precondition model act
-  -> Transition' model act err
-  -> model Symbolic
-  -> Set Var
-  -> [Program act]
-  -> Bool
-validSuffixes precondition transition model0 scope0 = go model0 scope0
-  where
-  go :: model Symbolic -> Set Var -> [Program act] -> Bool
-  go _     _     []             = True
-  go model scope (prog : progs)
-    =  usedVars prog `S.isSubsetOf` scope' -- This assumes that variables
-                                           -- are bound before used in a
-                                           -- program.
-    && parallelSafe precondition transition model prog
-    && go (advanceModel transition model prog) scope' progs
-    where
-    scope' = boundVars prog `S.union` scope
--}
+prop_splitCombine :: [[Int]] -> Bool
+prop_splitCombine xs = splitPlacesBlanks (map length xs) (concat xs) == xs
 
 ------------------------------------------------------------------------
 
@@ -319,10 +326,10 @@ any' p xs = any p xs
 prettyParallelCommands :: (MonadIO m, Rank2.Foldable cmd)
                        => (Show (cmd Concrete), Show (resp Concrete))
                        => ParallelCommands cmd
-                       -> [(History cmd resp, Property)] -- ^ Output of 'runParallelProgram.
+                       -> [(History cmd resp, Bool)] -- ^ Output of 'runParallelCommands'.
                        -> PropertyM m ()
 prettyParallelCommands cmds =
-  mapM_ (\(hist, prop) -> print (toBoxDrawings cmds hist) `whenFailM` prop)
+  mapM_ (\(hist, bool) -> print (toBoxDrawings cmds hist) `whenFailM` property bool)
 
 -- | Draw an ASCII diagram of the history of a parallel program. Useful for
 --   seeing how a race condition might have occured.
