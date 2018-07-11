@@ -14,6 +14,8 @@
 
     - Global invariants can now more easily be expressed (issue #200);
 
+    - Counterexamples are now printed when post-conditions fail (issue #172).
+
 #### 0.3.1 (2018-1-15)
 
   * Remove upper bounds for dependencies, to easier keep up with

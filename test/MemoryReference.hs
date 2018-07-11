@@ -21,12 +21,15 @@ import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
+import           Prelude                       hiding
+                   (elem)
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, collect, elements, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO, monitor)
 
 import           Test.StateMachine
+import           Test.StateMachine.Logic
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Z
 
@@ -69,22 +72,22 @@ transition m@(Model model) cmd resp = case (cmd, resp) of
   (Increment ref, Incremented) -> Model (model .! ref .% succ)
   _                            -> error "transition: impossible."
 
-precondition :: Model Symbolic -> Command Symbolic -> Bool
+precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition (Model m) cmd = case cmd of
-  Create        -> True
+  Create        -> Top
   Read  ref     -> ref `elem` domain m
   Write ref _   -> ref `elem` domain m
   Increment ref -> ref `elem` domain m
 
-postcondition :: (Show1 r, Eq1 r) => Model r -> Command r -> Response r -> Bool
+postcondition :: (Show1 r, Eq1 r) => Model r -> Command r -> Response r -> Logic
 postcondition (Model m) cmd resp = case (cmd, resp) of
-  (Create,        Created ref) -> m' ! ref == 0
+  (Create,        Created ref) -> m' ! ref .== 0 .// "Create"
     where
       Model m' = transition (Model m) cmd resp
-  (Read ref,      ReadValue v)  -> v == m ! ref
-  (Write _ref _x, Written)      -> True
-  (Increment _ref, Incremented) -> True
-  _                             -> False
+  (Read ref,      ReadValue v)  -> v .== m ! ref + 1 .// "Read"
+  (Write _ref _x, Written)      -> Top
+  (Increment _ref, Incremented) -> Top
+  _                             -> Bot
 
 semantics :: Command Concrete -> IO (Response Concrete)
 semantics cmd = case cmd of

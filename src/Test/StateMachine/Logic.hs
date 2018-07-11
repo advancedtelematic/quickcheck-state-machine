@@ -18,6 +18,8 @@
 
 module Test.StateMachine.Logic where
 
+------------------------------------------------------------------------
+
 infixr 1 :=>
 infixr 2 :||
 infixr 3 :&&
@@ -44,6 +46,17 @@ data Predicate
   | forall a. (Eq  a, Show a) => NotElem a [a]
 
 deriving instance Show Predicate
+
+instance Eq Predicate where
+  _ :==   _   == _ :==   _   = True
+  _ :/=   _   == _ :/=   _   = True
+  _ :<    _   == _ :<    _   = True
+  _ :<=   _   == _ :<=   _   = True
+  _ :>    _   == _ :>    _   = True
+  _ :>=   _   == _ :>=   _   = True
+  Elem    _ _ == Elem    _ _ = True
+  NotElem _ _ == NotElem _ _ = True
+  _           == _           = False
 
 dual :: Predicate -> Predicate
 dual p = case p of
@@ -77,12 +90,17 @@ data Counterexample
   | NotC Counterexample
   | PredicateC Predicate
   | AnnotateC String Counterexample
-  deriving Show
+  deriving (Eq, Show)
 
 data Value
   = VFalse Counterexample
   | VTrue
   deriving Show
+
+boolean :: Logic -> Bool
+boolean l = case logic l of
+  VFalse _ -> False
+  VTrue    -> True
 
 logic :: Logic -> Value
 logic Bot            = VFalse BotC
@@ -111,16 +129,53 @@ logic (Annotate s l) = case logic l of
   VFalse ce -> VFalse (AnnotateC s ce)
 
 predicate :: Predicate -> Value
-predicate p0 = let b = boolean p0 in case p0 of
+predicate p0 = let b = go p0 in case p0 of
   x :== y        -> b (x == y)
   x :/= y        -> b (x /= y)
   x :<  y        -> b (x <  y)
   x :<= y        -> b (x <= y)
   x :>  y        -> b (x >  y)
   x :>= y        -> b (x >= y)
-  x `Elem`    xs -> b (x `elem`    xs)
-  x `NotElem` xs -> b (x `notElem` xs)
+  x `Elem`    xs -> b (x `Prelude.elem`    xs)
+  x `NotElem` xs -> b (x `Prelude.notElem` xs)
   where
-  boolean :: Predicate -> Bool -> Value
-  boolean _ True  = VTrue
-  boolean p False = VFalse (PredicateC (dual p))
+    go :: Predicate -> Bool -> Value
+    go _ True  = VTrue
+    go p False = VFalse (PredicateC (dual p))
+
+------------------------------------------------------------------------
+
+infix 4 .==
+infix 4 ./=
+infix 4 .<
+infix 4 .<=
+infix 4 .>
+infix 4 .>=
+infixl 1 .//
+
+(.==) :: (Eq a, Show a) => a -> a -> Logic
+x .== y = Predicate (x :== y)
+
+(./=) :: (Eq a, Show a) => a -> a -> Logic
+x ./= y = Predicate (x :/= y)
+
+(.<) :: (Ord a, Show a) => a -> a -> Logic
+x .< y = Predicate (x :< y)
+
+(.<=) :: (Ord a, Show a) => a -> a -> Logic
+x .<= y = Predicate (x :<= y)
+
+(.>) :: (Ord a, Show a) => a -> a -> Logic
+x .> y = Predicate (x :> y)
+
+(.>=) :: (Ord a, Show a) => a -> a -> Logic
+x .>= y = Predicate (x :>= y)
+
+elem :: (Eq a, Show a) => a -> [a] -> Logic
+elem x xs = Predicate (Elem x xs)
+
+notElem :: (Eq a, Show a) => a -> [a] -> Logic
+notElem x xs = Predicate (NotElem x xs)
+
+(.//) :: Logic -> String -> Logic
+l .// s = Annotate s l

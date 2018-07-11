@@ -37,14 +37,16 @@ module Test.StateMachine.Types
   , module Test.StateMachine.Types.References
   ) where
 
-import           Data.Semigroup (Semigroup)
 import           Data.Functor.Classes
                    (Ord1, Show1)
+import           Data.Semigroup
+                   (Semigroup)
 import           Data.Set
                    (Set)
 import           Test.QuickCheck
                    (Gen, Property)
 
+import           Test.StateMachine.Logic
 import           Test.StateMachine.Types.Environment
 import           Test.StateMachine.Types.GenSym
 import           Test.StateMachine.Types.History
@@ -55,9 +57,9 @@ import           Test.StateMachine.Types.References
 data StateMachine model cmd m resp = StateMachine
   { initModel     :: forall r. model r
   , transition    :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
-  , precondition  :: model Symbolic -> cmd Symbolic -> Bool
-  , postcondition :: model Concrete -> cmd Concrete -> resp Concrete -> Bool
-  , invariant     :: Maybe (model Concrete -> Bool)
+  , precondition  :: model Symbolic -> cmd Symbolic -> Logic
+  , postcondition :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
+  , invariant     :: Maybe (model Concrete -> Logic)
   , generator     :: model Symbolic -> [Gen (cmd Symbolic)]
   , weight        :: Maybe (model Symbolic -> cmd Symbolic -> Int)
   , shrinker      :: cmd Symbolic -> [cmd Symbolic]
@@ -79,7 +81,11 @@ deriving instance Show (cmd Symbolic) => Show (Commands cmd)
 lengthCommands :: Commands cmd -> Int
 lengthCommands = length . unCommands
 
-data Reason = Ok | PreconditionFailed | PostconditionFailed | InvariantBroken
+data Reason
+  = Ok
+  | PreconditionFailed
+  | PostconditionFailed Counterexample
+  | InvariantBroken Counterexample
   deriving (Eq, Show)
 
 data ParallelCommandsF t cmd = ParallelCommands

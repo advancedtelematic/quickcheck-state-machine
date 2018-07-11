@@ -60,12 +60,14 @@ import           Test.QuickCheck
                    shrinkList, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
-import           Text.Show.Pretty
-                   (ppShow)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
+import           Text.Show.Pretty
+                   (ppShow)
 
 import           Test.StateMachine.BoxDrawer
+import           Test.StateMachine.Logic
+                   (boolean)
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types.Rank2   as Rank2
@@ -129,7 +131,7 @@ parallelSafe StateMachine { precondition, transition, mock } model0 counter0
       let
         (resp, counter') = runGenSym (mock model cmd) counter
       in
-        precondition model cmd &&
+        boolean (precondition model cmd) &&
           preconditionsHold (transition model cmd resp) counter' cmds
 
 -- | Apply the transition of some commands to a model.
@@ -312,7 +314,7 @@ linearise StateMachine { transition,  postcondition, initModel } = go . unHistor
 
     step :: model Concrete -> Tree (Operation cmd resp) -> Bool
     step model (Node (Operation cmd resp _) roses) =
-      postcondition model cmd resp &&
+      boolean (postcondition model cmd resp) &&
         any' (step (transition model cmd resp)) roses
 
 any' :: (a -> Bool) -> [a] -> Bool

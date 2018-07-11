@@ -85,6 +85,7 @@ import           Text.Show.Pretty
 import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
+import           Test.StateMachine.Logic
 
 ------------------------------------------------------------------------
 
@@ -119,7 +120,7 @@ generateCommandsState StateMachine { generator, weight, precondition,
     go 0    _       = return []
     go size counter = do
       model <- get
-      cmd   <- lift (generatorFrequency model `suchThat` precondition model)
+      cmd   <- lift (generatorFrequency model `suchThat` (boolean . precondition model))
       let (resp, counter') = runGenSym (mock model cmd) counter
       put (transition model cmd resp)
       cmds  <- go (size - 1) counter'
@@ -168,7 +169,7 @@ validCommands StateMachine { precondition, transition, mock } =
     go []                         = return (Just [])
     go (Command cmd _vars : cmds) = do
       (model, scope, counter) <- get
-      if precondition model cmd && getUsedVars cmd `S.isSubsetOf` scope
+      if boolean (precondition model cmd) && getUsedVars cmd `S.isSubsetOf` scope
       then do
         let (resp, counter') = runGenSym (mock model cmd) counter
             vars             = getUsedVars resp
@@ -241,16 +242,15 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
       liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
       cresp <- lift (semantics ccmd)
       liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
-      if check && not (postcondition model ccmd cresp)
-      then
-        return PostconditionFailed
-      else if check && not (fromMaybe (const True) invariant model)
-           then return InvariantBroken
-           else do
-             put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
-                 , transition model ccmd cresp
-                 )
-             go cmds
+      case logic (postcondition model ccmd cresp) of
+        VFalse ce | check -> return (PostconditionFailed ce)
+        _                 -> case logic (fromMaybe (const Top) invariant model) of
+                               VFalse ce' | check -> return (InvariantBroken ce')
+                               _                  -> do
+                                 put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+                                     , transition model ccmd cresp
+                                     )
+                                 go cmds
         where
           getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
           getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
