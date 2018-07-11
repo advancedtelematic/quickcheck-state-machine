@@ -55,17 +55,18 @@ import           Test.StateMachine.Types.References
 ------------------------------------------------------------------------
 
 data StateMachine model cmd m resp = StateMachine
-  { initModel     :: forall r. model r
-  , transition    :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
-  , precondition  :: model Symbolic -> cmd Symbolic -> Logic
-  , postcondition :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
-  , invariant     :: Maybe (model Concrete -> Logic)
-  , generator     :: model Symbolic -> [Gen (cmd Symbolic)]
-  , weight        :: Maybe (model Symbolic -> cmd Symbolic -> Int)
-  , shrinker      :: cmd Symbolic -> [cmd Symbolic]
-  , semantics     :: cmd Concrete -> m (resp Concrete)
-  , runner        :: m Property -> IO Property
-  , mock          :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
+  { initModel      :: forall r. model r
+  , transition     :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
+  , precondition   :: model Symbolic -> cmd Symbolic -> Logic
+  , postcondition  :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
+  , spostcondition :: Maybe (model Symbolic -> cmd Symbolic -> resp Symbolic -> Logic)
+  , invariant      :: Maybe (model Concrete -> Logic)
+  , generator      :: model Symbolic -> [Gen (cmd Symbolic)]
+  , weight         :: Maybe (model Symbolic -> cmd Symbolic -> Int)
+  , shrinker       :: cmd Symbolic -> [cmd Symbolic]
+  , semantics      :: cmd Concrete -> m (resp Concrete)
+  , runner         :: m Property -> IO Property
+  , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
   }
 
 data Command cmd = Command !(cmd Symbolic) !(Set Var)

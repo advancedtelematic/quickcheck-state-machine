@@ -30,7 +30,7 @@ module Test.StateMachine.Sequential
   , liftShrinkCommand
   , validCommands
   , filterMaybe
-  -- , modelCheck
+  , modelCheck
   , runCommands
   , getChanContents
   , executeCommands
@@ -183,23 +183,24 @@ validCommands StateMachine { precondition, transition, mock } =
       else
         return Nothing
 
-{-
 modelCheck :: forall model cmd resp m. Monad m => StateMachine model cmd m resp
            -> Commands cmd
            -> PropertyM m Reason -- XXX: (History cmd, model Symbolic, Reason)
-modelCheck StateMachine { initModel, transition, precondition, postcondition, mock }
+modelCheck StateMachine { initModel, transition, precondition, spostcondition, mock }
   = run . return . go initModel newCounter . unCommands
   where
     go :: model Symbolic -> Counter -> [Command cmd] -> Reason
-    go _ _       []                         = Ok
+    go _ _       []                        = Ok
     go m counter (Command cmd _vars : cmds)
-      | not (precondition m cmd) = PreconditionFailed
-      | otherwise                =
+      | not (boolean (precondition m cmd)) = PreconditionFailed
+      | otherwise                          =
           let (resp, counter') = runGenSym (mock m cmd) counter in
-          if postcondition m cmd resp
-          then go (transition m cmd resp) counter' cmds
-          else PostconditionFailed
--}
+          case logic (fromMaybe err spostcondition m cmd resp) of
+            VTrue     -> go (transition m cmd resp) counter' cmds
+            VFalse ce -> PostconditionFailed ce
+            where
+              err = error "modelCheck: Symbolic post-condition must be \
+                          \ specificed in state machine in order to do model checking."
 
 runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
             => MonadBaseControl IO m

@@ -17,7 +17,7 @@ module Test.StateMachine
 
   ( -- * Sequential property combinators
     forAllCommands
-  -- , modelCheck
+  , modelCheck
   , runCommands
   , prettyCommands
   , checkCommandNames

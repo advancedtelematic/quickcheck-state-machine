@@ -24,8 +24,7 @@ import           GHC.Generics
 import           Prelude                       hiding
                    (elem)
 import           Test.QuickCheck
-                   (Gen, Property, arbitrary, collect, elements,
-                   sample', (===))
+                   (Gen, Property, arbitrary, collect, elements, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO, monitor)
 
@@ -126,13 +125,13 @@ shrinker :: Command Symbolic -> [Command Symbolic]
 shrinker _ = []
 
 sm :: StateMachine Model Command IO Response
-sm = StateMachine initModel transition precondition postcondition Nothing
+sm = StateMachine initModel transition precondition postcondition
+       (Just postcondition) Nothing
        generator (Just weight) shrinker semantics id mock
 
 prop_modelCheck :: Property
-prop_modelCheck = forAllCommands sm Nothing $ \_cmds -> monadicIO $ do
-  res <- undefined -- modelCheck sm cmds
-  -- prettyPrintHistory sm hist `whenFailM` (res === Ok)
+prop_modelCheck = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+  res <- modelCheck sm cmds
   return (res === Ok)
 
 prop_sequential :: Property
