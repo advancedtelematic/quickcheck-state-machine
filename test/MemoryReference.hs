@@ -24,7 +24,8 @@ import           GHC.Generics
 import           Prelude                       hiding
                    (elem)
 import           Test.QuickCheck
-                   (Gen, Property, arbitrary, collect, elements, (===))
+                   (Gen, Property, arbitrary, collect, elements,
+                   sample', (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO, monitor)
 
@@ -84,7 +85,7 @@ postcondition (Model m) cmd resp = case (cmd, resp) of
   (Create,        Created ref) -> m' ! ref .== 0 .// "Create"
     where
       Model m' = transition (Model m) cmd resp
-  (Read ref,      ReadValue v)  -> v .== m ! ref + 1 .// "Read"
+  (Read ref,      ReadValue v)  -> v .== m ! ref .// "Read"
   (Write _ref _x, Written)      -> Top
   (Increment _ref, Incremented) -> Top
   _                             -> Bot

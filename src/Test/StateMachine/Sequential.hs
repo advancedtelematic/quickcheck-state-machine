@@ -242,18 +242,24 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
       liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
       cresp <- lift (semantics ccmd)
       liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
-      case logic (postcondition model ccmd cresp) of
-        VFalse ce | check -> return (PostconditionFailed ce)
-        _                 -> case logic (fromMaybe (const Top) invariant model) of
-                               VFalse ce' | check -> return (InvariantBroken ce')
-                               _                  -> do
-                                 put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
-                                     , transition model ccmd cresp
-                                     )
-                                 go cmds
-        where
-          getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
-          getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
+      if check
+      then case logic (postcondition model ccmd cresp) of
+        VFalse ce -> return (PostconditionFailed ce)
+        VTrue     -> case logic (fromMaybe (const Top) invariant model) of
+                       VFalse ce' -> return (InvariantBroken ce')
+                       VTrue      -> do
+                         put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+                             , transition model ccmd cresp
+                             )
+                         go cmds
+      else do
+        put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+            , transition model ccmd cresp
+            )
+        go cmds
+
+getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
+getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
 
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
                    => (Show (cmd Concrete), Show (resp Concrete))
