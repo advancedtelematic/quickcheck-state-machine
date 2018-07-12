@@ -32,6 +32,7 @@ data Logic
   | Logic :=> Logic
   | Not Logic
   | Predicate Predicate
+  | Boolean Bool
   | Annotate String Logic
   deriving Show
 
@@ -79,6 +80,7 @@ strongNeg l0 = case l0 of
   l :=> r      ->           l :&& strongNeg r
   Not l        -> l
   Predicate p  -> Predicate (dual p)
+  Boolean b    -> Boolean (not b)
   Annotate s l -> Annotate s (strongNeg l)
 
 data Counterexample
@@ -89,6 +91,7 @@ data Counterexample
   | ImpliesC Counterexample
   | NotC Counterexample
   | PredicateC Predicate
+  | BooleanC
   | AnnotateC String Counterexample
   deriving (Eq, Show)
 
@@ -124,6 +127,7 @@ logic (Not l)        = case logic (strongNeg l) of
   VTrue     -> VTrue
   VFalse ce -> VFalse (NotC ce)
 logic (Predicate p)  = predicate p
+logic (Boolean b)    = if b then VTrue else VFalse BooleanC
 logic (Annotate s l) = case logic l of
   VTrue     -> VTrue
   VFalse ce -> VFalse (AnnotateC s ce)
