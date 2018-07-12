@@ -212,19 +212,23 @@ validParallelCommands sm@StateMachine { initModel } (ParallelCommands prefix suf
   put (initModel, S.empty, newCounter)
   mright <- validCommands sm (prefix <> rightSuffix)
   case (mleft, mright) of
-    (Just left, Just right) -> do
-      let (prefix' : leftSuffixes')  = splitPlacesBlanks (prefixLength : leftSuffixLengths)
-                                                         (unCommands left)
-          (_       : rightSuffixes') = splitPlacesBlanks (prefixLength : rightSuffixLengths)
-                                                         (unCommands right)
-          suffixes' = zipWith Pair (map Commands leftSuffixes')
-                                   (map Commands rightSuffixes')
-          (model', counter') = advanceModel sm initModel newCounter (Commands prefix')
+    (Nothing, Nothing)      -> return Nothing
+    (Just _,  Nothing)      -> return Nothing
+    (Nothing, Just _)       -> return Nothing
+    (Just left, Just right) ->
+      case (splitPlacesBlanks (prefixLength : leftSuffixLengths)  (unCommands left),
+            splitPlacesBlanks (prefixLength : rightSuffixLengths) (unCommands right)) of
+        ([]                     , [])                 -> error "validParallelCommands: impossible"
+        ([]                     , _ : _)              -> error "validParallelCommands: impossible"
+        (_ : _                  , [])                 -> error "validParallelCommands: impossible"
+        (prefix' : leftSuffixes', _ : rightSuffixes') -> do
+          let suffixes' = zipWith Pair (map Commands leftSuffixes')
+                                       (map Commands rightSuffixes')
+              (model', counter') = advanceModel sm initModel newCounter (Commands prefix')
 
-      if parallelSafeMany sm model' counter' suffixes'
-      then return (Just (ParallelCommands (Commands prefix') suffixes'))
-      else return Nothing
-    (_, _)                  -> return Nothing
+          if parallelSafeMany sm model' counter' suffixes'
+          then return (Just (ParallelCommands (Commands prefix') suffixes'))
+          else return Nothing
 
 parallelSafeMany :: StateMachine model cmd m resp -> model Symbolic
                  -> Counter -> [Pair (Commands cmd)] -> Bool
