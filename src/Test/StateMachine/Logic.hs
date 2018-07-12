@@ -151,6 +151,8 @@ infix 4 .<
 infix 4 .<=
 infix 4 .>
 infix 4 .>=
+infix 4 `elem`
+infix 4 `notElem`
 infixl 1 .//
 
 (.==) :: (Eq a, Show a) => a -> a -> Logic
