@@ -55,7 +55,7 @@ instance Show1 Symbolic where
       appPrec = 10
 
 instance ToExpr a => ToExpr (Symbolic a) where
-  toExpr (Symbolic x) = App "Symbolic" [toExpr x]
+  toExpr (Symbolic x) = toExpr x
 
 instance Eq1 Symbolic where
   liftEq _ (Symbolic x) (Symbolic y) = x == y
@@ -83,13 +83,12 @@ instance Ord1 Concrete where
   liftCompare comp (Concrete x) (Concrete y) = comp x y
 
 instance ToExpr a => ToExpr (Concrete a) where
-  toExpr (Concrete x) = App "Concrete" [toExpr x]
+  toExpr (Concrete x) = toExpr x
 
 data Reference a r = Reference (r a)
-  deriving Generic
 
 instance ToExpr (r a) => ToExpr (Reference a r) where
-  toExpr (Reference r) = App "Reference" [toExpr r]
+  toExpr (Reference r) = toExpr r
 
 instance Rank2.Functor (Reference a) where
   fmap f (Reference r) = Reference (f r)
