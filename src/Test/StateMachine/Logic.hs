@@ -149,14 +149,14 @@ predicate p0 = let b = go p0 in case p0 of
 
 ------------------------------------------------------------------------
 
-infix 4 .==
-infix 4 ./=
-infix 4 .<
-infix 4 .<=
-infix 4 .>
-infix 4 .>=
-infix 4 `elem`
-infix 4 `notElem`
+infix  5 .==
+infix  5 ./=
+infix  5 .<
+infix  5 .<=
+infix  5 .>
+infix  5 .>=
+infix  5 `elem`
+infix  5 `notElem`
 infixl 4 .//
 
 (.==) :: (Eq a, Show a) => a -> a -> Logic
