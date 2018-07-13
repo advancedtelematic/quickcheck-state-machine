@@ -25,6 +25,8 @@ module Test.StateMachine.Sequential
   ( forAllCommands
   , generateCommands
   , generateCommandsState
+  , debugGenerateCommands
+  , debugGenerateCommandsState
   , getUsedVars
   , shrinkCommands
   , liftShrinkCommand
@@ -48,7 +50,7 @@ import           Control.Concurrent.STM.TChan
                    (TChan, newTChanIO, tryReadTChan, writeTChan)
 import           Control.Monad.State
                    (MonadIO, State, StateT, evalState, evalStateT, get,
-                   lift, put, runStateT)
+                   lift, liftIO, put, runStateT)
 import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Data.Dynamic
@@ -73,7 +75,7 @@ import           GHC.Generics
                    unM1, unRec1)
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
-                   frequency, shrinkList, sized, suchThat)
+                   frequency, generate, shrinkList, sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -82,10 +84,10 @@ import qualified Text.PrettyPrint.ANSI.Leijen  as PP
 import           Text.Show.Pretty
                    (ppShow)
 
+import           Test.StateMachine.Logic
 import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
-import           Test.StateMachine.Logic
 
 ------------------------------------------------------------------------
 
@@ -111,8 +113,8 @@ generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.
                       -> StateT (model Symbolic) Gen (Commands cmd)
-generateCommandsState StateMachine { generator, weight, precondition,
-                                     transition, mock } counter0 mnum = do
+generateCommandsState sm@StateMachine { precondition,
+                                        transition, mock } counter0 mnum = do
   size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0
   where
@@ -120,19 +122,57 @@ generateCommandsState StateMachine { generator, weight, precondition,
     go 0    _       = return []
     go size counter = do
       model <- get
-      cmd   <- lift (generatorFrequency model `suchThat` (boolean . precondition model))
+      cmd   <- lift (generatorFrequency sm model `suchThat` (boolean . precondition model))
       let (resp, counter') = runGenSym (mock model cmd) counter
       put (transition model cmd resp)
       cmds  <- go (size - 1) counter'
       return (Command cmd (getUsedVars resp) : cmds)
 
-    generatorFrequency :: model Symbolic -> Gen (cmd Symbolic)
-    generatorFrequency model = frequency =<< sequence (map g (generator model))
-      where
-        g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
-        g gen = do
-          cmd <- gen
-          return (fromMaybe (\_ _ -> 1) weight model cmd, return cmd)
+generatorFrequency :: forall model cmd m resp. StateMachine model cmd m resp
+                   -> model Symbolic
+                   -> Gen (cmd Symbolic)
+generatorFrequency StateMachine { generator, weight } model =
+  frequency =<< sequence (map g (generator model))
+  where
+    g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
+    g gen = do
+      cmd <- gen
+      return (fromMaybe (\_ _ -> 1) weight model cmd, return cmd)
+
+debugGenerateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
+                      => StateMachine model cmd m resp
+                      -> Int -- ^ Minimum number of commands.
+                      -> Int -- ^ Maximum number of commands.
+                      -> IO ()
+debugGenerateCommands sm@StateMachine { initModel } min0 max0 =
+  evalStateT (debugGenerateCommandsState sm newCounter min0 max0) initModel
+
+debugGenerateCommandsState :: forall model cmd m resp. Show (cmd Symbolic)
+                           => ToExpr (model Symbolic)
+                           => StateMachine model cmd m resp
+                           -> Counter
+                           -> Int -- ^ Minimum number of commands.
+                           -> Int -- ^ Maximum number of commands.
+                           -> StateT (model Symbolic) IO ()
+debugGenerateCommandsState sm@StateMachine { precondition, transition, mock } counter0 min0 max0 = do
+  size0 <- liftIO (generate (choose (min0, max0)))
+  go size0 counter0 Nothing
+  where
+    go :: Int -> Counter -> Maybe (model Symbolic) -> StateT (model Symbolic) IO ()
+    go 0    _       previous = do
+      current <- get
+      liftIO (print (modelDiff current previous))
+      liftIO (putStrLn "")
+    go size counter previous = do
+      current <- get
+      liftIO (print (modelDiff current previous))
+      liftIO (putStrLn "")
+      cmd <- liftIO (generate (generatorFrequency sm current `suchThat`
+                                 (boolean . precondition current)))
+      liftIO (putStrLn ("  == " ++ show cmd ++ " ==>\n"))
+      let (resp, counter') = runGenSym (mock current cmd) counter
+      put (transition current cmd resp)
+      go (size - 1) counter' (Just current)
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
@@ -262,6 +302,9 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
 getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
 getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
 
+modelDiff :: ToExpr (model r) => model r -> Maybe (model r) -> Doc
+modelDiff model = ansiWlBgEditExpr . flip ediff model . fromMaybe model
+
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
                    => (Show (cmd Concrete), Show (resp Concrete))
                    => StateMachine model cmd m resp
@@ -273,9 +316,6 @@ prettyPrintHistory StateMachine { initModel, transition }
   . makeOperations
   . unHistory
   where
-    modelDiff :: model Concrete -> Maybe (model Concrete) -> Doc
-    modelDiff model = ansiWlBgEditExpr . flip ediff model . fromMaybe model
-
     go :: model Concrete -> Maybe (model Concrete) -> [Operation cmd resp] -> Doc
     go current previous []                             =
       PP.line <> modelDiff current previous <> PP.line <> PP.line

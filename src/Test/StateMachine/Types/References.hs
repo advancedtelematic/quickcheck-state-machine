@@ -86,9 +86,9 @@ instance ToExpr a => ToExpr (Concrete a) where
   toExpr (Concrete x) = toExpr x
 
 data Reference a r = Reference (r a)
+  deriving Generic
 
-instance ToExpr (r a) => ToExpr (Reference a r) where
-  toExpr (Reference r) = toExpr r
+instance ToExpr (r a) => ToExpr (Reference a r)
 
 instance Rank2.Functor (Reference a) where
   fmap f (Reference r) = Reference (f r)
