@@ -104,48 +104,48 @@ generateCommands :: Rank2.Foldable resp
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Gen (Commands cmd)
-generateCommands sm@StateMachine { initModel, initState } mnum =
-  evalStateT (generateCommandsState sm newCounter mnum) (initModel, initState)
+generateCommands sm@StateMachine { initModel } mnum =
+  evalStateT (generateCommandsState sm newCounter mnum) (initModel, Nothing)
 
 generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       => StateMachine model cmd m resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.
-                      -> StateT (model Symbolic, cmd Symbolic) Gen (Commands cmd)
+                      -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen (Commands cmd)
 generateCommandsState sm@StateMachine { precondition,
                                         transition, mock } counter0 mnum = do
   size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0
   where
-    go :: Int -> Counter -> StateT (model Symbolic, cmd Symbolic) Gen [Command cmd]
+    go :: Int -> Counter -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen [Command cmd]
     go 0    _       = return []
     go size counter = do
-      (model, from) <- get
-      cmd           <- lift (generatorFrequency sm model from `suchThat` (boolean . precondition model))
-      let (resp, counter') = runGenSym (mock model cmd) counter
-      put (transition model cmd resp, cmd)
+      (model, mfrom) <- get
+      to             <- lift (generatorFrequency sm model mfrom `suchThat` (boolean . precondition model))
+      let (resp, counter') = runGenSym (mock model to) counter
+      put (transition model to resp, Just to)
       cmds  <- go (size - 1) counter'
-      return (Command cmd (getUsedVars resp) : cmds)
+      return (Command to (getUsedVars resp) : cmds)
 
 generatorFrequency :: forall model cmd m resp. StateMachine model cmd m resp
                    -> model Symbolic
-                   -> cmd Symbolic
+                   -> Maybe (cmd Symbolic)
                    -> Gen (cmd Symbolic)
-generatorFrequency StateMachine { generator, transMat } model from =
+generatorFrequency StateMachine { generator, transMat } model mfrom =
   frequency =<< sequence (map g (generator model))
   where
     g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
     g gen = do
-      cmd <- gen
-      return (fromMaybe (\_ _ -> 1) transMat from cmd, return cmd)
+      to <- gen
+      return (transMat mfrom to, return to)
 
 debugGenerateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
                       => StateMachine model cmd m resp
                       -> Int -- ^ Minimum number of commands.
                       -> Int -- ^ Maximum number of commands.
                       -> IO ()
-debugGenerateCommands sm@StateMachine { initModel, initState } min0 max0 =
-  evalStateT (debugGenerateCommandsState sm newCounter min0 max0) (initModel, initState)
+debugGenerateCommands sm@StateMachine { initModel } min0 max0 =
+  evalStateT (debugGenerateCommandsState sm newCounter min0 max0) (initModel, Nothing)
 
 debugGenerateCommandsState :: forall model cmd m resp. Show (cmd Symbolic)
                            => ToExpr (model Symbolic)
@@ -153,25 +153,25 @@ debugGenerateCommandsState :: forall model cmd m resp. Show (cmd Symbolic)
                            -> Counter
                            -> Int -- ^ Minimum number of commands.
                            -> Int -- ^ Maximum number of commands.
-                           -> StateT (model Symbolic, cmd Symbolic) IO ()
+                           -> StateT (model Symbolic, Maybe (cmd Symbolic)) IO ()
 debugGenerateCommandsState sm@StateMachine { precondition, transition, mock } counter0 min0 max0 = do
   size0 <- liftIO (generate (choose (min0, max0)))
   go size0 counter0 Nothing
   where
-    go :: Int -> Counter -> Maybe (model Symbolic) -> StateT (model Symbolic, cmd Symbolic) IO ()
+    go :: Int -> Counter -> Maybe (model Symbolic) -> StateT (model Symbolic, Maybe (cmd Symbolic)) IO ()
     go 0    _       previous = do
       (current, _) <- get
       liftIO (print (modelDiff current previous))
       liftIO (putStrLn "")
     go size counter previous = do
-      (current, from) <- get
+      (current, mfrom) <- get
       liftIO (print (modelDiff current previous))
       liftIO (putStrLn "")
-      cmd <- liftIO (generate (generatorFrequency sm current from `suchThat`
-                                 (boolean . precondition current)))
-      liftIO (putStrLn ("  == " ++ show cmd ++ " ==>\n"))
-      let (resp, counter') = runGenSym (mock current cmd) counter
-      put ((transition current cmd resp), cmd)
+      to <- liftIO (generate (generatorFrequency sm current mfrom `suchThat`
+                               (boolean . precondition current)))
+      liftIO (putStrLn ("  == " ++ show to ++ " ==>\n"))
+      let (resp, counter') = runGenSym (mock current to) counter
+      put ((transition current to resp), Just to)
       go (size - 1) counter' (Just current)
 
 measureFrequency :: (Rank2.Foldable resp, Generic1 cmd, GConName (Rep1 cmd))
