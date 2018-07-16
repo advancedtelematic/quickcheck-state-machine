@@ -177,7 +177,7 @@ debugGenerateCommandsState sm@StateMachine { precondition, transition, mock } co
       put (transition current cmd resp)
       go (size - 1) counter' (Just current)
 
-measureFrequency :: (Ord (Command cmd), Rank2.Foldable resp)
+measureFrequency :: (Ord (cmd Symbolic), Rank2.Foldable resp)
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Int       -- ^ Maximum number of commands.
@@ -186,7 +186,7 @@ measureFrequency sm min0 size = do
   cmds <- generate (sequence [ resize n (generateCommands sm min0) | n <- [0, 2..size] ])
   return (M.unions (map calculateFrequency cmds))
 
-calculateFrequency :: Ord (Command cmd)
+calculateFrequency :: Ord (cmd Symbolic)
                    => Commands cmd -> Map (Command cmd, Maybe (Command cmd)) Int
 calculateFrequency = go M.empty . unCommands
   where

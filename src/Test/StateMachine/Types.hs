@@ -72,6 +72,8 @@ data StateMachine model cmd m resp = StateMachine
 data Command cmd = Command !(cmd Symbolic) !(Set Var)
 
 deriving instance Show (cmd Symbolic) => Show (Command cmd)
+deriving instance Eq   (cmd Symbolic) => Eq   (Command cmd)
+deriving instance Ord  (cmd Symbolic) => Ord  (Command cmd)
 
 newtype Commands cmd = Commands
   { unCommands :: [Command cmd] }
