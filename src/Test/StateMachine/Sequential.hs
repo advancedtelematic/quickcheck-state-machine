@@ -177,23 +177,26 @@ debugGenerateCommandsState sm@StateMachine { precondition, transition, mock } co
       put (transition current cmd resp)
       go (size - 1) counter' (Just current)
 
-measureFrequency :: (Ord (cmd Symbolic), Rank2.Foldable resp)
+measureFrequency :: (Rank2.Foldable resp, Generic1 cmd, GConName (Rep1 cmd))
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Int       -- ^ Maximum number of commands.
-                 -> IO (Map (Command cmd, Maybe (Command cmd)) Int)
+                 -> IO (Map (String, Maybe String) Int)
 measureFrequency sm min0 size = do
   cmds <- generate (sequence [ resize n (generateCommands sm min0) | n <- [0, 2..size] ])
   return (M.unions (map calculateFrequency cmds))
 
-calculateFrequency :: Ord (cmd Symbolic)
-                   => Commands cmd -> Map (Command cmd, Maybe (Command cmd)) Int
+calculateFrequency :: (Generic1 cmd, GConName (Rep1 cmd))
+                   => Commands cmd -> Map (String, Maybe String) Int
 calculateFrequency = go M.empty . unCommands
   where
-    go m []                   = m
-    go m [cmd]                = M.insertWith (\_ old -> old + 1) (cmd, Nothing) 1 m
-    go m (cmd1 : cmd2 : cmds) =
-      go (M.insertWith (\_ old -> old + 1) (cmd1, Just (cmd2)) 1 m) cmds
+    go m [] = m
+    go m [Command cmd _]
+      = M.insertWith (\_ old -> old + 1) (gconName (from1 cmd), Nothing) 1 m
+    go m (Command cmd1 _ : Command cmd2 _ : cmds)
+      = go (M.insertWith (\_ old -> old + 1) (gconName (from1 cmd1),
+                                              Just (gconName (from1 cmd2))) 1 m) cmds
+
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
