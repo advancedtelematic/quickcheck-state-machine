@@ -59,7 +59,7 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
-import           Data.Map
+import           Data.Map.Strict
                    (Map)
 import qualified Data.Map                      as M
 import           Data.Maybe
