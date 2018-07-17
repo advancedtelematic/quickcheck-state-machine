@@ -1,10 +1,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeOperators       #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -59,22 +56,20 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
+import qualified Data.Map                          as M
 import           Data.Map.Strict
                    (Map)
-import qualified Data.Map                      as M
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                      as S
+import qualified Data.Set                          as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExpr, ediff)
 import           GHC.Generics
-                   ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D,
-                   Generic1, K1, M1, Rec1, Rep1, S, U1, conName, from1,
-                   unM1, unRec1)
+                   (Generic1, Rep1, from1)
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
                    frequency, generate, resize, shrinkList, sized,
@@ -83,13 +78,14 @@ import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
-import qualified Text.PrettyPrint.ANSI.Leijen  as PP
+import qualified Text.PrettyPrint.ANSI.Leijen      as PP
 import           Text.Show.Pretty
                    (ppShow)
 
+import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import qualified Test.StateMachine.Types.Rank2     as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
@@ -372,14 +368,14 @@ prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 
 -- | Print distribution of commands and fail if some commands have not
 --   been executed.
-checkCommandNames :: (Generic1 cmd, GConName (Rep1 cmd))
+checkCommandNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
                   => Commands cmd -> Property -> Property
 checkCommandNames cmds
   = collect names
   . cover (length names == numOfConstructors) 1 "coverage"
   where
-    names = commandNames cmds
-    numOfConstructors = 3 -- XXX
+    names             = commandNames cmds
+    numOfConstructors = length (gconNames (undefined :: Rep1 cmd Symbolic))
 
 commandNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
              => Commands cmd -> [(String, Int)]
@@ -388,44 +384,9 @@ commandNames = M.toList . foldl go M.empty . unCommands
     go :: Map String Int -> Command cmd -> Map String Int
     go ih (Command cmd _) = M.insertWith (+) (gconName (from1 cmd)) 1 ih
 
-class GConName f where
-  gconName   :: f a -> String
-  -- gconNumber :: f a -> Int
-
-instance GConName U1 where
-  gconName _ = ""
-
-instance GConName (K1 i c) where
-  gconName _ = ""
-
-instance Constructor c => GConName (M1 C c f) where
-  gconName = conName
-
-instance GConName f => GConName (M1 D d f) where
-  gconName = gconName . unM1
-
-instance GConName f => GConName (M1 S d f) where
-  gconName = gconName . unM1
-
-
-instance (GConName f, GConName g) => GConName (f :+: g) where
-  gconName (L1 x) = gconName x
-  gconName (R1 y) = gconName y
-
-instance (GConName f, GConName g) => GConName (f :*: g) where
-  gconName (x :*: y) = gconName x ++ gconName y
-
-instance GConName f => GConName (Rec1 f) where
-  gconName = gconName . unRec1
-
 commandNamesInOrder :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
                     => Commands cmd -> [String]
 commandNamesInOrder = reverse . foldl go [] . unCommands
   where
     go :: [String] -> Command cmd -> [String]
     go ih (Command cmd _) = gconName (from1 cmd) : ih
-
-------------------------------------------------------------------------
-
-instance GConName (Reference a) where
-  gconName _ = ""

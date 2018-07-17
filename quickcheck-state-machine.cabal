@@ -26,6 +26,7 @@ library
               -Wredundant-constraints
   exposed-modules:     Test.StateMachine
                      , Test.StateMachine.BoxDrawer
+                     , Test.StateMachine.ConstructorName
                      , Test.StateMachine.Logic
                      , Test.StateMachine.Parallel
                      , Test.StateMachine.Sequential
