@@ -55,6 +55,8 @@ import           Data.Set
 import qualified Data.Set                        as S
 import           Data.Tree
                    (Tree(Node))
+import           GHC.Generics
+                   (Generic1, Rep1)
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, property,
                    shrinkList, sized)
@@ -65,6 +67,7 @@ import           Text.PrettyPrint.ANSI.Leijen
 import           Text.Show.Pretty
                    (ppShow)
 
+import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.BoxDrawer
 import           Test.StateMachine.Logic
                    (boolean)
@@ -77,6 +80,7 @@ import           Test.StateMachine.Utils
 
 forAllParallelCommands :: Testable prop
                        => Show (cmd Symbolic)
+                       => (Generic1 cmd, GConName (Rep1 cmd))
                        => (Rank2.Foldable cmd, Rank2.Foldable resp)
                        => StateMachine model cmd m resp
                        -> (ParallelCommands cmd -> prop)     -- ^ Predicate.
@@ -84,7 +88,9 @@ forAllParallelCommands :: Testable prop
 forAllParallelCommands sm =
   forAllShrinkShow (generateParallelCommands sm) (shrinkParallelCommands sm) ppShow
 
-generateParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
+generateParallelCommands :: forall model cmd m resp
+                          . Rank2.Foldable resp
+                         => (Generic1 cmd, GConName (Rep1 cmd))
                          => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd)
 generateParallelCommands sm@StateMachine { initModel } = do

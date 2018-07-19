@@ -11,12 +11,12 @@
 
 module MemoryReference where
 
-import           Control.Concurrent
-                   (threadDelay)
 import           Data.Functor.Classes
                    (Eq1, Show1)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
+import           Data.Matrix
+                   (matrix)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -96,7 +96,6 @@ semantics cmd = case cmd of
   Write ref x   -> Written     <$  writeIORef (opaque ref) (if x == 5 then x + 0 else x)
   Increment ref -> do
     i <- readIORef (opaque ref)
-    threadDelay 100000
     writeIORef (opaque ref) (i + 1)
     return Incremented
 
@@ -127,7 +126,7 @@ shrinker _ = []
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition
        (Just postcondition) Nothing
-       generator (Just weight) shrinker semantics id mock
+       generator (matrix 5 4 (const 1)) shrinker semantics id mock
 
 prop_modelCheck :: Property
 prop_modelCheck = forAllCommands sm Nothing $ \cmds -> monadicIO $ do

@@ -39,6 +39,8 @@ module Test.StateMachine.Types
 
 import           Data.Functor.Classes
                    (Ord1, Show1)
+import           Data.Matrix
+                   (Matrix)
 import           Data.Semigroup
                    (Semigroup)
 import           Data.Set
@@ -62,7 +64,7 @@ data StateMachine model cmd m resp = StateMachine
   , spostcondition :: Maybe (model Symbolic -> cmd Symbolic -> resp Symbolic -> Logic)
   , invariant      :: Maybe (model Concrete -> Logic)
   , generator      :: model Symbolic -> [Gen (cmd Symbolic)]
-  , transMat       :: Maybe (cmd Symbolic) -> cmd Symbolic -> Int
+  , transMat       :: Matrix Int
   , shrinker       :: cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , runner         :: m Property -> IO Property

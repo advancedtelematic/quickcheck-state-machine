@@ -1,7 +1,8 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -56,9 +57,13 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
+import           Data.List
+                   (elemIndex)
 import qualified Data.Map                          as M
 import           Data.Map.Strict
                    (Map)
+import           Data.Matrix
+                   (getRow)
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
@@ -68,12 +73,13 @@ import           Data.Set
 import qualified Data.Set                          as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExpr, ediff)
+import qualified Data.Vector                       as V
 import           GHC.Generics
                    (Generic1, Rep1, from1)
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
-                   frequency, generate, resize, shrinkList, sized,
-                   suchThat)
+                   frequency, generate, oneof, resize, shrinkList,
+                   sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -92,6 +98,7 @@ import           Test.StateMachine.Utils
 
 forAllCommands :: Testable prop
                => Show (cmd Symbolic)
+               => (Generic1 cmd, GConName (Rep1 cmd))
                => (Rank2.Foldable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp
                -> Maybe Int -- ^ Minimum number of commands.
@@ -101,45 +108,50 @@ forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
 generateCommands :: Rank2.Foldable resp
+                 => (Generic1 cmd, GConName (Rep1 cmd))
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Gen (Commands cmd)
 generateCommands sm@StateMachine { initModel } mnum =
   evalStateT (generateCommandsState sm newCounter mnum) (initModel, Nothing)
 
-generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
+generateCommandsState :: forall model cmd m resp
+                       . Rank2.Foldable resp
+                      => (Generic1 cmd, GConName (Rep1 cmd))
                       => StateMachine model cmd m resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.
                       -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen (Commands cmd)
-generateCommandsState sm@StateMachine { precondition,
-                                        transition, mock } counter0 mnum = do
+generateCommandsState StateMachine { precondition, generator, transition
+                                   , mock, transMat } counter0 mnum = do
   size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0
   where
     go :: Int -> Counter -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen [Command cmd]
     go 0    _       = return []
     go size counter = do
-      (model, mfrom) <- get
-      to             <- lift (generatorFrequency sm model mfrom `suchThat` (boolean . precondition model))
+      (model, mfrom)  <- get
+      let genCmd  = oneof (generator model)
+          idx     = case mfrom of
+                      Nothing   -> 1
+                      Just from -> fromMaybe (error $ "no command: " <> gconName (from1 from)) $
+                                     succ <$> elemIndex (gconName (from1 from)) (gconNames (from1 from))
+          row     = V.toList $ getRow idx transMat
+          weights = zip row (gconNames (undefined :: Rep1 cmd Symbolic))
+      to <- lift $ commandFrequency genCmd weights
+                     `suchThat` (boolean . precondition model) -- XXX suchThat
       let (resp, counter') = runGenSym (mock model to) counter
       put (transition model to resp, Just to)
       cmds  <- go (size - 1) counter'
       return (Command to (getUsedVars resp) : cmds)
 
-generatorFrequency :: forall model cmd m resp. StateMachine model cmd m resp
-                   -> model Symbolic
-                   -> Maybe (cmd Symbolic)
-                   -> Gen (cmd Symbolic)
-generatorFrequency StateMachine { generator, transMat } model mfrom =
-  frequency =<< sequence (map g (generator model))
-  where
-    g :: Gen (cmd Symbolic) -> Gen (Int, Gen (cmd Symbolic))
-    g gen = do
-      to <- gen
-      return (transMat mfrom to, return to)
+commandFrequency :: (Generic1 cmd, GConName (Rep1 cmd))
+                 => Gen (cmd Symbolic) -> [(Int, String)] -> Gen (cmd Symbolic)
+commandFrequency g p =
+  frequency [(i, g `suchThat` ((== s) . gconName . from1)) | (i, s) <- p]
 
 debugGenerateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
+                      => (Generic1 cmd, GConName (Rep1 cmd))
                       => StateMachine model cmd m resp
                       -> Int -- ^ Minimum number of commands.
                       -> Int -- ^ Maximum number of commands.
@@ -148,13 +160,15 @@ debugGenerateCommands sm@StateMachine { initModel } min0 max0 =
   evalStateT (debugGenerateCommandsState sm newCounter min0 max0) (initModel, Nothing)
 
 debugGenerateCommandsState :: forall model cmd m resp. Show (cmd Symbolic)
+                           => (Generic1 cmd, GConName (Rep1 cmd))
                            => ToExpr (model Symbolic)
                            => StateMachine model cmd m resp
                            -> Counter
                            -> Int -- ^ Minimum number of commands.
                            -> Int -- ^ Maximum number of commands.
                            -> StateT (model Symbolic, Maybe (cmd Symbolic)) IO ()
-debugGenerateCommandsState sm@StateMachine { precondition, transition, mock } counter0 min0 max0 = do
+debugGenerateCommandsState StateMachine { precondition, transition, mock, transMat, generator }
+                           counter0 min0 max0 = do
   size0 <- liftIO (generate (choose (min0, max0)))
   go size0 counter0 Nothing
   where
@@ -167,8 +181,15 @@ debugGenerateCommandsState sm@StateMachine { precondition, transition, mock } co
       (current, mfrom) <- get
       liftIO (print (modelDiff current previous))
       liftIO (putStrLn "")
-      to <- liftIO (generate (generatorFrequency sm current mfrom `suchThat`
-                               (boolean . precondition current)))
+      let genCmd  = oneof (generator current)
+          idx     = case mfrom of
+                      Nothing   -> 1
+                      Just from -> fromMaybe (error $ "no command: " <> gconName (from1 from)) $
+                                     succ <$> elemIndex (gconName (from1 from)) (gconNames (from1 from))
+          row     = V.toList $ getRow idx transMat
+          weights = zip row (gconNames (undefined :: Rep1 cmd Symbolic))
+      to <- lift $ generate $ commandFrequency genCmd weights
+                                `suchThat` (boolean . precondition current) -- XXX suchThat
       liftIO (putStrLn ("  == " ++ show to ++ " ==>\n"))
       let (resp, counter') = runGenSym (mock current to) counter
       put ((transition current to resp), Just to)
