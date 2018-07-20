@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE PolyKinds             #-}
@@ -41,6 +42,7 @@ module Test.StateMachine.Sequential
   , commandNames
   , commandNamesInOrder
   , checkCommandNames
+  , transitionMatrix
   )
   where
 
@@ -63,11 +65,13 @@ import qualified Data.Map                          as M
 import           Data.Map.Strict
                    (Map)
 import           Data.Matrix
-                   (getRow)
+                   (Matrix, getRow, matrix)
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
                    ((<>))
+import           Data.Proxy
+                   (Proxy(..))
 import           Data.Set
                    (Set)
 import qualified Data.Set                          as S
@@ -130,12 +134,13 @@ generateCommandsState StateMachine { precondition, generator, transition
     go :: Int -> Counter -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen [Command cmd]
     go 0    _       = return []
     go size counter = do
-      (model, mfrom)  <- get
+      (model, mfrom) <- get
       let genCmd  = oneof (generator model)
           idx     = case mfrom of
                       Nothing   -> 1
-                      Just from -> fromMaybe (error $ "no command: " <> gconName (from1 from)) $
-                                     succ <$> elemIndex (gconName (from1 from)) (gconNames (from1 from))
+                      Just from -> let from' = from1 from
+                                   in  fromMaybe (error $ "no command: " <> gconName from') $
+                                         succ . succ <$> elemIndex (gconName from') (gconNames from')
           row     = V.toList $ getRow idx transMat
           weights = zip row (gconNames (undefined :: Rep1 cmd Symbolic))
       to <- lift $ commandFrequency genCmd weights
@@ -412,3 +417,16 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
   where
     go :: [String] -> Command cmd -> [String]
     go ih (Command cmd _) = gconName (from1 cmd) : ih
+
+
+transitionMatrix :: forall cmd
+                  . GConName (Rep1 cmd)
+                 => Proxy (cmd Symbolic)
+                 -> (String -> String -> Int) -> Matrix Int
+transitionMatrix _ f =
+  let cons = gconNames (undefined :: Rep1 cmd Symbolic)
+      n    = length cons
+      m    = succ n
+  in matrix m n $ \case
+                    (1, j) -> f "<START>"               (cons !! pred j)
+                    (i, j) -> f (cons !! pred (pred i)) (cons !! pred j)
