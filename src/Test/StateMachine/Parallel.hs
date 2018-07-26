@@ -81,7 +81,7 @@ import           Test.StateMachine.Utils
 
 forAllParallelCommands :: Testable prop
                        => Show (cmd Symbolic)
-                       => (Generic1 cmd, GConName (Rep1 cmd))
+                       => (Generic1 cmd, GConName1 (Rep1 cmd))
                        => (Rank2.Foldable cmd, Rank2.Foldable resp)
                        => StateMachine model cmd m resp
                        -> (ParallelCommands cmd -> prop)     -- ^ Predicate.
@@ -91,7 +91,7 @@ forAllParallelCommands sm =
 
 generateParallelCommands :: forall model cmd m resp
                           . Rank2.Foldable resp
-                         => (Generic1 cmd, GConName (Rep1 cmd))
+                         => (Generic1 cmd, GConName1 (Rep1 cmd))
                          => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd)
 generateParallelCommands sm@StateMachine { initModel } = do

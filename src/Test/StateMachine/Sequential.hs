@@ -107,7 +107,7 @@ import           Test.StateMachine.Utils
 
 forAllCommands :: Testable prop
                => Show (cmd Symbolic)
-               => (Generic1 cmd, GConName (Rep1 cmd))
+               => (Generic1 cmd, GConName1 (Rep1 cmd))
                => (Rank2.Foldable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp
                -> Maybe Int -- ^ Minimum number of commands.
@@ -117,7 +117,7 @@ forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
 generateCommands :: Rank2.Foldable resp
-                 => (Generic1 cmd, GConName (Rep1 cmd))
+                 => (Generic1 cmd, GConName1 (Rep1 cmd))
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Gen (Commands cmd)
@@ -126,7 +126,7 @@ generateCommands sm@StateMachine { initModel } mnum =
 
 generateCommandsState :: forall model cmd m resp
                        . Rank2.Foldable resp
-                      => (Generic1 cmd, GConName (Rep1 cmd))
+                      => (Generic1 cmd, GConName1 (Rep1 cmd))
                       => StateMachine model cmd m resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.
@@ -143,11 +143,12 @@ generateCommandsState StateMachine { precondition, generator, transition
       let genCmd  = oneof (generator model)
           idx     = case mfrom of
                       Nothing   -> 1
-                      Just from -> let from' = from1 from
-                                   in  fromMaybe (error $ "no command: " <> gconName from') $
-                                         succ . succ <$> elemIndex (gconName from') (gconNames from')
+                      Just from ->
+                        let from' = from1 from in
+                        fromMaybe (error $ "no command: " <> gconName1 from') $
+                          succ . succ <$> elemIndex (gconName1 from') (gconNames1 from')
           row     = V.toList $ getRow idx transMat
-          weights = zip row (gconNames (undefined :: Rep1 cmd Symbolic))
+          weights = zip row (gconNames1 (undefined :: Rep1 cmd Symbolic))
       to <- lift $ commandFrequency genCmd weights
                      `suchThat` (boolean . precondition model) -- XXX suchThat
       let (resp, counter') = runGenSym (mock model to) counter
@@ -155,13 +156,13 @@ generateCommandsState StateMachine { precondition, generator, transition
       cmds  <- go (size - 1) counter'
       return (Command to (getUsedVars resp) : cmds)
 
-commandFrequency :: (Generic1 cmd, GConName (Rep1 cmd))
+commandFrequency :: (Generic1 cmd, GConName1 (Rep1 cmd))
                  => Gen (cmd Symbolic) -> [(Int, String)] -> Gen (cmd Symbolic)
 commandFrequency g p =
-  frequency [(i, g `suchThat` ((== s) . gconName . from1)) | (i, s) <- p]
+  frequency [(i, g `suchThat` ((== s) . gconName1 . from1)) | (i, s) <- p]
 
 debugGenerateCommands :: (Show (cmd Symbolic), ToExpr (model Symbolic))
-                      => (Generic1 cmd, GConName (Rep1 cmd))
+                      => (Generic1 cmd, GConName1 (Rep1 cmd))
                       => StateMachine model cmd m resp
                       -> Int -- ^ Minimum number of commands.
                       -> Int -- ^ Maximum number of commands.
@@ -170,7 +171,7 @@ debugGenerateCommands sm@StateMachine { initModel } min0 max0 =
   evalStateT (debugGenerateCommandsState sm newCounter min0 max0) (initModel, Nothing)
 
 debugGenerateCommandsState :: forall model cmd m resp. Show (cmd Symbolic)
-                           => (Generic1 cmd, GConName (Rep1 cmd))
+                           => (Generic1 cmd, GConName1 (Rep1 cmd))
                            => ToExpr (model Symbolic)
                            => StateMachine model cmd m resp
                            -> Counter
@@ -182,7 +183,8 @@ debugGenerateCommandsState StateMachine { precondition, transition, mock, transM
   size0 <- liftIO (generate (choose (min0, max0)))
   go size0 counter0 Nothing
   where
-    go :: Int -> Counter -> Maybe (model Symbolic) -> StateT (model Symbolic, Maybe (cmd Symbolic)) IO ()
+    go :: Int -> Counter -> Maybe (model Symbolic)
+       -> StateT (model Symbolic, Maybe (cmd Symbolic)) IO ()
     go 0    _       previous = do
       (current, _) <- get
       liftIO (print (modelDiff current previous))
@@ -194,10 +196,10 @@ debugGenerateCommandsState StateMachine { precondition, transition, mock, transM
       let genCmd  = oneof (generator current)
           idx     = case mfrom of
                       Nothing   -> 1
-                      Just from -> fromMaybe (error $ "no command: " <> gconName (from1 from)) $
-                                     succ <$> elemIndex (gconName (from1 from)) (gconNames (from1 from))
+                      Just from -> fromMaybe (error $ "no command: " <> gconName1 (from1 from)) $
+                                     succ <$> elemIndex (gconName1 (from1 from)) (gconNames1 (from1 from))
           row     = V.toList $ getRow idx transMat
-          weights = zip row (gconNames (undefined :: Rep1 cmd Symbolic))
+          weights = zip row (gconNames1 (undefined :: Rep1 cmd Symbolic))
       to <- lift $ generate $ commandFrequency genCmd weights
                                 `suchThat` (boolean . precondition current) -- XXX suchThat
       liftIO (putStrLn ("  == " ++ show to ++ " ==>\n"))
@@ -205,7 +207,7 @@ debugGenerateCommandsState StateMachine { precondition, transition, mock, transM
       put ((transition current to resp), Just to)
       go (size - 1) counter' (Just current)
 
-measureFrequency :: (Rank2.Foldable resp, Generic1 cmd, GConName (Rep1 cmd))
+measureFrequency :: (Rank2.Foldable resp, Generic1 cmd, GConName1 (Rep1 cmd))
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Int       -- ^ Maximum number of commands.
@@ -214,16 +216,16 @@ measureFrequency sm min0 size = do
   cmds <- generate (sequence [ resize n (generateCommands sm min0) | n <- [0, 2..size] ])
   return (M.unions (map calculateFrequency cmds))
 
-calculateFrequency :: (Generic1 cmd, GConName (Rep1 cmd))
+calculateFrequency :: (Generic1 cmd, GConName1 (Rep1 cmd))
                    => Commands cmd -> Map (String, Maybe String) Int
 calculateFrequency = go M.empty . unCommands
   where
     go m [] = m
-    go m [Command cmd _]
-      = M.insertWith (\_ old -> old + 1) (gconName (from1 cmd), Nothing) 1 m
-    go m (Command cmd1 _ : Command cmd2 _ : cmds)
-      = go (M.insertWith (\_ old -> old + 1) (gconName (from1 cmd1),
-                                              Just (gconName (from1 cmd2))) 1 m) cmds
+    go m [cmd]
+      = M.insertWith (\_ old -> old + 1) (gconName cmd, Nothing) 1 m
+    go m (cmd1 : cmd2 : cmds)
+      = go (M.insertWith (\_ old -> old + 1) (gconName cmd1,
+                                              Just (gconName cmd2)) 1 m) cmds
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
@@ -406,36 +408,36 @@ prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 
 -- | Print distribution of commands and fail if some commands have not
 --   been executed.
-checkCommandNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
+checkCommandNames :: forall cmd. (Generic1 cmd, GConName1 (Rep1 cmd))
                   => Commands cmd -> Property -> Property
 checkCommandNames cmds
   = collect names
   . cover (length names == numOfConstructors) 1 "coverage"
   where
     names             = commandNames cmds
-    numOfConstructors = length (gconNames (undefined :: Rep1 cmd Symbolic))
+    numOfConstructors = length (gconNames1 (undefined :: Rep1 cmd Symbolic))
 
-commandNames :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
+commandNames :: forall cmd. (Generic1 cmd, GConName1 (Rep1 cmd))
              => Commands cmd -> [(String, Int)]
 commandNames = M.toList . foldl go M.empty . unCommands
   where
     go :: Map String Int -> Command cmd -> Map String Int
-    go ih (Command cmd _) = M.insertWith (+) (gconName (from1 cmd)) 1 ih
+    go ih cmd = M.insertWith (+) (gconName cmd) 1 ih
 
-commandNamesInOrder :: forall cmd. (Generic1 cmd, GConName (Rep1 cmd))
+commandNamesInOrder :: forall cmd. (Generic1 cmd, GConName1 (Rep1 cmd))
                     => Commands cmd -> [String]
 commandNamesInOrder = reverse . foldl go [] . unCommands
   where
     go :: [String] -> Command cmd -> [String]
-    go ih (Command cmd _) = gconName (from1 cmd) : ih
+    go ih cmd = gconName cmd : ih
 
 
 transitionMatrix :: forall cmd
-                  . GConName (Rep1 cmd)
+                  . GConName1 (Rep1 cmd)
                  => Proxy (cmd Symbolic)
                  -> (String -> String -> Int) -> Matrix Int
 transitionMatrix _ f =
-  let cons = gconNames (undefined :: Rep1 cmd Symbolic)
+  let cons = gconNames1 (undefined :: Rep1 cmd Symbolic)
       n    = length cons
       m    = succ n
   in matrix m n $ \case
