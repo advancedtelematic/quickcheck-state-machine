@@ -114,12 +114,6 @@ generator (Model model) =
   , Increment <$> elements (domain model)
   ]
 
-weight :: Model Symbolic -> Command Symbolic -> Int
-weight (Model model) Create | null model = 10
-                            | otherwise  = 5
-weight (Model model) _      | null model = 0
-                            | otherwise  = 5
-
 shrinker :: Command Symbolic -> [Command Symbolic]
 shrinker _ = []
 

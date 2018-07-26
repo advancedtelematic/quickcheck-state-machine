@@ -29,9 +29,9 @@ module Test.StateMachine.Utils
   where
 
 import           Test.QuickCheck
-                   (Gen, Property, Testable, again, choose,
-                   counterexample, frequency, resize, shrinking, sized,
-                   suchThatMaybe, whenFail)
+                   (Gen, Property, Testable, again, counterexample,
+                   frequency, resize, shrinking, sized, suchThatMaybe,
+                   whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
