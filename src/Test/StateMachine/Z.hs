@@ -16,21 +16,26 @@
 
 module Test.StateMachine.Z where
 
-import qualified Data.List as List
+import qualified Data.List               as L
+import qualified Prelude                 as P
+import           Prelude                 hiding
+                   (elem, notElem)
+
+import           Test.StateMachine.Logic
 
 ------------------------------------------------------------------------
 
 union :: Eq a => [a] -> [a] -> [a]
-union = List.union
+union = L.union
 
 intersect :: Eq a => [a] -> [a] -> [a]
-intersect = List.intersect
+intersect = L.intersect
 
-isSubsetOf :: Eq a => [a] -> [a] -> Bool
-r `isSubsetOf` s = r == r `intersect` s
+isSubsetOf :: (Eq a, Show a) => [a] -> [a] -> Logic
+r `isSubsetOf` s = r .== r `intersect` s
 
-(~=) :: Eq a => [a] -> [a] -> Bool
-xs ~= ys = xs `isSubsetOf` ys && ys `isSubsetOf` xs
+(~=) :: (Eq a, Show a) => [a] -> [a] -> Logic
+xs ~= ys = xs `isSubsetOf` ys :&& ys `isSubsetOf` xs
 
 ------------------------------------------------------------------------
 
@@ -85,7 +90,7 @@ lookupCod y xys = xys >>= \(x, y') -> [ x | y == y' ]
 -- [('a',"apa")]
 --
 (<|) :: Eq a => [a] -> Rel a b -> Rel a b
-xs <| xys = [ (x, y) | (x, y) <- xys, x `elem` xs ]
+xs <| xys = [ (x, y) | (x, y) <- xys, x `P.elem` xs ]
 
 -- | Codomain restriction.
 --
@@ -93,7 +98,7 @@ xs <| xys = [ (x, y) | (x, y) <- xys, x `elem` xs ]
 -- [('a',"apa")]
 --
 (|>) :: Eq b => Rel a b -> [b] -> Rel a b
-xys |> ys = [ (x, y) | (x, y) <- xys, y `elem` ys ]
+xys |> ys = [ (x, y) | (x, y) <- xys, y `P.elem` ys ]
 
 -- | Domain substraction.
 --
@@ -101,7 +106,7 @@ xys |> ys = [ (x, y) | (x, y) <- xys, y `elem` ys ]
 -- [('b',"bepa")]
 --
 (<-|) :: Eq a => [a] -> Rel a b -> Rel a b
-xs <-| xys = [ (x, y) | (x, y) <- xys, x `notElem` xs ]
+xs <-| xys = [ (x, y) | (x, y) <- xys, x `P.notElem` xs ]
 
 -- | Codomain substraction.
 --
@@ -109,7 +114,7 @@ xs <-| xys = [ (x, y) | (x, y) <- xys, x `notElem` xs ]
 -- [('b',"bepa")]
 --
 (|->) :: Eq b => Rel a b -> [b] -> Rel a b
-xys |-> ys = [ (x, y) | (x, y) <- xys, y `notElem` ys ]
+xys |-> ys = [ (x, y) | (x, y) <- xys, y `P.notElem` ys ]
 
 -- | The image of a relation.
 image :: Eq a => Rel a b -> [a] -> [b]
@@ -145,35 +150,35 @@ acs <||> bds =
 
 ------------------------------------------------------------------------
 
-isTotalRel :: Eq a => Rel a b -> [a] -> Bool
+isTotalRel :: (Eq a, Show a) => Rel a b -> [a] -> Logic
 isTotalRel r xs = domain r ~= xs
 
-isSurjRel :: Eq b => Rel a b -> [b] -> Bool
+isSurjRel :: (Eq b, Show b) => Rel a b -> [b] -> Logic
 isSurjRel r ys = codomain r ~= ys
 
-isTotalSurjRel :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
-isTotalSurjRel r xs ys = isTotalRel r xs && isSurjRel r ys
+isTotalSurjRel :: (Eq a, Eq b, Show a, Show b) => Rel a b -> [a] -> [b] -> Logic
+isTotalSurjRel r xs ys = isTotalRel r xs :&& isSurjRel r ys
 
-isPartialFun :: (Eq a, Eq b) => Rel a b -> Bool
+isPartialFun :: (Eq a, Eq b, Show b) => Rel a b -> Logic
 isPartialFun f  = (f `compose` inverse f) ~= identity (codomain f)
 
-isTotalFun :: (Eq a, Eq b) => Rel a b -> [a] -> Bool
-isTotalFun r xs = isPartialFun r && isTotalRel r xs
+isTotalFun :: (Eq a, Eq b, Show a, Show b) => Rel a b -> [a] -> Logic
+isTotalFun r xs = isPartialFun r :&& isTotalRel r xs
 
-isPartialInj :: (Eq a, Eq b) => Rel a b -> Bool
-isPartialInj r = isPartialFun r && isPartialFun (inverse r)
+isPartialInj :: (Eq a, Eq b, Show a, Show b) => Rel a b -> Logic
+isPartialInj r = isPartialFun r :&& isPartialFun (inverse r)
 
-isTotalInj :: (Eq a, Eq b) => Rel a b -> [a] -> Bool
-isTotalInj r xs = isTotalFun r xs && isPartialFun (inverse r)
+isTotalInj :: (Eq a, Eq b, Show a, Show b) => Rel a b -> [a] -> Logic
+isTotalInj r xs = isTotalFun r xs :&& isPartialFun (inverse r)
 
-isPartialSurj :: (Eq a, Eq b) => Rel a b -> [b] -> Bool
-isPartialSurj r ys = isPartialFun r && isSurjRel r ys
+isPartialSurj :: (Eq a, Eq b, Show b) => Rel a b -> [b] -> Logic
+isPartialSurj r ys = isPartialFun r :&& isSurjRel r ys
 
-isTotalSurj :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
-isTotalSurj r xs ys = isTotalFun r xs && isSurjRel r ys
+isTotalSurj :: (Eq a, Eq b, Show a, Show b) => Rel a b -> [a] -> [b] -> Logic
+isTotalSurj r xs ys = isTotalFun r xs :&& isSurjRel r ys
 
-isBijection :: (Eq a, Eq b) => Rel a b -> [a] -> [b] -> Bool
-isBijection r xs ys = isTotalInj r xs && isTotalSurj r xs ys
+isBijection :: (Eq a, Eq b, Show a, Show b) => Rel a b -> [a] -> [b] -> Logic
+isBijection r xs ys = isTotalInj r xs :&& isTotalSurj r xs ys
 
 -- | Application.
 (!) :: (Eq a, Show a, Show b) => Fun a b -> a -> b
