@@ -11,8 +11,8 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module provides a propositional logic which gives counterexamples when
--- the proposition is false.
+-- This module defines a predicate logic-like language and its counterexample
+-- semantics.
 --
 -----------------------------------------------------------------------------
 
@@ -32,9 +32,10 @@ data Logic
   | Logic :=> Logic
   | Not Logic
   | Predicate Predicate
+  | forall a. Show a => Forall [a] (a -> Logic)
+  | forall a. Show a => Exists [a] (a -> Logic)
   | Boolean Bool
   | Annotate String Logic
-  deriving Show
 
 data Predicate
   = forall a. (Eq  a, Show a) => a :== a
@@ -47,17 +48,6 @@ data Predicate
   | forall a. (Eq  a, Show a) => NotElem a [a]
 
 deriving instance Show Predicate
-
-instance Eq Predicate where
-  _ :==   _   == _ :==   _   = True
-  _ :/=   _   == _ :/=   _   = True
-  _ :<    _   == _ :<    _   = True
-  _ :<=   _   == _ :<=   _   = True
-  _ :>    _   == _ :>    _   = True
-  _ :>=   _   == _ :>=   _   = True
-  Elem    _ _ == Elem    _ _ = True
-  NotElem _ _ == NotElem _ _ = True
-  _           == _           = False
 
 dual :: Predicate -> Predicate
 dual p = case p of
@@ -80,6 +70,8 @@ strongNeg l0 = case l0 of
   l :=> r      ->           l :&& strongNeg r
   Not l        -> l
   Predicate p  -> Predicate (dual p)
+  Forall xs p  -> Exists xs (strongNeg . p)
+  Exists xs p  -> Forall xs (strongNeg . p)
   Boolean b    -> Boolean (not b)
   Annotate s l -> Annotate s (strongNeg l)
 
@@ -91,9 +83,12 @@ data Counterexample
   | ImpliesC Counterexample
   | NotC Counterexample
   | PredicateC Predicate
+  | forall a. Show a => ForallC a Counterexample
+  | forall a. Show a => ExistsC [a] [Counterexample]
   | BooleanC
   | AnnotateC String Counterexample
-  deriving (Eq, Show)
+
+deriving instance Show Counterexample
 
 data Value
   = VFalse Counterexample
@@ -127,6 +122,18 @@ logic (Not l)        = case logic (strongNeg l) of
   VTrue     -> VTrue
   VFalse ce -> VFalse (NotC ce)
 logic (Predicate p)  = predicate p
+logic (Forall xs0 p) = go xs0
+  where
+    go []       = VTrue
+    go (x : xs) = case logic (p x) of
+      VTrue     -> go xs
+      VFalse ce -> VFalse (ForallC x ce)
+logic (Exists xs0 p) = go xs0 []
+  where
+    go []       ces = VFalse (ExistsC xs0 (reverse ces))
+    go (x : xs) ces = case logic (p x) of
+      VTrue     -> VTrue
+      VFalse ce -> go xs (ce : ces)
 logic (Boolean b)    = if b then VTrue else VFalse BooleanC
 logic (Annotate s l) = case logic l of
   VTrue     -> VTrue
