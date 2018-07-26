@@ -1,4 +1,4 @@
-resolver: lts-11.9
+resolver: lts-12.2
 packages:
   - '.'
 nix:

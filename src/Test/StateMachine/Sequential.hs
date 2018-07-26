@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -50,6 +51,10 @@ import           Control.Concurrent.STM
                    (atomically)
 import           Control.Concurrent.STM.TChan
                    (TChan, newTChanIO, tryReadTChan, writeTChan)
+import           Control.Exception
+                   (ErrorCall, IOException, displayException)
+import           Control.Monad.Catch
+                   (MonadCatch, catch)
 import           Control.Monad.State
                    (MonadIO, State, StateT, evalState, evalStateT, get,
                    lift, liftIO, put, runStateT)
@@ -220,7 +225,6 @@ calculateFrequency = go M.empty . unCommands
       = go (M.insertWith (\_ old -> old + 1) (gconName (from1 cmd1),
                                               Just (gconName (from1 cmd2))) 1 m) cmds
 
-
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
 
@@ -284,13 +288,13 @@ modelCheck StateMachine { initModel, transition, precondition, spostcondition, m
           let (resp, counter') = runGenSym (mock m cmd) counter in
           case logic (fromMaybe err spostcondition m cmd resp) of
             VTrue     -> go (transition m cmd resp) counter' cmds
-            VFalse ce -> PostconditionFailed ce
+            VFalse ce -> PostconditionFailed (show ce)
             where
               err = error "modelCheck: Symbolic post-condition must be \
                           \ specificed in state machine in order to do model checking."
 
 runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-            => MonadBaseControl IO m
+            => (MonadCatch m, MonadBaseControl IO m)
             => StateMachine model cmd m resp
             -> Commands cmd
             -> PropertyM m (History cmd resp, model Concrete, Reason)
@@ -313,7 +317,7 @@ getChanContents chan = reverse <$> atomically (go' [])
         Nothing -> return acc
 
 executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                => MonadBaseControl IO m
+                => (MonadCatch m, MonadBaseControl IO m)
                 => StateMachine model cmd m resp
                 -> TChan (Pid, HistoryEvent cmd resp)
                 -> Pid
@@ -328,23 +332,30 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
       (env, model) <- get
       let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
       liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
-      cresp <- lift (semantics ccmd)
-      liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
-      if check
-      then case logic (postcondition model ccmd cresp) of
-        VFalse ce -> return (PostconditionFailed ce)
-        VTrue     -> case logic (fromMaybe (const Top) invariant model) of
-                       VFalse ce' -> return (InvariantBroken ce')
-                       VTrue      -> do
-                         put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
-                             , transition model ccmd cresp
-                             )
-                         go cmds
-      else do
-        put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
-            , transition model ccmd cresp
-            )
-        go cmds
+      !ecresp <- lift (fmap Right (semantics ccmd))
+                   `catch` (\(err :: IOException) ->
+                               return (Left (ExceptionThrown (displayException err))))
+                   `catch` (\(err :: ErrorCall) ->
+                               return (Left (ExceptionThrown (displayException err))))
+      case ecresp of
+        Left err    -> return err
+        Right cresp -> do
+          liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
+          if check
+          then case logic (postcondition model ccmd cresp) of
+            VFalse ce -> return (PostconditionFailed (show ce))
+            VTrue     -> case logic (fromMaybe (const Top) invariant model) of
+                           VFalse ce' -> return (InvariantBroken (show ce'))
+                           VTrue      -> do
+                             put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+                                 , transition model ccmd cresp
+                                 )
+                             go cmds
+          else do
+            put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+                , transition model ccmd cresp
+                )
+            go cmds
 
 getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
 getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])

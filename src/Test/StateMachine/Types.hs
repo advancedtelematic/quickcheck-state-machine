@@ -87,8 +87,9 @@ lengthCommands = length . unCommands
 data Reason
   = Ok
   | PreconditionFailed
-  | PostconditionFailed Counterexample
-  | InvariantBroken Counterexample
+  | PostconditionFailed String
+  | InvariantBroken String
+  | ExceptionThrown String
   deriving (Eq, Show)
 
 data ParallelCommandsF t cmd = ParallelCommands
