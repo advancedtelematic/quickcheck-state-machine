@@ -24,12 +24,14 @@ module Test.StateMachine.Utils
   , anyP
   , shrinkPair
   , shrinkPair'
+  , suchThatOneOf
   )
   where
 
 import           Test.QuickCheck
-                   (Gen, Property, Testable, again, counterexample,
-                   shrinking, whenFail)
+                   (Gen, Property, Testable, again, choose,
+                   counterexample, frequency, resize, shrinking, sized,
+                   suchThatMaybe, whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
@@ -83,3 +85,27 @@ instance Testable () where
     where
     liftUnit () = succeeded
 #endif
+
+-- | Like 'Test.QuickCheck.suchThatMaybe', but retries @n@ times.
+suchThatMaybeN :: Int -> Gen a -> (a -> Bool) -> Gen (Maybe a)
+suchThatMaybeN 0 _   _ = return Nothing
+suchThatMaybeN n gen p = do
+  mx <- gen `suchThatMaybe` p
+  case mx of
+    Just x  -> return (Just x)
+    Nothing -> sized (\m -> resize (m + 1) (suchThatMaybeN (n - 1) gen p))
+
+suchThatOneOf :: [(Int, Gen a)] -> (a -> Bool) -> Gen (Maybe a)
+gens0 `suchThatOneOf` p = go gens0 (length gens0 - 1)
+  where
+    go []   _ = return Nothing
+    go gens n = do
+      i <- frequency (zip (map fst gens) (map return [0 .. n]))
+      case splitAt i gens of
+        (_,     [])           -> error ("suchThatOneOf: impossible, as we" ++
+                                       " split the list on its length - 1.")
+        (gens', gen : gens'') -> do
+           mx <- suchThatMaybeN 10 (snd gen) p
+           case mx of
+             Just x  -> return (Just x)
+             Nothing -> go (gens' ++ gens'') (n - 1)

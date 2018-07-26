@@ -192,3 +192,9 @@ notElem x xs = Predicate (NotElem x xs)
 
 (.//) :: Logic -> String -> Logic
 l .// s = Annotate s l
+
+forall :: Show a => [a] -> (a -> Logic) -> Logic
+forall = Forall
+
+exists :: Show a => [a] -> (a -> Logic) -> Logic
+exists = Exists
