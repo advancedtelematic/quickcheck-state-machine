@@ -52,6 +52,7 @@ library
         monad-control >=1.0.2.2,
         mtl >=2.2.1,
         pretty-show,
+        random,
         QuickCheck >=2.9.2,
         split >=0.2.3.3,
         stm >=2.4.4.1,
@@ -64,7 +65,13 @@ test-suite quickcheck-state-machine-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base,
-                       quickcheck-state-machine
+                       matrix >=0.3.5.0,
+                       QuickCheck >=2.9.2,
+                       quickcheck-state-machine,
+                       random,
+                       tree-diff,
+                       tasty,
+                       tasty-quickcheck
   ghc-options:
               -threaded -rtsopts -with-rtsopts=-N
               -Wall

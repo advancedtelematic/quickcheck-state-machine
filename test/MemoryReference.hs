@@ -11,10 +11,13 @@
 
 module MemoryReference where
 
+import           Control.Concurrent
+                   (threadDelay)
 import           Data.Functor.Classes
                    (Eq1, Show1)
 import           Data.IORef
-                   (IORef, newIORef, readIORef, writeIORef)
+                   (IORef, atomicModifyIORef', newIORef, readIORef,
+                   writeIORef)
 import           Data.Matrix
                    (matrix)
 import           Data.TreeDiff
@@ -23,6 +26,9 @@ import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude                       hiding
                    (elem)
+import qualified Prelude
+import           System.Random
+                   (randomRIO)
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, collect, elements, (===))
 import           Test.QuickCheck.Monadic
@@ -89,14 +95,32 @@ postcondition (Model m) cmd resp = case (cmd, resp) of
   (Increment _ref, Incremented) -> Top
   _                             -> Bot
 
-semantics :: Command Concrete -> IO (Response Concrete)
-semantics cmd = case cmd of
+data Bug
+  = None
+  | Logic
+  | Race
+  deriving Eq
+
+semantics :: Bug -> Command Concrete -> IO (Response Concrete)
+semantics bug cmd = case cmd of
   Create        -> Created     <$> (reference . Opaque <$> newIORef 0)
   Read ref      -> ReadValue   <$> readIORef  (opaque ref)
-  Write ref x   -> Written     <$  writeIORef (opaque ref) (if x == 5 then x + 0 else x)
+  Write ref i   -> Written     <$  writeIORef (opaque ref) i'
+    where
+    -- One of the problems is a bug that writes a wrong value to the
+    -- reference.
+      i' | i `Prelude.elem` [5..10] = if bug == Logic then i + 1 else i
+         | otherwise                = i
   Increment ref -> do
-    i <- readIORef (opaque ref)
-    writeIORef (opaque ref) (i + 1)
+    -- The other problem is that we introduce a possible race condition
+    -- when incrementing.
+    if bug == Race
+    then do
+      i <- readIORef (opaque ref)
+      threadDelay =<< randomRIO (0, 5000)
+      writeIORef (opaque ref) (i + 1)
+    else
+      atomicModifyIORef' (opaque ref) (\i -> (i + 1, ()))
     return Incremented
 
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
@@ -117,22 +141,28 @@ generator (Model model) =
 shrinker :: Command Symbolic -> [Command Symbolic]
 shrinker _ = []
 
-sm :: StateMachine Model Command IO Response
-sm = StateMachine initModel transition precondition postcondition
-       (Just postcondition) Nothing
-       generator (matrix 5 4 (const 1)) shrinker semantics id mock
+sm :: Bug -> StateMachine Model Command IO Response
+sm bug = StateMachine initModel transition precondition postcondition
+           (Just postcondition) Nothing
+           generator (matrix 5 4 (const 1)) shrinker (semantics bug) id mock
 
-prop_modelCheck :: Property
-prop_modelCheck = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
-  res <- modelCheck sm cmds
+prop_modelCheck :: Bug -> Property
+prop_modelCheck bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
+  res <- modelCheck sm' cmds
   return (res === Ok)
+    where
+      sm' = sm bug
 
-prop_sequential :: Property
-prop_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
-  (hist, _model, res) <- runCommands sm cmds
-  prettyCommands sm hist (checkCommandNames cmds (res === Ok))
+prop_sequential :: Bug -> Property
+prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
+  (hist, _model, res) <- runCommands sm' cmds
+  prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
+    where
+      sm' = sm bug
 
-prop_parallel :: Property
-prop_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $ do
+prop_parallel :: Bug -> Property
+prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
   monitor (collect cmds)
-  prettyParallelCommands cmds =<< runParallelCommands sm cmds
+  prettyParallelCommands cmds =<< runParallelCommands sm' cmds
+    where
+      sm' = sm bug
