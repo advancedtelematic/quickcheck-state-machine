@@ -14,7 +14,46 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Z where
+module Test.StateMachine.Z
+  ( union
+  , intersect
+  , isSubsetOf
+  , (~=)
+  , Rel
+  , Fun
+  , empty
+  , identity
+  , singleton
+  , domain
+  , codomain
+  , compose
+  , fcompose
+  , inverse
+  , lookupDom
+  , lookupCod
+  , (<|)
+  , (|>)
+  , (<-|)
+  , (|->)
+  , image
+  , (<+)
+  , (<**>)
+  , (<||>)
+  , isTotalRel
+  , isSurjRel
+  , isTotalSurjRel
+  , isPartialFun
+  , isTotalFun
+  , isPartialInj
+  , isTotalInj
+  , isPartialSurj
+  , isTotalSurj
+  , isBijection
+  , (!)
+  , (.%)
+  , (.!)
+  , (.=)
+  ) where
 
 import qualified Data.List               as L
 import qualified Prelude                 as P

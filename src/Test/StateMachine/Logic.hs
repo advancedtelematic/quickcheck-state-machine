@@ -16,7 +16,33 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Logic where
+module Test.StateMachine.Logic
+  ( Logic(..)
+  , Predicate(..)
+  , dual
+  , strongNeg
+  , Counterexample(..)
+  , Value(..)
+  , boolean
+  , logic
+  , predicate
+  , (.==)
+  , (./=)
+  , (.<)
+  , (.<=)
+  , (.>)
+  , (.>=)
+  , elem
+  , notElem
+  , (.//)
+  , forall
+  , exists
+  )
+  where
+
+import           Prelude hiding
+                   (elem, notElem)
+import qualified Prelude
 
 ------------------------------------------------------------------------
 

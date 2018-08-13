@@ -21,6 +21,7 @@ module Test.StateMachine.BoxDrawer
   , exec
   ) where
 
+import           Prelude
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc, text, vsep)
 

@@ -375,16 +375,17 @@ Here are some more examples to get you started:
     to use. In this example, unlike in the last one, the server is setup and
     torn down once per property rather than generate program.
 
-All examples have an associated `Spec` module located in
-the
-[`example/test`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/example/test) directory.
-These make use of the properties in the examples, and get tested as part
-of
-[Travis CI](https://travis-ci.org/advancedtelematic/quickcheck-state-machine).
+All properties from the examples can be found in the
+[`Spec`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/test/Spec.hs)
+module located in the
+[`test`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/test)
+directory. The properties from the examples get tested as part of [Travis
+CI](https://travis-ci.org/advancedtelematic/quickcheck-state-machine).
 
 To get a better feel for the examples it might be helpful to `git clone` this
-repo, `cd` into the `example/` directory and fire up `stack ghci` and run the
-different properties interactively.
+repo, `cd` into it, fire up `stack ghci --test`, load the different examples,
+e.g. `:l test/CrudWebserverDb.hs`, and run the different properties
+interactively.
 
 ### How to contribute
 

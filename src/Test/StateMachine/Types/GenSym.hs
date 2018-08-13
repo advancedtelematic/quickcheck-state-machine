@@ -25,6 +25,7 @@ import           Control.Monad.State
                    (State, get, put, runState)
 import           Data.Typeable
                    (Typeable)
+import           Prelude
 
 import           Test.StateMachine.Types.References
 

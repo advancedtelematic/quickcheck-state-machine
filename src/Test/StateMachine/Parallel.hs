@@ -25,6 +25,7 @@ module Test.StateMachine.Parallel
   , validParallelCommands
   , prop_splitCombine
   , runParallelCommands
+  , runParallelCommandsNTimes
   , linearise
   , toBoxDrawings
   , prettyParallelCommands
@@ -34,11 +35,12 @@ import           Control.Arrow
                    ((***))
 import           Control.Concurrent.Async.Lifted
                    (concurrently)
-import           Control.Monad.Catch (MonadCatch)
 import           Control.Concurrent.STM.TChan
                    (newTChanIO)
 import           Control.Monad
                    (foldM, replicateM)
+import           Control.Monad.Catch
+                   (MonadCatch)
 import           Control.Monad.State
                    (MonadIO, State, evalState, put, runStateT)
 import           Control.Monad.Trans.Control
@@ -53,11 +55,12 @@ import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                        as S
+import qualified Data.Set                          as S
 import           Data.Tree
                    (Tree(Node))
 import           GHC.Generics
                    (Generic1, Rep1)
+import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, property,
                    shrinkList, sized)
@@ -68,13 +71,13 @@ import           Text.PrettyPrint.ANSI.Leijen
 import           Text.Show.Pretty
                    (ppShow)
 
-import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.BoxDrawer
+import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic
                    (boolean)
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2   as Rank2
+import qualified Test.StateMachine.Types.Rank2     as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------

@@ -9,7 +9,13 @@
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module MemoryReference where
+module MemoryReference
+  ( prop_sequential
+  , prop_parallel
+  , prop_modelCheck
+  , Bug(..)
+  )
+  where
 
 import           Control.Concurrent
                    (threadDelay)
@@ -35,9 +41,8 @@ import           Test.QuickCheck.Monadic
                    (monadicIO, monitor)
 
 import           Test.StateMachine
-import           Test.StateMachine.Logic
-import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Z
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 

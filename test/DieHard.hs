@@ -36,13 +36,13 @@ import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
+import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
-import           Test.StateMachine.Logic
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------

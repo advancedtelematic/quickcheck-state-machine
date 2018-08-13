@@ -20,7 +20,18 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Types.References where
+module Test.StateMachine.Types.References
+  ( Var(Var)
+  , Symbolic(Symbolic)
+  , Concrete(Concrete)
+  , Reference(Reference)
+  , reference
+  , concrete
+  , opaque
+  , Opaque(Opaque)
+  , unOpaque
+  )
+  where
 
 import           Data.Functor.Classes
                    (Eq1, Ord1, Show1, compare1, eq1, liftCompare,
@@ -31,6 +42,7 @@ import           Data.Typeable
                    (Typeable)
 import           GHC.Generics
                    (Generic)
+import           Prelude
 
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 

@@ -28,6 +28,7 @@ import           Data.Set
                    (Set)
 import           Data.Tree
                    (Forest, Tree(Node))
+import           Prelude
 
 import           Test.StateMachine.Types.References
 

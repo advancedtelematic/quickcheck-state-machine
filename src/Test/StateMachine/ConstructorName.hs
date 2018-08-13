@@ -22,6 +22,7 @@ import           GHC.Generics
                    ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D,
                    Generic1, K1, M1, Rec1, Rep1, S, U1, conName, from1,
                    unM1, unRec1)
+import           Prelude
 
 import           Test.StateMachine.Types
                    (Command(..), Reference, Symbolic)

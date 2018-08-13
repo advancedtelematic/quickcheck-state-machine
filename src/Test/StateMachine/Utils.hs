@@ -28,6 +28,7 @@ module Test.StateMachine.Utils
   )
   where
 
+import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, again, counterexample,
                    frequency, resize, shrinking, sized, suchThatMaybe,

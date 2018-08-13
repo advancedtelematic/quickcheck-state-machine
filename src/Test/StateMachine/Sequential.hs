@@ -83,6 +83,7 @@ import           Data.TreeDiff
 import qualified Data.Vector                       as V
 import           GHC.Generics
                    (Generic1, Rep1, from1)
+import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
                    generate, oneof, resize, shrinkList, sized,
@@ -396,8 +397,7 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
     go ih cmd = gconName cmd : ih
 
 
-transitionMatrix :: forall cmd
-                  . GConName1 (Rep1 cmd)
+transitionMatrix :: forall cmd. GConName1 (Rep1 cmd)
                  => Proxy (cmd Symbolic)
                  -> (String -> String -> Int) -> Matrix Int
 transitionMatrix _ f =

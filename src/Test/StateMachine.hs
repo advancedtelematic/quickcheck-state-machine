@@ -17,6 +17,7 @@ module Test.StateMachine
 
   ( -- * Sequential property combinators
     forAllCommands
+  , transitionMatrix
   , modelCheck
   , runCommands
   , prettyCommands
@@ -27,6 +28,7 @@ module Test.StateMachine
   -- * Parallel property combinators
   , forAllParallelCommands
   , runParallelCommands
+  , runParallelCommandsNTimes
   , prettyParallelCommands
 
     -- * Types
@@ -41,8 +43,14 @@ module Test.StateMachine
   , Reason(..)
   , GenSym
   , genSym
+
+  , module Test.StateMachine.Logic
+
   ) where
 
+import           Prelude
+                   ()
+import           Test.StateMachine.Logic
 import           Test.StateMachine.Parallel
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types

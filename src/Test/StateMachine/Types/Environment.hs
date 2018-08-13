@@ -38,6 +38,7 @@ import           Data.Semigroup
                    (Semigroup)
 import           Data.Typeable
                    (Proxy(Proxy), TypeRep, typeRep)
+import           Prelude
 
 import qualified Test.StateMachine.Types.Rank2      as Rank2
 import           Test.StateMachine.Types.References
