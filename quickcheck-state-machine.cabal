@@ -70,6 +70,9 @@ test-suite quickcheck-state-machine-test
   main-is:             Spec.hs
   build-depends:       base,
                        bytestring,
+                       directory,
+                       filelock,
+                       filepath,
                        http-client,
                        lifted-async >=0.9.3,
                        matrix >=0.3.5.0,
@@ -89,6 +92,7 @@ test-suite quickcheck-state-machine-test
                        servant,
                        servant-client,
                        servant-server,
+                       strict,
                        string-conversions,
                        tasty,
                        tasty-quickcheck,
@@ -100,7 +104,8 @@ test-suite quickcheck-state-machine-test
 
   other-modules:       CrudWebserverDb,
                        DieHard,
-                       MemoryReference
+                       MemoryReference,
+                       TicketDispenser
 
   ghc-options:
               -threaded -rtsopts -with-rtsopts=-N

@@ -7,6 +7,7 @@ import           Test.Tasty.QuickCheck
 import qualified CrudWebserverDb as WS
 import           DieHard
 import           MemoryReference
+import           TicketDispenser
 
 ------------------------------------------------------------------------
 
@@ -26,11 +27,22 @@ tests = testGroup "Tests"
       , webServer WS.Race  8802 "No race bug"                  WS.prop_crudWebserverDb
       , webServer WS.Race  8803 "Race bug"    (expectFailure . WS.prop_crudWebserverDbParallel)
       ]
+  , testGroup "Ticket dispenser"
+      [ ticketDispenser "sequential"                   prop_ticketDispenser
+      , ticketDispenser "parallel with exclusive lock" (withMaxSuccess 30 .
+                                                        prop_ticketDispenserParallelOK)
+      , ticketDispenser "parallel with shared lock"    (expectFailure .
+                                                        prop_ticketDispenserParallelBad)
+      ]
   ]
   where
     webServer bug port test prop =
       withResource (WS.setup bug WS.connectionString port) WS.cleanup
         (const (testProperty test (prop port)))
+
+    ticketDispenser test prop =
+      withResource setupLock cleanupLock
+        (\ioLock -> testProperty test (ioProperty (prop <$> ioLock)))
 
 ------------------------------------------------------------------------
 

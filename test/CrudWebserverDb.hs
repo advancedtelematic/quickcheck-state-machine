@@ -55,6 +55,7 @@ module CrudWebserverDb
   , demoLogicBug
   , demoNoRace
   , demoRace
+  , UserId -- Only to silence unused warning.
   )
   where
 
@@ -203,8 +204,10 @@ server bug pool =
 
   userDelete :: Key User -> Handler ()
   userDelete key = sql $ do
-    Just _ <- get key  -- Make sure that the record exists.
-    delete key
+    muser <- get key  -- Make sure that the record exists.
+    case muser of
+      Just _  -> delete key
+      Nothing -> error "userDelete: user doesn't exist."
 
   health :: Handler ()
   health = return ()
