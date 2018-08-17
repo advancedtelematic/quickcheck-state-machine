@@ -106,7 +106,7 @@ gens0 `suchThatOneOf` p = go gens0 (length gens0 - 1)
         (_,     [])           -> error ("suchThatOneOf: impossible, as we" ++
                                        " split the list on its length - 1.")
         (gens', gen : gens'') -> do
-           mx <- suchThatMaybeN 10 (snd gen) p
+           mx <- suchThatMaybeN 20 (snd gen) p
            case mx of
              Just x  -> return (Just x)
              Nothing -> go (gens' ++ gens'') (n - 1)

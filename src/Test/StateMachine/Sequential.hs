@@ -143,8 +143,8 @@ generateCommandsState StateMachine { precondition, generator, transition
                   `suchThatOneOf` (boolean . precondition model)
       case mnext of
         Nothing   -> error $ concat
-                       [ "A deadlock occured while generating commands."
-                       , "No pre-condition holds in the following model:"
+                       [ "A deadlock occured while generating commands.\n"
+                       , "No pre-condition holds in the following model:\n"
                        , ppShow model
                        -- XXX: show trace of commands generated so far?
                        ]

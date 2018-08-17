@@ -12,7 +12,6 @@
 module MemoryReference
   ( prop_sequential
   , prop_parallel
-  , prop_modelCheck
   , Bug(..)
   )
   where
@@ -20,7 +19,7 @@ module MemoryReference
 import           Control.Concurrent
                    (threadDelay)
 import           Data.Functor.Classes
-                   (Eq1, Show1)
+                   (Eq1)
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -34,10 +33,10 @@ import qualified Prelude
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Gen, Property, arbitrary, collect, elements,
-                   frequency, (===))
+                   (Gen, Property, arbitrary, elements, frequency,
+                   shrink, (===))
 import           Test.QuickCheck.Monadic
-                   (monadicIO, monitor)
+                   (monadicIO)
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Types.Rank2 as Rank2
@@ -65,7 +64,7 @@ data Response r
 deriving instance Show (Response Symbolic)
 deriving instance Show (Response Concrete)
 
-newtype Model r = Model (Fun (Reference (Opaque (IORef Int)) r) Int)
+newtype Model r = Model [(Reference (Opaque (IORef Int)) r, Int)]
   deriving (Generic, Show)
 
 instance ToExpr (Model Symbolic)
@@ -74,13 +73,18 @@ instance ToExpr (Model Concrete)
 initModel :: Model r
 initModel = Model empty
 
-transition :: (Show1 r, Eq1 r) => Model r -> Command r -> Response r -> Model r
+transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
 transition m@(Model model) cmd resp = case (cmd, resp) of
-  (Create, Created ref)        -> Model (model .! ref .= 0)
+  (Create, Created ref)        -> Model ((ref, 0) : model)
   (Read _, ReadValue _)        -> m
-  (Write ref x, Written)       -> Model (model .! ref .= x)
-  (Increment ref, Incremented) -> Model (model .! ref .% succ)
+  (Write ref x, Written)       -> Model (update ref x model)
+  (Increment ref, Incremented) -> case lookup ref model of
+    Just i  -> Model (update ref (succ i) model)
+    Nothing -> error "transition: increment"
   _                            -> error "transition: impossible."
+
+update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+update ref i m = (ref, i) : filter ((/= ref) . fst) m
 
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition (Model m) cmd = case cmd of
@@ -89,7 +93,7 @@ precondition (Model m) cmd = case cmd of
   Write ref _   -> ref `elem` domain m
   Increment ref -> ref `elem` domain m
 
-postcondition :: (Show1 r, Eq1 r) => Model r -> Command r -> Response r -> Logic
+postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition (Model m) cmd resp = case (cmd, resp) of
   (Create,        Created ref) -> m' ! ref .== 0 .// "Create"
     where
@@ -143,19 +147,12 @@ generator (Model model) = frequency
   ]
 
 shrinker :: Command Symbolic -> [Command Symbolic]
-shrinker _ = []
+shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrinker _             = []
 
 sm :: Bug -> StateMachine Model Command IO Response
 sm bug = StateMachine initModel transition precondition postcondition
-           (Just postcondition) Nothing
-           generator Nothing shrinker (semantics bug) id mock
-
-prop_modelCheck :: Bug -> Property
-prop_modelCheck bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
-  res <- modelCheck sm' cmds
-  return (res === Ok)
-    where
-      sm' = sm bug
+           Nothing Nothing generator Nothing shrinker (semantics bug) id mock
 
 prop_sequential :: Bug -> Property
 prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
@@ -166,7 +163,6 @@ prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
 
 prop_parallel :: Bug -> Property
 prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
-  monitor (collect cmds)
   prettyParallelCommands cmds =<< runParallelCommands sm' cmds
     where
       sm' = sm bug
