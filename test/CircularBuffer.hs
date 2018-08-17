@@ -44,12 +44,8 @@ import           Data.Function
 import           Data.Functor.Classes
                    (Eq1)
 import           Data.IORef
-import           Data.Matrix
-                   (Matrix)
 import           Data.Maybe
                    (isJust)
-import           Data.Proxy
-                   (Proxy(Proxy))
 import           Data.TreeDiff
                    (ToExpr)
 import           Data.Vector.Unboxed.Mutable
@@ -62,7 +58,7 @@ import           Prelude                       hiding
 import qualified Prelude                       as P
 import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
-                   shrink, (===))
+                   frequency, shrink, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -246,26 +242,14 @@ genNew = do
   Positive n <- arbitrary
   return (New n)
 
-generator :: Version -> Model Symbolic -> [Gen (Action Symbolic)]
-generator _       (Model m) | null m = [genNew]
-generator version (Model m)          =
-  [ genNew
-  , Put <$> arbitrary <*> (fst <$> elements m)
-  , Get <$> (fst <$> elements m)
+generator :: Version -> Model Symbolic -> Gen (Action Symbolic)
+generator _       (Model m) | null m = genNew
+generator version (Model m)          = frequency $
+  [ (1, genNew)
+  , (4, Put <$> arbitrary <*> (fst <$> elements m))
+  , (4, Get <$> (fst <$> elements m))
   ] ++
-  [ Len <$> (fst <$> elements m) | version == YesLen ]
-
-useDistribution :: Version -> Matrix Int
-useDistribution version = transitionMatrix (Proxy :: Proxy (Action Symbolic)) $ curry $ \case
-  ("<START>", "New")                     -> 1
-  ("<START>", _)                         -> 0
-  (_        , "New")                     -> 1
-  (_        , "Get")                     -> 8
-  (_        , "Put")                     -> 8
-  (_        , "Len") | version == YesLen -> 8
-                     | otherwise         -> 0
-  (_        , _)                         -> 0
-
+  [ (4, Len <$> (fst <$> elements m)) | version == YesLen ]
 
 shrinker :: Action Symbolic -> [Action Symbolic]
 shrinker (New n)        = [ New n'        | n' <- shrink n ]
@@ -297,7 +281,7 @@ mock (Model m) (Len buffer) = case lookup buffer m of
 sm :: Version -> Bugs -> StateMachine Model Action IO Response
 sm version bugs = StateMachine
   initModel transition (precondition bugs) postcondition
-  Nothing Nothing (generator version) (useDistribution version)
+  Nothing Nothing (generator version) Nothing
   shrinker (semantics bugs) P.id mock
 
 -- | Property parameterized by spec version and bugs.

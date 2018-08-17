@@ -24,8 +24,6 @@ import           Data.Functor.Classes
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
-import           Data.Matrix
-                   (matrix)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -36,13 +34,14 @@ import qualified Prelude
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Gen, Property, arbitrary, collect, elements, (===))
+                   (Gen, Property, arbitrary, collect, elements,
+                   frequency, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO, monitor)
 
 import           Test.StateMachine
-import           Test.StateMachine.Z
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.Z
 
 ------------------------------------------------------------------------
 
@@ -135,12 +134,12 @@ mock (Model m) cmd = case cmd of
   Write _ _   -> pure Written
   Increment _ -> pure Incremented
 
-generator :: Model Symbolic -> [Gen (Command Symbolic)]
-generator (Model model) =
-  [ pure Create
-  , Read  <$> elements (domain model)
-  , Write <$> elements (domain model) <*> arbitrary
-  , Increment <$> elements (domain model)
+generator :: Model Symbolic -> Gen (Command Symbolic)
+generator (Model model) = frequency
+  [ (1, pure Create)
+  , (4, Read  <$> elements (domain model))
+  , (4, Write <$> elements (domain model) <*> arbitrary)
+  , (4, Increment <$> elements (domain model))
   ]
 
 shrinker :: Command Symbolic -> [Command Symbolic]
@@ -149,7 +148,7 @@ shrinker _ = []
 sm :: Bug -> StateMachine Model Command IO Response
 sm bug = StateMachine initModel transition precondition postcondition
            (Just postcondition) Nothing
-           generator (matrix 5 4 (const 1)) shrinker (semantics bug) id mock
+           generator Nothing shrinker (semantics bug) id mock
 
 prop_modelCheck :: Bug -> Property
 prop_modelCheck bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do

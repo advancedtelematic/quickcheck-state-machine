@@ -36,10 +36,6 @@ module TicketDispenser
 
 import           Control.Exception
                    (IOException, catch)
-import           Data.Matrix
-                   (Matrix)
-import           Data.Proxy
-                   (Proxy(Proxy))
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -58,7 +54,7 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Gen, Property, (===))
+                   (Gen, Property, frequency, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -114,19 +110,11 @@ postconditions _         _          _             = error "postconditions"
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-generator :: Model Symbolic -> [Gen (Action Symbolic)]
-generator _ =
-  [ pure Reset
-  , pure TakeTicket
+generator :: Model Symbolic -> Gen (Action Symbolic)
+generator _ = frequency
+  [ (1, pure Reset)
+  , (4, pure TakeTicket)
   ]
-
-useDistribution :: Matrix Int
-useDistribution = transitionMatrix (Proxy :: Proxy (Action Symbolic)) $ curry $ \case
-  ("<START>", "Reset")      -> 1
-  ("<START>", _)            -> 0
-  (_        , "Reset")      -> 1
-  (_        , "TakeTicket") -> 8
-  (_        , _)            -> 0
 
 shrinker :: Action Symbolic -> [Action Symbolic]
 shrinker _ = []
@@ -204,7 +192,7 @@ withDbLock run = do
 sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
 sm se files = StateMachine
   initModel transitions preconditions postconditions
-  Nothing Nothing generator useDistribution
+  Nothing Nothing generator Nothing
   shrinker (semantics se files) id mock
 
 -- Sequentially the model is consistent (even though the lock is

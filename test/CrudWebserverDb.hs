@@ -84,8 +84,6 @@ import           Data.Functor.Classes
                    (Eq1)
 import           Data.List
                    (dropWhileEnd)
-import           Data.Matrix
-                   (Matrix)
 import           Data.Monoid
                    ((<>))
 import           Data.Proxy
@@ -129,8 +127,8 @@ import           System.Process
                    (callProcess, readProcess)
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, arbitrary, elements,
-                   expectFailure, ioProperty, listOf, quickCheck,
-                   shrink, suchThat, verboseCheck, (===))
+                   expectFailure, frequency, ioProperty, listOf,
+                   quickCheck, shrink, suchThat, verboseCheck, (===))
 import           Test.QuickCheck.Instances
                    ()
 import           Test.QuickCheck.Monadic
@@ -313,23 +311,13 @@ postconditions _         _              _              = error "postconditions"
 ------------------------------------------------------------------------
 -- * How to generate and shrink programs.
 
-generator :: Model Symbolic -> [Gen (Action Symbolic)]
-generator (Model m) =
-  [ (PostUser   <$> arbitrary)
-  , (GetUser    <$> elements (map fst m))
-  , (IncAgeUser <$> elements (map fst m))
-  , (DeleteUser <$> elements (map fst m))
+generator :: Model Symbolic -> Gen (Action Symbolic)
+generator (Model m) = frequency
+  [ (1, PostUser   <$> arbitrary)
+  , (3, GetUser    <$> elements (map fst m))
+  , (4, IncAgeUser <$> elements (map fst m))
+  , (2, DeleteUser <$> elements (map fst m))
   ]
-
-useDistribution :: Matrix Int
-useDistribution = transitionMatrix (Proxy :: Proxy (Action Symbolic)) $ curry $ \case
-  ("<START>", "PostUser")   -> 1
-  ("<START>", _)            -> 0
-  (_        , "PostUser")   -> 1
-  (_        , "GetUser")    -> 5
-  (_        , "IncAgeUser") -> 5
-  (_        , "DeleteUser") -> 1
-  (_        , _)            -> 0
 
 shrinker :: Action Symbolic -> [Action Symbolic]
 shrinker (PostUser (User user age)) =
@@ -363,7 +351,7 @@ mock (Model m) act = case act of
 
 sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO) Response
 sm port = StateMachine initModel transitions preconditions postconditions
-            Nothing Nothing generator useDistribution
+            Nothing Nothing generator Nothing
             shrinker semantics (runner port) mock
 
 ------------------------------------------------------------------------

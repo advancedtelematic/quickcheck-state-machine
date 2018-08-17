@@ -30,15 +30,13 @@ module DieHard
   , prop_dieHard
   ) where
 
-import           Data.Matrix
-                   (matrix)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, (===))
+                   (Gen, Property, oneof, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -121,8 +119,8 @@ postconditions s c r = bigJug (transitions s c r) ./= 4
 -- The generator of actions is simple, with equal distribution pick an
 -- action.
 
-generator :: Model Symbolic -> [Gen (Command Symbolic)]
-generator _ =
+generator :: Model Symbolic -> Gen (Command Symbolic)
+generator _ = oneof
   [ return FillBig
   , return FillSmall
   , return EmptyBig
@@ -157,7 +155,7 @@ mock _ _ = return Done
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transitions preconditions postconditions
        (Just postconditions) Nothing
-       generator (matrix 7 6 (const 1)) shrinker semantics id mock
+       generator Nothing shrinker semantics id mock
 
 prop_dieHard :: Property
 prop_dieHard = forAllCommands sm Nothing $ \cmds -> monadicIO $ do

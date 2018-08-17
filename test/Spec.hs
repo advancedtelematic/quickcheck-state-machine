@@ -38,16 +38,12 @@ tests = testGroup "Tests"
   , testGroup "Circular buffer"
       [ testProperty "`unpropNoSizeCheck`: the first bug is found"
           (expectFailure unpropNoSizeCheck)
-
       , testProperty "`unpropFullIsEmpty`: the second bug is found"
           (expectFailure unpropFullIsEmpty)
-
       , testProperty "`unpropBadRem`: the third bug is found"
           (expectFailure unpropBadRem)
-
       , testProperty "`unpropStillBadRem`: the fourth bug is found"
           (expectFailure unpropStillBadRem)
-
       , testProperty "`prop_circularBuffer`: the fixed version is correct"
           prop_circularBuffer
       ]

@@ -86,8 +86,7 @@ import           GHC.Generics
 import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
-                   generate, oneof, resize, shrinkList, sized,
-                   suchThat)
+                   generate, resize, shrinkList, sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -131,7 +130,7 @@ generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       -> Maybe Int -- ^ Minimum number of commands.
                       -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen (Commands cmd)
 generateCommandsState StateMachine { precondition, generator, transition
-                                   , mock, transMat } counter0 mnum = do
+                                   , mock, distribution } counter0 mnum = do
   size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0 []
   where
@@ -140,19 +139,7 @@ generateCommandsState StateMachine { precondition, generator, transition
     go 0    _       cmds = return (reverse cmds)
     go size counter cmds = do
       (model, mprevious) <- get
-      let idx = case mprevious of
-                  Nothing       -> 1
-                  Just previous ->
-                    let
-                      rep = from1 previous
-                      con = gconName1 rep
-                      err = "genetateCommandState: no command: " <> con
-                    in
-                      fromMaybe (error err) ((+ 2) <$>
-                        elemIndex con (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic))))
-          row     = V.toList (getRow idx transMat)
-          weights = zip row (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic)))
-      mnext <- lift $ commandFrequency (oneof (generator model)) weights
+      mnext <- lift $ commandFrequency (generator model) distribution mprevious
                   `suchThatOneOf` (boolean . precondition model)
       case mnext of
         Nothing   -> error $ concat
@@ -166,10 +153,25 @@ generateCommandsState StateMachine { precondition, generator, transition
           put (transition model next resp, Just next)
           go (size - 1) counter' (Command next (getUsedVars resp) : cmds)
 
-commandFrequency :: (Generic1 cmd, GConName1 (Rep1 cmd))
-                 => Gen (cmd Symbolic) -> [(Int, String)] -> [(Int, Gen (cmd Symbolic))]
-commandFrequency gen weights =
+commandFrequency :: forall cmd. (Generic1 cmd, GConName1 (Rep1 cmd))
+                 => Gen (cmd Symbolic) -> Maybe (Matrix Int) -> Maybe (cmd Symbolic)
+                 -> [(Int, Gen (cmd Symbolic))]
+commandFrequency gen Nothing             _          = [ (1, gen) ]
+commandFrequency gen (Just distribution) mprevious  =
   [ (freq, gen `suchThat` ((== con) . gconName1 . from1)) | (freq, con) <- weights ]
+    where
+      idx = case mprevious of
+              Nothing       -> 1
+              Just previous ->
+                let
+                  rep = from1 previous
+                  con = gconName1 rep
+                  err = "genetateCommandState: no command: " <> con
+                in
+                  fromMaybe (error err) ((+ 2) <$>
+                    elemIndex con (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic))))
+      row     = V.toList (getRow idx distribution)
+      weights = zip row (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic)))
 
 measureFrequency :: (Rank2.Foldable resp, Show (model Symbolic))
                  => (Generic1 cmd, GConName1 (Rep1 cmd))

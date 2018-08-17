@@ -64,8 +64,8 @@ data StateMachine model cmd m resp = StateMachine
   , postcondition  :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
   , spostcondition :: Maybe (model Symbolic -> cmd Symbolic -> resp Symbolic -> Logic)
   , invariant      :: Maybe (model Concrete -> Logic)
-  , generator      :: model Symbolic -> [Gen (cmd Symbolic)]
-  , transMat       :: Matrix Int
+  , generator      :: model Symbolic -> Gen (cmd Symbolic)
+  , distribution   :: Maybe (Matrix Int)
   , shrinker       :: cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , runner         :: m Property -> IO Property
