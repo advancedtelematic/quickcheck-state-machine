@@ -10,8 +10,6 @@
 
     - Commands can now return multiple references (issue #197);
 
-    - Less boilerplate code is now needed when defining generators (issue #178);
-
     - Global invariants can now more easily be expressed (issue #200);
 
     - Counterexamples are now printed when post-conditions fail (issue #172).
