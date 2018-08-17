@@ -1,7 +1,11 @@
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE PolyKinds          #-}
 {-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell    #-}
@@ -22,7 +26,14 @@
 --
 ------------------------------------------------------------------------
 
-module CircularBuffer where
+module CircularBuffer
+  ( unpropNoSizeCheck
+  , unpropFullIsEmpty
+  , unpropBadRem
+  , unpropStillBadRem
+  , prop_circularBuffer
+  )
+  where
 
 import           Control.Applicative
                    (liftA2)
@@ -30,18 +41,33 @@ import           Control.Monad
                    (guard)
 import           Data.Function
                    (on)
+import           Data.Functor.Classes
+                   (Eq1)
 import           Data.IORef
+import           Data.Matrix
+                   (Matrix)
 import           Data.Maybe
                    (isJust)
+import           Data.Proxy
+                   (Proxy(Proxy))
+import           Data.TreeDiff
+                   (ToExpr)
 import           Data.Vector.Unboxed.Mutable
                    (IOVector)
-import qualified Data.Vector.Unboxed.Mutable as V
+import qualified Data.Vector.Unboxed.Mutable   as V
+import           GHC.Generics
+                   (Generic, Generic1)
+import           Prelude                       hiding
+                   (elem)
+import qualified Prelude                       as P
 import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
-                   frequency, oneof, (===))
+                   shrink, (===))
+import           Test.QuickCheck.Monadic
+                   (monadicIO)
+
 import           Test.StateMachine
-import           Test.StateMachine.TH
-                   (deriveShows, deriveTestClasses, mkShrinker)
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 
@@ -83,7 +109,7 @@ newBuffer :: Bugs -> Int -> IO Buffer
 newBuffer bugs n = Buffer
   <$> newIORef 0
   <*> newIORef 0
-  <*> V.new (if FullIsEmpty `elem` bugs then n else n + 1)
+  <*> V.new (if FullIsEmpty `P.elem` bugs then n else n + 1)
 
 -- | See 'Put'.
 putBuffer :: Int -> Buffer -> IO ()
@@ -106,9 +132,9 @@ lenBuffer bugs Buffer{top, bot, arr} = do
   i <- readIORef top
   j <- readIORef bot
   return $
-    if BadRem `elem` bugs then
+    if BadRem `P.elem` bugs then
       (i - j) `rem` V.length arr
-    else if StillBadRem `elem` bugs then
+    else if StillBadRem `P.elem` bugs then
       abs ((i - j) `rem` V.length arr)
     else
       (i - j) `mod` V.length arr
@@ -116,22 +142,26 @@ lenBuffer bugs Buffer{top, bot, arr} = do
 ------------------------------------------------------------------------
 
 -- | Buffer actions.
-data Action (v :: * -> *) :: * -> * where
+data Action (r :: * -> *)
+    -- | Create a new buffer of bounded capacity.
+  = New Int
 
-  -- | Create a new buffer of bounded capacity.
-  New :: Int -> Action v (Opaque Buffer)
+    -- | Put an element at the top of the buffer.
+  | Put Int (Reference (Opaque Buffer) r)
 
-  -- | Put an element at the top of the buffer.
-  Put :: Int -> Reference v (Opaque Buffer) -> Action v ()
+    -- | Get an element out of the bottom of the buffer.
+  | Get (Reference (Opaque Buffer) r)
 
-  -- | Get an element out of the bottom of the buffer.
-  Get :: Reference v (Opaque Buffer) -> Action v Int
+    -- | Get the number of elements in the buffer.
+  | Len (Reference (Opaque Buffer) r)
+  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
 
-  -- | Get the number of elements in the buffer.
-  Len :: Reference v (Opaque Buffer) -> Action v Int
-
-deriveShows ''Action
-deriveTestClasses ''Action
+data Response (r :: * -> *)
+  = NewR (Reference (Opaque Buffer) r)
+  | PutR
+  | GetR Int
+  | LenR Int
+  deriving (Show, Generic1, Rank2.Foldable)
 
 ------------------------------------------------------------------------
 
@@ -143,7 +173,7 @@ data SpecBuffer = SpecBuffer
   { specSize     :: Int    -- ^ Maximum number of elements
   , specContents :: [Int]  -- ^ Contents of the buffer
   }
-  deriving Show
+  deriving (Generic, Show, ToExpr)
 
 emptySpecBuffer :: Int -> SpecBuffer
 emptySpecBuffer n = SpecBuffer n []
@@ -157,103 +187,128 @@ removeSpecBuffer (SpecBuffer n xs) = (last xs, SpecBuffer n (init xs))
 ------------------------------------------------------------------------
 
 -- | The model is a map from buffer references to their values.
-newtype Model v = Model [(Reference v (Opaque Buffer), SpecBuffer)]
-  deriving Show
+newtype Model r = Model [(Reference (Opaque Buffer) r, SpecBuffer)]
+  deriving (Generic, Show)
+
+deriving instance ToExpr (Model Concrete)
 
 -- | Initially, there are no references to buffers.
 initModel :: Model v
 initModel = Model []
 
-precondition :: Bugs -> Precondition Model Action
-precondition _    _         (New n) = n > 0
-precondition bugs (Model m) (Put _ buffer) | NoSizeCheck `elem` bugs =
+precondition :: Bugs -> Model Symbolic -> Action Symbolic -> Logic
+precondition _    _         (New n) = n .> 0
+precondition bugs (Model m) (Put _ buffer) | NoSizeCheck `P.elem` bugs =
   buffer `elem` map fst m
-precondition _    (Model m) (Put _ buffer) = isJust $ do
+precondition _    (Model m) (Put _ buffer) = Boolean $ isJust $ do
   specBuffer <- lookup buffer m
   guard $ length (specContents specBuffer) < specSize specBuffer
-precondition _    (Model m) (Get buffer) = isJust $ do
+precondition _    (Model m) (Get buffer) = Boolean $ isJust $ do
   specBuffer <- lookup buffer m
   guard $ not (null (specContents specBuffer))
 precondition _    (Model m) (Len buffer) = buffer `elem` map fst m
 
-transition :: Transition Model Action
-transition (Model m) (New n) ref = Model ((Reference ref, emptySpecBuffer n) : m)
-transition (Model m) (Put x buffer) _ = Model (update buffer (insertSpecBuffer x old) m)
-  where
-    Just old = lookup buffer m
-transition (Model m) (Get buffer) _ = Model (update buffer new m)
-  where
-    Just old = lookup buffer m
-    (_, new) = removeSpecBuffer old
+transition :: Eq1 r => Model r -> Action r -> Response r -> Model r
+transition (Model m) (New n)        (NewR ref) =
+  Model ((ref, emptySpecBuffer n) : m)
+transition (Model m) (Put x buffer) _          =
+  case lookup buffer m of
+    Just old -> Model (update buffer (insertSpecBuffer x old) m)
+    Nothing  -> error "transition: put"
+transition (Model m) (Get buffer) _ =
+  case lookup buffer m of
+    Just old ->
+      let (_, new) = removeSpecBuffer old in
+      Model (update buffer new m)
+    Nothing  -> error "transition: get"
 transition m    _ _ = m
 
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 update ref i m = (ref, i) : filter ((/= ref) . fst) m
 
-postcondition :: Postcondition Model Action
-postcondition _         (New _)      _ = True
-postcondition _         (Put _ _)    _ = True
-postcondition (Model m) (Get buffer) y = case lookup buffer m of
-  Nothing         -> False
+postcondition :: Model Concrete -> Action Concrete -> Response Concrete -> Logic
+postcondition _         (New _)      _        = Top
+postcondition _         (Put _ _)    _        = Top
+postcondition (Model m) (Get buffer) (GetR y) = case lookup buffer m of
+  Nothing         -> Bot
   Just specBuffer ->
     let (y', _) = removeSpecBuffer specBuffer
-    in y == y'
-postcondition (Model m) (Len buffer) k = case lookup buffer m of
-  Nothing         -> False
-  Just specBuffer -> k == length (specContents specBuffer)
+    in y .== y'
+postcondition (Model m) (Len buffer) (LenR k) = case lookup buffer m of
+  Nothing         -> Bot
+  Just specBuffer -> k .== length (specContents specBuffer)
+postcondition _         _            _        = error "postcondition"
 
 ------------------------------------------------------------------------
 
-genNew :: Gen (Untyped Action)
+genNew :: Gen (Action Symbolic)
 genNew = do
   Positive n <- arbitrary
-  return (Untyped (New n))
+  return (New n)
 
-generator :: Version -> Generator Model Action
-generator _ (Model m) | null m = genNew
-generator version (Model m) = frequency
-  [ (1, genNew)
-  , (4, do
-      (buffer, _specBuffer) <- elements m
-      oneof $
-        [ Untyped <$> (Put <$> arbitrary <*> pure buffer)
-        , return (Untyped (Get buffer))
-        ] ++ [ return (Untyped (Len buffer)) | version == YesLen ])
-  ]
+generator :: Version -> Model Symbolic -> [Gen (Action Symbolic)]
+generator _       (Model m) | null m = [genNew]
+generator version (Model m)          =
+  [ genNew
+  , Put <$> arbitrary <*> (fst <$> elements m)
+  , Get <$> (fst <$> elements m)
+  ] ++
+  [ Len <$> (fst <$> elements m) | version == YesLen ]
 
--- | Equivalent to
---
--- > shrinker (New n)        = [ New n' | n' <- shrink n ]
--- > shrinker (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
--- > shrinker _              = []
---
-shrinker :: Shrinker Action
-shrinker = $(mkShrinker ''Action)
+useDistribution :: Version -> Matrix Int
+useDistribution version = transitionMatrix (Proxy :: Proxy (Action Symbolic)) $ curry $ \case
+  ("<START>", "New")                     -> 1
+  ("<START>", _)                         -> 0
+  (_        , "New")                     -> 1
+  (_        , "Get")                     -> 8
+  (_        , "Put")                     -> 8
+  (_        , "Len") | version == YesLen -> 8
+                     | otherwise         -> 0
+  (_        , _)                         -> 0
 
-------------------------------------------------------------------------
 
-semantics :: Bugs -> Action Concrete resp -> IO resp
-semantics bugs (New n)        = Opaque <$> newBuffer bugs n
-semantics _    (Put x buffer) = putBuffer x (opaque buffer)
-semantics _    (Get buffer)   = getBuffer (opaque buffer)
-semantics bugs (Len buffer)   = lenBuffer bugs (opaque buffer)
+shrinker :: Action Symbolic -> [Action Symbolic]
+shrinker (New n)        = [ New n'        | n' <- shrink n ]
+shrinker (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
+shrinker _              = []
 
 ------------------------------------------------------------------------
 
-sm :: Version -> Bugs -> StateMachine Model Action IO
-sm version bugs = stateMachine
-  (generator version) shrinker (precondition bugs) transition
-  postcondition initModel (semantics bugs) id
+semantics :: Bugs -> Action Concrete -> IO (Response Concrete)
+semantics bugs (New n)        = NewR . reference . Opaque <$> newBuffer bugs n
+semantics _    (Put x buffer) = PutR <$  putBuffer x (opaque buffer)
+semantics _    (Get buffer)   = GetR <$> getBuffer (opaque buffer)
+semantics bugs (Len buffer)   = LenR <$> lenBuffer bugs (opaque buffer)
+
+mock :: Model Symbolic -> Action Symbolic -> GenSym (Response Symbolic)
+mock _         (New _)      = NewR <$> genSym
+mock _         (Put _ _)    = pure PutR
+mock (Model m) (Get buffer) = case lookup buffer m of
+  Nothing   -> error "mock: get"
+  Just spec -> case specContents spec of
+    []      -> error "mock: get 2"
+    (i : _) -> pure (GetR i)
+mock (Model m) (Len buffer) = case lookup buffer m of
+  Nothing   -> error "mock: len"
+  Just spec -> pure (LenR (specSize spec))
+
+------------------------------------------------------------------------
+
+sm :: Version -> Bugs -> StateMachine Model Action IO Response
+sm version bugs = StateMachine
+  initModel transition (precondition bugs) postcondition
+  Nothing Nothing (generator version) (useDistribution version)
+  shrinker (semantics bugs) P.id mock
 
 -- | Property parameterized by spec version and bugs.
 prepropcircularBuffer :: Version -> Bugs -> Property
 prepropcircularBuffer version bugs =
-  monadicSequential sm' $ \prog -> do
-    (hist, _, res) <- runProgram sm' prog
-    prettyProgram sm' hist $
-      checkActionNames prog (res === Ok)
+  forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
+    (hist, _, res) <- runCommands sm' cmds
+    prettyCommands sm' hist $
+      checkCommandNames cmds (res === Ok)
   where
-  sm' = sm version bugs
+    sm' = sm version bugs
 
 -- Adapted from John Hughes'
 -- /Experiences with QuickCheck: Testing the hard stuff and staying sane/,

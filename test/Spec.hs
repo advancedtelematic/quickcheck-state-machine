@@ -4,7 +4,8 @@ import           Prelude
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
 
-import qualified CrudWebserverDb as WS
+import           CircularBuffer
+import qualified CrudWebserverDb       as WS
 import           DieHard
 import           MemoryReference
 import           TicketDispenser
@@ -33,6 +34,22 @@ tests = testGroup "Tests"
                                                         prop_ticketDispenserParallelOK)
       , ticketDispenser "parallel with shared lock"    (expectFailure .
                                                         prop_ticketDispenserParallelBad)
+      ]
+  , testGroup "Circular buffer"
+      [ testProperty "`unpropNoSizeCheck`: the first bug is found"
+          (expectFailure unpropNoSizeCheck)
+
+      , testProperty "`unpropFullIsEmpty`: the second bug is found"
+          (expectFailure unpropFullIsEmpty)
+
+      , testProperty "`unpropBadRem`: the third bug is found"
+          (expectFailure unpropBadRem)
+
+      , testProperty "`unpropStillBadRem`: the fourth bug is found"
+          (expectFailure unpropStillBadRem)
+
+      , testProperty "`prop_circularBuffer`: the fixed version is correct"
+          prop_circularBuffer
       ]
   ]
   where
