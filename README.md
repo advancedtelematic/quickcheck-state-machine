@@ -29,15 +29,21 @@ references. Our mutable references can be created, read from, written to and
 incremented:
 
 ```haskell
-data Action (v :: * -> *) :: * -> * where
-  New   ::                                     Action v (Opaque (IORef Int))
-  Read  :: Reference v (Opaque (IORef Int)) -> Action v Int
-  Write :: Reference v (Opaque (IORef Int)) -> Int -> Action v ()
-  Inc   :: Reference v (Opaque (IORef Int)) -> Action v ()
+data Command r
+  = Create
+  | Read      (Reference (Opaque (IORef Int)) r)
+  | Write     (Reference (Opaque (IORef Int)) r) Int
+  | Increment (Reference (Opaque (IORef Int)) r)
+
+data Response r
+  = Created (Reference (Opaque (IORef Int)) r)
+  | ReadValue Int
+  | Written
+  | Incremented
 ```
 
 When we generate actions we won't be able to create arbitrary `IORef`s, that's
-why all uses of `IORefs` are wrapped in `Reference v`, where the parameter `v`
+why all uses of `IORef`s are wrapped in `Reference _ r`, where the parameter `r`
 will let us use symbolic references while generating (and concrete ones when
 executing).
 
@@ -49,31 +55,33 @@ Next, we give the actual implementation of our mutable references. To make
 things more interesting, we parametrise the semantics by a possible problem.
 
 ```haskell
-data Problem = None | Bug | RaceCondition
+data Bug = None | Logic | Race
   deriving Eq
 
-semantics :: Problem -> Action Concrete resp -> IO resp
-semantics _   New           = Opaque <$> newIORef 0
-semantics _   (Read  ref)   = readIORef  (opaque ref)
-semantics prb (Write ref i) = writeIORef (opaque ref) i'
-  where
-  -- One of the problems is a bug that writes a wrong value to the
-  -- reference.
-  i' | i `elem` [5..10] = if prb == Bug then i + 1 else i
-     | otherwise        = i
-semantics prb (Inc   ref)   =
-  -- The other problem is that we introduce a possible race condition
-  -- when incrementing.
-  if prb == RaceCondition
-  then do
-    i <- readIORef (opaque ref)
-    threadDelay =<< randomRIO (0, 5000)
-    writeIORef (opaque ref) (i + 1)
-  else
-    atomicModifyIORef' (opaque ref) (\i -> (i + 1, ()))
+semantics :: Bug -> Command Concrete -> IO (Response Concrete)
+semantics bug cmd = case cmd of
+  Create        -> Created     <$> (reference . Opaque <$> newIORef 0)
+  Read ref      -> ReadValue   <$> readIORef  (opaque ref)
+  Write ref i   -> Written     <$  writeIORef (opaque ref) i'
+    where
+    -- One of the problems is a bug that writes a wrong value to the
+    -- reference.
+      i' | i `Prelude.elem` [5..10] = if bug == Logic then i + 1 else i
+         | otherwise                = i
+  Increment ref -> do
+    -- The other problem is that we introduce a possible race condition
+    -- when incrementing.
+    if bug == Race
+    then do
+      i <- readIORef (opaque ref)
+      threadDelay =<< randomRIO (0, 5000)
+      writeIORef (opaque ref) (i + 1)
+    else
+      atomicModifyIORef' (opaque ref) (\i -> (i + 1, ()))
+    return Incremented
 ```
 
-Note that above `v` is instantiated to `Concrete`, which is essentially the
+Note that above `r` is instantiated to `Concrete`, which is essentially the
 identity type, so while writing the semantics we have access to real `IORef`s.
 
 We now have an implementation, the next step is to define a model for the
@@ -81,9 +89,9 @@ implementation to be tested against. We'll use a simple map between references
 and integers as a model.
 
 ```haskell
-newtype Model v = Model [(Reference v (Opaque (IORef Int)), Int)]
+newtype Model r = Model [(Reference (Opaque (IORef Int)) r, Int)]
 
-initModel :: Model v
+initModel :: Model r
 initModel = Model []
 ```
 
@@ -93,18 +101,26 @@ we can only read from references that already have been created. The
 pre-conditions are used while generating programs (lists of actions).
 
 ```haskell
-precondition :: Model Symbolic -> Action Symbolic resp -> Bool
-precondition _         New           = True
-precondition (Model m) (Read  ref)   = ref `elem` map fst m
-precondition (Model m) (Write ref _) = ref `elem` map fst m
-precondition (Model m) (Inc   ref)   = ref `elem` map fst m
+precondition :: Model Symbolic -> Command Symbolic -> Logic
+precondition (Model m) cmd = case cmd of
+  Create        -> Top
+  Read  ref     -> ref `elem` domain m
+  Write ref _   -> ref `elem` domain m
+  Increment ref -> ref `elem` domain m
 ```
 
 The transition function explains how actions change the model. Note that the
-transition function is polymorphic in `v`. The reason for this is that we use
+transition function is polymorphic in `r`. The reason for this is that we use
 the transition function both while generating and executing.
 
 ```haskell
+transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
+transition m@(Model model) cmd resp = case (cmd, resp) of
+  (Create, Created ref)        -> Model ((ref, 0) : model)
+  (Read _, ReadValue _)        -> m
+  (Write ref x, Written)       -> Model ((ref, x) : filter ((/= ref) . fst) model)
+  (Increment ref, Incremented) -> case lookup ref model of
+    Just i  -> Model ((ref, succ i) : filter ((/= ref) . fst) model)
 transition :: Ord1 v => Model v -> Action v resp -> v resp -> Model v
 transition (Model m) New           ref = Model (m ++ [(Reference ref, 0)])
 transition m         (Read  _)     _   = m
@@ -121,27 +137,36 @@ Post-conditions are checked after we executed an action and got access to the
 result.
 
 ```haskell
-postcondition :: Model Concrete -> Action Concrete resp -> resp -> Bool
-postcondition _         New         _    = True
-postcondition (Model m) (Read ref)  resp = lookup ref m == Just resp
-postcondition _         (Write _ _) _    = True
-postcondition _         (Inc _)     _    = True
+postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
+postcondition (Model m) cmd resp = case (cmd, resp) of
+  (Create,        Created ref) -> m' ! ref .== 0 .// "Create"
+    where
+      Model m' = transition (Model m) cmd resp
+  (Read ref,      ReadValue v)  -> v .== m ! ref .// "Read"
+  (Write _ref _x, Written)      -> Top
+  (Increment _ref, Incremented) -> Top
 ```
 
-Finally, we have to explain how to generate and shrink actions.
+Finally, we have to explain how to generate, mock responses given a model, and
+shrink actions.
 
 ```haskell
-generator :: Model Symbolic -> Gen (Untyped Action)
-generator (Model m)
-  | null m    = pure (Untyped New)
-  | otherwise = frequency
-      [ (1, pure (Untyped New))
-      , (8, Untyped .    Read  <$> elements (map fst m))
-      , (8, Untyped <$> (Write <$> elements (map fst m) <*> arbitrary))
-      , (8, Untyped .    Inc   <$> elements (map fst m))
-      ]
+generator :: Model Symbolic -> Gen (Command Symbolic)
+generator (Model model) = frequency
+  [ (1, pure Create)
+  , (4, Read  <$> elements (domain model))
+  , (4, Write <$> elements (domain model) <*> arbitrary)
+  , (4, Increment <$> elements (domain model))
+  ]
 
-shrinker :: Action v resp -> [Action v resp]
+mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
+mock (Model m) cmd = case cmd of
+  Create      -> Created   <$> genSym
+  Read ref    -> ReadValue <$> pure (m ! ref)
+  Write _ _   -> pure Written
+  Increment _ -> pure Incremented
+
+shrinker :: Command Symbolic -> [Command Symbolic]
 shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
 shrinker _             = []
 ```
@@ -150,52 +175,61 @@ To be able to fit the code on a line we pack up all of them above into a
 record.
 
 ```haskell
-sm :: Problem -> StateMachine Model Action IO
-sm prb = stateMachine
-  generator shrinker precondition transition
-  postcondition initModel (semantics prb) id
+sm :: Bug -> StateMachine Model Command IO Response
+sm bug = StateMachine initModel transition precondition postcondition
+           Nothing Nothing generator Nothing shrinker (semantics bug) id mock
 ```
 
 We can now define a sequential property as follows.
 
 ```haskell
-prop_references :: Problem -> PropertyOf (Program Action)
-prop_references prb = monadicSequentialC sm' $ \prog -> do
-  (hist, _, res) <- runProgram sm' prog
-  prettyProgram sm' hist $
-    checkActionNames prog (res === Ok)
-  where
-  sm' = sm prb
+prop_sequential :: Bug -> Property
+prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
+  (hist, _model, res) <- runCommands sm' cmds
+  prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
+    where
+      sm' = sm bug
 ```
 
 If we run the sequential property without introducing any problems to the
-semantics function, i.e. `quickCheck (prop_references None)`, then the property
-passes. If we however introduce the bug problem, then it will fail with the
+semantics function, i.e. `quickCheck (prop_sequential None)`, then the property
+passes. If we however introduce the logic bug problem, then it will fail with the
 minimal counterexample:
 
 ```
-> quickCheck (prop_references Bug)
-*** Failed! Falsifiable (after 19 tests and 3 shrinks):
+> quickCheck (prop_sequential Logic)
+*** Failed! Falsifiable (after 12 tests and 2 shrinks):
+Commands
+  { unCommands =
+      [ Command Create (fromList [ Var 0 ])
+      , Command (Write (Reference (Symbolic (Var 0))) 5) (fromList [])
+      , Command (Read (Reference (Symbolic (Var 0)))) (fromList [])
+      ]
+  }
 
 Model []
 
-    New --> Opaque
+   == Create ==> Created (Reference (Concrete Opaque)) [ 0 ]
 
-Model [(Reference Concrete Opaque,0)]
+Model [+_×_ (Reference Opaque)
+          0]
 
-    Write (Reference (Symbolic (Var 0))) 5 --> ()
+   == Write (Reference (Concrete Opaque)) 5 ==> Written [ 0 ]
 
-Model [(Reference Concrete Opaque,5)]
+Model [_×_ (Reference Opaque)
+         -0
+         +5]
 
-    Read (Reference (Symbolic (Var 0))) --> 6
+   == Read (Reference (Concrete Opaque)) ==> ReadValue 6 [ 0 ]
 
-Model [(Reference Concrete Opaque,5)]
+Model [_×_ (Reference Opaque) 5]
 
-PostconditionFailed /= Ok
+PostconditionFailed "AnnotateC \"Read\" (PredicateC (6 :/= 5))" /= Ok
 ```
 
 Recall that the bug problem causes the write of values ``i `elem` [5..10]`` to
-actually write `i + 1`.
+actually write `i + 1`. Also notice how the diff of the model is displayed
+between each action.
 
 Running the sequential property with the race condition problem will not uncover
 the race condition.
@@ -203,37 +237,56 @@ the race condition.
 If we however define a parallel property as follows.
 
 ```haskell
-prop_referencesParallel :: Problem -> Property
-prop_referencesParallel prb = monadicParallel (sm prb) $ \prog ->
-  prettyParallelProgram prog =<< runParallelProgram (sm prb) prog
+prop_parallel :: Bug -> Property
+prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
+  prettyParallelCommands cmds =<< runParallelCommands sm' cmds
+    where
+      sm' = sm bug
 ```
 
 And run it using the race condition problem, then we'll find the race
 condition:
 
 ```
-> quickCheck (prop_referencesParallel RaceCondition)
-*** Failed! (after 8 tests and 6 shrinks):
-
-Couldn't linearise:
-
-┌────────────────────────────────┐
-│ Var 0 ← New                    │
-│                       → Opaque │
-└────────────────────────────────┘
-┌─────────────┐ │
-│ Inc (Var 0) │ │
-│             │ │ ┌──────────────┐
-│             │ │ │ Inc (Var 0)  │
-│        → () │ │ │              │
-└─────────────┘ │ │              │
-                │ │         → () │
-                │ └──────────────┘
-                │ ┌──────────────┐
-                │ │ Read (Var 0) │
-                │ │          → 1 │
-                │ └──────────────┘
-Just 2 /= Just 1
+> quickCheck (prop_parallel Race)
+*** Failed! Falsifiable (after 26 tests and 6 shrinks):
+ParallelCommands
+  { prefix =
+      Commands { unCommands = [ Command Create (fromList [ Var 0 ]) ] }
+  , suffixes =
+      [ Pair
+          { proj1 =
+              Commands
+                { unCommands =
+                    [ Command (Increment (Reference (Symbolic (Var 0)))) (fromList [])
+                    , Command (Read (Reference (Symbolic (Var 0)))) (fromList [])
+                    ]
+                }
+          , proj2 =
+              Commands
+                { unCommands =
+                    [ Command (Increment (Reference (Symbolic (Var 0)))) (fromList [])
+                    ]
+                }
+          }
+      ]
+  }
+┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [Var 0] ← Create                                                                                │
+│                                                         → Created (Reference (Concrete Opaque)) │
+└─────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐ │
+│ [] ← Increment (Reference (Concrete Opaque)) │ │
+│                                              │ │ ┌──────────────────────────────────────────────┐
+│                                              │ │ │ [] ← Increment (Reference (Concrete Opaque)) │
+│                                              │ │ │                                → Incremented │
+│                                              │ │ └──────────────────────────────────────────────┘
+│                                → Incremented │ │
+└──────────────────────────────────────────────┘ │
+┌──────────────────────────────────────────────┐ │
+│ [] ← Read (Reference (Concrete Opaque))      │ │
+│                                → ReadValue 1 │ │
+└──────────────────────────────────────────────┘ │
 ```
 
 As we can see above, a mutable reference is first created, and then in
@@ -247,7 +300,7 @@ might end up overwriting the other one -- creating the race condition.
 We shall come back to this example below, but if your are impatient you can
 find the full source
 code
-[here](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference.hs).
+[here](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MutableReference.hs).
 
 ### How it works
 
@@ -312,7 +365,7 @@ Here are some more examples to get you started:
 
   * The water jug problem from *Die Hard 3* -- this is a
     simple
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/DieHard.hs) of
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/DieHard.hs) of
     a specification where we use the sequential property to find a solution
     (counterexample) to a puzzle from an action movie. Note that this example
     has no meaningful semantics, we merely model-check. It might be helpful to
@@ -323,30 +376,18 @@ Here are some more examples to get you started:
     TLA+
     [solution](https://github.com/tlaplus/Examples/blob/master/specifications/DieHard/DieHard.tla);
 
-  * The
-    union-find
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/UnionFind.hs) --
-    another use of the sequential property, this time with a useful semantics
-    (imperative implementation of the union-find algorithm). It could be useful
-    to compare the solution to the one that appears in the paper *Testing
-    Monadic Code with
-    QuickCheck* [[PS](http://www.cse.chalmers.se/~rjmh/Papers/QuickCheckST.ps)],
-    which the
-    [`Test.QuickCheck.Monadic`](https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck-Monadic.html) module
-    is based on;
-
   * Mutable
     reference
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference.hs) --
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MutableReference.hs) --
     this is a bigger example that shows both how the sequential property can
     find normal bugs, and how the parallel property can find race conditions.
     Several metaproperties, that for example check if the counterexamples are
     minimal, are specified in a
     separate
-    [module](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/MutableReference/Prop.hs);
+    [module](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MutableReference/Prop.hs);
 
   * Circular buffer
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CircularBuffer.hs)
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/CircularBuffer.hs)
     -- another example that shows how the sequential property can find help find
     different kind of bugs. This example is borrowed from the paper *Testing the
     Hard Stuff and Staying Sane*
@@ -355,7 +396,7 @@ Here are some more examples to get you started:
 
   * Ticket
     dispenser
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/TicketDispenser.hs) --
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/TicketDispenser.hs) --
     a simple example where the parallel property is used once again to find a
     race condition. The semantics in this example uses a simple database file
     that needs to be setup and cleaned up. This example also appears in the
@@ -367,7 +408,7 @@ Here are some more examples to get you started:
 
   * CRUD webserver where create returns unique
     ids
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/example/src/CrudWebserverDb.hs) --
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/CrudWebserverDb.hs) --
     create, read, update and delete users in a postgres database on a webserver
     using an API written
     using [Servant](https://github.com/haskell-servant/servant). Creating a user
@@ -375,16 +416,17 @@ Here are some more examples to get you started:
     to use. In this example, unlike in the last one, the server is setup and
     torn down once per property rather than generate program.
 
-All examples have an associated `Spec` module located in
-the
-[`example/test`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/example/test) directory.
-These make use of the properties in the examples, and get tested as part
-of
-[Travis CI](https://travis-ci.org/advancedtelematic/quickcheck-state-machine).
+All properties from the examples can be found in the
+[`Spec`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/test/Spec.hs)
+module located in the
+[`test`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/test)
+directory. The properties from the examples get tested as part of [Travis
+CI](https://travis-ci.org/advancedtelematic/quickcheck-state-machine).
 
 To get a better feel for the examples it might be helpful to `git clone` this
-repo, `cd` into the `example/` directory and fire up `stack ghci` and run the
-different properties interactively.
+repo, `cd` into it, fire up `stack ghci --test`, load the different examples,
+e.g. `:l test/CrudWebserverDb.hs`, and run the different properties
+interactively.
 
 ### How to contribute
 

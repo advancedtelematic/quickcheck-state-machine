@@ -1,17 +1,22 @@
-{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+
+-- NOTE: Make sure NOT to use DeriveAnyClass, or persistent-template
+-- will do the wrong thing.
 
 ------------------------------------------------------------------------
 -- |
@@ -39,7 +44,20 @@
 --
 ------------------------------------------------------------------------
 
-module CrudWebserverDb where
+module CrudWebserverDb
+  ( prop_crudWebserverDb
+  , prop_crudWebserverDbParallel
+  , Bug(..)
+  , setup
+  , cleanup
+  , connectionString
+  , demoNoBug
+  , demoLogicBug
+  , demoNoRace
+  , demoRace
+  , UserId -- Only to silence unused warning.
+  )
+  where
 
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar, threadDelay)
@@ -59,7 +77,7 @@ import           Control.Monad.Trans.Control
                    (MonadBaseControl, liftBaseWith)
 import           Control.Monad.Trans.Resource
                    (ResourceT)
-import qualified Data.ByteString.Char8            as BS
+import qualified Data.ByteString.Char8           as BS
 import           Data.Char
                    (isPrint)
 import           Data.Functor.Classes
@@ -74,9 +92,9 @@ import           Data.String.Conversions
                    (cs)
 import           Data.Text
                    (Text)
-import qualified Data.Text                        as T
-import           Data.Typeable
-                   (cast)
+import qualified Data.Text                       as T
+import           Data.TreeDiff
+                   (Expr(App), ToExpr, toExpr)
 import           Database.Persist.Postgresql
                    (ConnectionPool, ConnectionString, Key, SqlBackend,
                    delete, get, getJust, insert, liftSqlPersistMPool,
@@ -85,17 +103,22 @@ import           Database.Persist.Postgresql
 import           Database.Persist.TH
                    (mkMigrate, mkPersist, persistLowerCase, share,
                    sqlSettings)
+import           GHC.Generics
+                   (Generic, Generic1)
 import           Network
                    (PortID(PortNumber), connectTo)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp         as Warp
+import qualified Network.Wai.Handler.Warp        as Warp
+import           Prelude                         hiding
+                   (elem)
+import qualified Prelude
 import           Servant
                    ((:<|>)(..), (:>), Application, Capture, Delete,
                    Get, JSON, Post, Put, ReqBody, Server, serve)
 import           Servant.Client
                    (BaseUrl(..), ClientEnv(..), ClientM, Scheme(Http),
-                   client, runClientM)
+                   client, mkClientEnv, runClientM)
 import           Servant.Server
                    (Handler)
 import           System.IO
@@ -104,28 +127,15 @@ import           System.Process
                    (callProcess, readProcess)
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, arbitrary, elements,
-                   expectFailure, frequency, listOf, quickCheck,
-                   shrink, suchThat, (===))
-import           Test.QuickCheck.Counterexamples
-                   (PropertyOf)
+                   expectFailure, frequency, ioProperty, listOf,
+                   quickCheck, shrink, suchThat, verboseCheck, (===))
 import           Test.QuickCheck.Instances
                    ()
+import           Test.QuickCheck.Monadic
+                   (monadic)
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Types
-                   (ParallelProgram(..), parallelProgramLength)
-import           Test.StateMachine.TH
-                   (deriveShows, deriveTestClasses)
-import           Utils
-                   (minimalShrinkHelper, structuralSubset)
-
-#if MIN_VERSION_servant_client(0,13,0)
-import           Servant.Client
-                   (mkClientEnv)
-#else
-mkClientEnv :: Manager -> BaseUrl -> ClientEnv
-mkClientEnv = ClientEnv
-#endif
+import qualified Test.StateMachine.Types.Rank2   as Rank2
 
 ------------------------------------------------------------------------
 -- * User datatype
@@ -137,7 +147,7 @@ share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 User json
   name Text
   age  Int
-  deriving Eq Read Show
+  deriving Eq Read Show Generic
 |]
 
 -- data User = User
@@ -145,6 +155,7 @@ User json
 --   , age  :: Int
 --   }
 
+instance ToExpr User where
 
 ------------------------------------------------------------------------
 -- * API
@@ -191,8 +202,10 @@ server bug pool =
 
   userDelete :: Key User -> Handler ()
   userDelete key = sql $ do
-    Just _ <- get key  -- Make sure that the record exists.
-    delete key
+    muser <- get key  -- Make sure that the record exists.
+    case muser of
+      Just _  -> delete key
+      Nothing -> error "userDelete: user doesn't exist."
 
   health :: Handler ()
   health = return ()
@@ -224,73 +237,89 @@ postUserC :<|> getUserC :<|> incAgeUserC :<|> deleteUserC :<|> healthC
 
 
 
-data Action (v :: * -> *) :: * -> * where
-  PostUser   :: User                   -> Action v (Key User)
-  GetUser    :: Reference v (Key User) -> Action v (Maybe User)
-  IncAgeUser :: Reference v (Key User) -> Action v ()
-  DeleteUser :: Reference v (Key User) -> Action v ()
+data Action (r :: * -> *)
+  = PostUser   User
+  | GetUser    (Reference (Key User) r)
+  | IncAgeUser (Reference (Key User) r)
+  | DeleteUser (Reference (Key User) r)
+  deriving (Show, Generic1)
 
+instance Rank2.Functor     Action where
+instance Rank2.Foldable    Action where
+instance Rank2.Traversable Action where
 
+data Response (r :: * -> *)
+  = PostedUser (Reference (Key User) r)
+  | GotUser    (Maybe User)
+  | IncedAgeUser
+  | DeletedUser
+  deriving (Show, Generic1)
 
-
-
-
-
-
+instance Rank2.Foldable Response where
 
 ------------------------------------------------------------------------
 -- * State machine model
 
 
-newtype Model v = Model [(Reference v (Key User), User)]
-  deriving Show
+newtype Model r = Model [(Reference (Key User) r, User)]
+  deriving (Generic, Show)
+
+instance ToExpr (Model Concrete) where
+
+instance ToExpr (Key User) where
+  toExpr key = App (show key) []
 
 initModel :: Model v
 initModel = Model []
 
-transitions :: Eq1 v => Model v -> Action v resp -> v resp -> Model v
-transitions (Model m) (PostUser   user) key = Model (m ++ [(Reference key, user)])
-transitions m         (GetUser    _)    _   = m
-transitions (Model m) (IncAgeUser key)  _   = case lookup key m of
-  Nothing              -> Model m
-  Just (User user age) -> Model (updateModel key (User user (age + 1)) m)
-transitions (Model m) (DeleteUser key)  _   = Model (filter ((/= key) . fst) m)
+transitions :: Eq1 r => Model r -> Action r -> Response r -> Model r
+transitions (Model m) (PostUser   user) (PostedUser key) =
+  Model (m ++ [(key, user)])
+transitions m         (GetUser    _)    (GotUser _)      =
+  m
+transitions (Model m) (IncAgeUser key)  IncedAgeUser     =
+  case lookup key m of
+    Nothing              -> Model m
+    Just (User user age) ->
+      Model (updateModel key (User user (age + 1)) m)
+transitions (Model m) (DeleteUser key)  DeletedUser      =
+  Model (filter ((/= key) . fst) m)
+transitions _         _                 _                =
+  error "transitions"
 
 
 ------------------------------------------------------------------------
 -- * Pre-requisites and invariants
 
-preconditions :: Model Symbolic -> Action Symbolic resp -> Bool
-preconditions _         (PostUser _)     = True
+preconditions :: Model Symbolic -> Action Symbolic -> Logic
+preconditions _         (PostUser _)     = Top
 preconditions (Model m) (GetUser    key) = key `elem` map fst m
 preconditions (Model m) (IncAgeUser key) = key `elem` map fst m
 preconditions (Model m) (DeleteUser key) = key `elem` map fst m
 
 
 
-postconditions :: Model Concrete -> Action Concrete resp -> resp -> Bool
-postconditions _         (PostUser _)   _    = True
-postconditions (Model m) (GetUser key)  resp = lookup key m == resp
-postconditions _         (IncAgeUser _) _    = True
-postconditions _         (DeleteUser _) _    = True
+postconditions :: Model Concrete -> Action Concrete -> Response Concrete -> Logic
+postconditions _         (PostUser _)   _              = Top
+postconditions (Model m) (GetUser key)  (GotUser musr) = lookup key m .== musr
+postconditions _         (IncAgeUser _) _              = Top
+postconditions _         (DeleteUser _) _              = Top
+postconditions _         _              _              = error "postconditions"
 
 
 
 ------------------------------------------------------------------------
 -- * How to generate and shrink programs.
 
-generator :: Model Symbolic -> Gen (Untyped Action)
-generator (Model m)
-  | null m    = Untyped . PostUser <$> arbitrary
-  | otherwise = frequency
-      [ (1, Untyped . PostUser   <$> arbitrary)
-      , (8, Untyped . GetUser    <$> elements (map fst m))
-      , (8, Untyped . IncAgeUser <$> elements (map fst m))
-      , (8, Untyped . DeleteUser <$> elements (map fst m))
-      ]
+generator :: Model Symbolic -> Gen (Action Symbolic)
+generator (Model m) = frequency
+  [ (1, PostUser   <$> arbitrary)
+  , (3, GetUser    <$> elements (map fst m))
+  , (4, IncAgeUser <$> elements (map fst m))
+  , (2, DeleteUser <$> elements (map fst m))
+  ]
 
-
-shrinker :: Action Symbolic resp -> [Action Symbolic resp]
+shrinker :: Action Symbolic -> [Action Symbolic]
 shrinker (PostUser (User user age)) =
   [ PostUser (User user' age') | (user', age') <- shrink (user, age) ]
 shrinker _                          = []
@@ -299,38 +328,42 @@ shrinker _                          = []
 -- * The semantics.
 
 
-semantics :: Action Concrete resp -> ReaderT ClientEnv IO resp
+semantics :: Action Concrete -> ReaderT ClientEnv IO (Response Concrete)
 semantics act = do
   env <- ask
   res <- liftIO $ flip runClientM env $ case act of
-    PostUser   user -> postUserC   user
-    GetUser    key  -> getUserC    (concrete key)
-    IncAgeUser key  -> incAgeUserC (concrete key)
-    DeleteUser key  -> deleteUserC (concrete key)
+    PostUser   user -> PostedUser . reference <$> postUserC   user
+    GetUser    key  -> GotUser                <$> getUserC    (concrete key)
+    IncAgeUser key  -> IncedAgeUser           <$  incAgeUserC (concrete key)
+    DeleteUser key  -> DeletedUser            <$  deleteUserC (concrete key)
   case res of
     Left  err  -> error (show err)
     Right resp -> return resp
 
-
-
+mock :: Model Symbolic -> Action Symbolic -> GenSym (Response Symbolic)
+mock (Model m) act = case act of
+  PostUser   _    -> PostedUser <$> genSym
+  GetUser    key  -> GotUser <$> pure (lookup key m)
+  IncAgeUser _key -> pure IncedAgeUser
+  DeleteUser _key -> pure DeletedUser
 
 ------------------------------------------------------------------------
 
-sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO)
-sm port = stateMachine
-  generator shrinker preconditions transitions
-  postconditions initModel semantics (runner port)
+sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO) Response
+sm port = StateMachine initModel transitions preconditions postconditions
+            Nothing Nothing generator Nothing
+            shrinker semantics (runner port) mock
 
 ------------------------------------------------------------------------
 -- * Sequential property
 
 prop_crudWebserverDb :: Int -> Property
 prop_crudWebserverDb port =
-  monadicSequential sm' $ \prog -> do
-    (hist, _, res) <- runProgram sm' prog
-    prettyProgram sm' hist (res === Ok)
-  where
-  sm' = sm port
+  forAllCommands sm' Nothing $ \cmds -> monadic (ioProperty . runner port) $ do
+    (hist, _, res) <- runCommands sm' cmds
+    prettyCommands sm' hist (res === Ok)
+      where
+        sm' = sm port
 
 withCrudWebserverDb :: Bug -> Int -> IO () -> IO ()
 withCrudWebserverDb bug port run =
@@ -341,9 +374,9 @@ withCrudWebserverDb bug port run =
 
 demoNoBug', demoLogicBug', demoNoRace' :: Int -> IO ()
 demoNoBug'    port = withCrudWebserverDb None  port
-  (quickCheck (prop_crudWebserverDb port))
+  (verboseCheck (prop_crudWebserverDb port))
 demoLogicBug' port = withCrudWebserverDb Logic port
-  (quickCheck (expectFailure (prop_crudWebserverDb port)))
+  (verboseCheck (expectFailure (prop_crudWebserverDb port)))
 demoNoRace'   port = withCrudWebserverDb Race  port
   (quickCheck (prop_crudWebserverDb port))
 
@@ -355,22 +388,15 @@ demoNoRace   = demoNoRace'   crudWebserverDbPort
 -----------------------------------------------------------------------
 -- * Parallel property
 
-prop_crudWebserverDbParallel :: Int -> PropertyOf (ParallelProgram Action)
+prop_crudWebserverDbParallel :: Int -> Property
 prop_crudWebserverDbParallel port =
-  monadicParallelC sm' $ \prog ->
-    prettyParallelProgram prog =<< runParallelProgram' 30 sm' prog
-  where
-  sm' = sm port
-
-withCrudWebserverDbParallel :: Bug -> Int -> IO () -> IO ()
-withCrudWebserverDbParallel bug port run =
-  bracket
-    (setup bug connectionString port)
-    cleanup
-    (const run)
+  forAllParallelCommands sm' $ \cmds -> monadic (ioProperty . runner port) $ do
+    prettyParallelCommands cmds =<< runParallelCommandsNTimes 30 sm' cmds
+      where
+        sm' = sm port
 
 demoRace' :: Int -> IO ()
-demoRace' port = withCrudWebserverDbParallel Race port
+demoRace' port = withCrudWebserverDb Race port
   (quickCheck (expectFailure (prop_crudWebserverDbParallel port)))
 
 demoRace :: IO ()
@@ -470,52 +496,26 @@ setupDb = do
   healthyDb ip
   return (pid, ip)
   where
-  trim :: String -> String
-  trim = dropWhileEnd isGarbage . dropWhile isGarbage
-    where
-    isGarbage = flip elem ['\'', '\n']
+    trim :: String -> String
+    trim = dropWhileEnd isGarbage . dropWhile isGarbage
+      where
+        isGarbage = flip Prelude.elem ['\'', '\n']
 
-  healthyDb :: String -> IO ()
-  healthyDb ip = do
-    handle <- go 10
-    hClose handle
-    where
-    go :: Int -> IO Handle
-    go 0 = error "healtyDb: db isn't healthy"
-    go n = do
-      connectTo ip (PortNumber 5432)
-        `catch` (\(_ :: IOException) -> do
-                    threadDelay 1000000
-                    go (n - 1))
+    healthyDb :: String -> IO ()
+    healthyDb ip = do
+      handle <- go 10
+      hClose handle
+      where
+        go :: Int -> IO Handle
+        go 0 = error "healtyDb: db isn't healthy"
+        go n = do
+          connectTo ip (PortNumber 5432)
+            `catch` (\(_ :: IOException) -> do
+                        threadDelay 1000000
+                        go (n - 1))
 
 
 cleanup :: (String, Async ()) -> IO ()
 cleanup (pid, aServer) = do
   callProcess "docker" [ "rm", "-f", pid ]
   cancel aServer
-
-deriveShows       ''Action
-deriveTestClasses ''Action
-
-prop_dbShrinkRace :: Int -> Property
-prop_dbShrinkRace port =
-  minimalShrinkHelper
-    shrinker preconditions (okTransition transitions) initModel
-    (prop_crudWebserverDbParallel port)
-    isMinimal
-  where
-  isMinimal pprog =
-    parallelProgramLength pprog == 4 &&
-    structuralSubset
-      [ Untyped (PostUser (User "" 0)) ]
-      [ Untyped (IncAgeUser ref0)
-      , Untyped (IncAgeUser ref0)
-      , Untyped (GetUser    ref0)
-      ] pprog
-    where
-    ref0   = Reference (Symbolic (Var 0))
-
-deriving instance Eq1 v => Eq (Action v resp)
-
-instance Eq (Untyped Action) where
-  Untyped act1 == Untyped act2 = cast act1 == Just act2

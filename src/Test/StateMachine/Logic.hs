@@ -11,12 +11,40 @@
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
--- This module provides a propositional logic which gives counterexamples when
--- the proposition is false.
+-- This module defines a predicate logic-like language and its counterexample
+-- semantics.
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Logic where
+module Test.StateMachine.Logic
+  ( Logic(..)
+  , Predicate(..)
+  , dual
+  , strongNeg
+  , Counterexample(..)
+  , Value(..)
+  , boolean
+  , logic
+  , predicate
+  , (.==)
+  , (./=)
+  , (.<)
+  , (.<=)
+  , (.>)
+  , (.>=)
+  , elem
+  , notElem
+  , (.//)
+  , forall
+  , exists
+  )
+  where
+
+import           Prelude hiding
+                   (elem, notElem)
+import qualified Prelude
+
+------------------------------------------------------------------------
 
 infixr 1 :=>
 infixr 2 :||
@@ -30,8 +58,10 @@ data Logic
   | Logic :=> Logic
   | Not Logic
   | Predicate Predicate
+  | forall a. Show a => Forall [a] (a -> Logic)
+  | forall a. Show a => Exists [a] (a -> Logic)
+  | Boolean Bool
   | Annotate String Logic
-  deriving Show
 
 data Predicate
   = forall a. (Eq  a, Show a) => a :== a
@@ -66,6 +96,9 @@ strongNeg l0 = case l0 of
   l :=> r      ->           l :&& strongNeg r
   Not l        -> l
   Predicate p  -> Predicate (dual p)
+  Forall xs p  -> Exists xs (strongNeg . p)
+  Exists xs p  -> Forall xs (strongNeg . p)
+  Boolean b    -> Boolean (not b)
   Annotate s l -> Annotate s (strongNeg l)
 
 data Counterexample
@@ -76,13 +109,22 @@ data Counterexample
   | ImpliesC Counterexample
   | NotC Counterexample
   | PredicateC Predicate
+  | forall a. Show a => ForallC a Counterexample
+  | forall a. Show a => ExistsC [a] [Counterexample]
+  | BooleanC
   | AnnotateC String Counterexample
-  deriving Show
+
+deriving instance Show Counterexample
 
 data Value
   = VFalse Counterexample
   | VTrue
   deriving Show
+
+boolean :: Logic -> Bool
+boolean l = case logic l of
+  VFalse _ -> False
+  VTrue    -> True
 
 logic :: Logic -> Value
 logic Bot            = VFalse BotC
@@ -106,21 +148,79 @@ logic (Not l)        = case logic (strongNeg l) of
   VTrue     -> VTrue
   VFalse ce -> VFalse (NotC ce)
 logic (Predicate p)  = predicate p
+logic (Forall xs0 p) = go xs0
+  where
+    go []       = VTrue
+    go (x : xs) = case logic (p x) of
+      VTrue     -> go xs
+      VFalse ce -> VFalse (ForallC x ce)
+logic (Exists xs0 p) = go xs0 []
+  where
+    go []       ces = VFalse (ExistsC xs0 (reverse ces))
+    go (x : xs) ces = case logic (p x) of
+      VTrue     -> VTrue
+      VFalse ce -> go xs (ce : ces)
+logic (Boolean b)    = if b then VTrue else VFalse BooleanC
 logic (Annotate s l) = case logic l of
   VTrue     -> VTrue
   VFalse ce -> VFalse (AnnotateC s ce)
 
 predicate :: Predicate -> Value
-predicate p0 = let b = boolean p0 in case p0 of
+predicate p0 = let b = go p0 in case p0 of
   x :== y        -> b (x == y)
   x :/= y        -> b (x /= y)
   x :<  y        -> b (x <  y)
   x :<= y        -> b (x <= y)
   x :>  y        -> b (x >  y)
   x :>= y        -> b (x >= y)
-  x `Elem`    xs -> b (x `elem`    xs)
-  x `NotElem` xs -> b (x `notElem` xs)
+  x `Elem`    xs -> b (x `Prelude.elem`    xs)
+  x `NotElem` xs -> b (x `Prelude.notElem` xs)
   where
-  boolean :: Predicate -> Bool -> Value
-  boolean _ True  = VTrue
-  boolean p False = VFalse (PredicateC (dual p))
+    go :: Predicate -> Bool -> Value
+    go _ True  = VTrue
+    go p False = VFalse (PredicateC (dual p))
+
+------------------------------------------------------------------------
+
+infix  5 .==
+infix  5 ./=
+infix  5 .<
+infix  5 .<=
+infix  5 .>
+infix  5 .>=
+infix  5 `elem`
+infix  5 `notElem`
+infixl 4 .//
+
+(.==) :: (Eq a, Show a) => a -> a -> Logic
+x .== y = Predicate (x :== y)
+
+(./=) :: (Eq a, Show a) => a -> a -> Logic
+x ./= y = Predicate (x :/= y)
+
+(.<) :: (Ord a, Show a) => a -> a -> Logic
+x .< y = Predicate (x :< y)
+
+(.<=) :: (Ord a, Show a) => a -> a -> Logic
+x .<= y = Predicate (x :<= y)
+
+(.>) :: (Ord a, Show a) => a -> a -> Logic
+x .> y = Predicate (x :> y)
+
+(.>=) :: (Ord a, Show a) => a -> a -> Logic
+x .>= y = Predicate (x :>= y)
+
+elem :: (Eq a, Show a) => a -> [a] -> Logic
+elem x xs = Predicate (Elem x xs)
+
+notElem :: (Eq a, Show a) => a -> [a] -> Logic
+notElem x xs = Predicate (NotElem x xs)
+
+(.//) :: Logic -> String -> Logic
+l .// s = Annotate s l
+
+forall :: Show a => [a] -> (a -> Logic) -> Logic
+forall = Forall
+
+exists :: Show a => [a] -> (a -> Logic) -> Logic
+exists = Exists

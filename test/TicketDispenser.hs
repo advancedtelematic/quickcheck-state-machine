@@ -1,6 +1,10 @@
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TemplateHaskell     #-}
@@ -24,19 +28,19 @@ module TicketDispenser
   , prop_ticketDispenserParallel
   , prop_ticketDispenserParallelOK
   , prop_ticketDispenserParallelBad
-  , prop_ticketGenParallelValid
-  , prop_ticketShrinkParallelValid
   , withDbLock
+  , setupLock
+  , cleanupLock
   )
   where
 
 import           Control.Exception
-                   (SomeException, catch)
-import           Data.Functor.Classes
-                   (Eq1(..))
-import           Data.Typeable
-                   (cast)
-import           Prelude                             hiding
+                   (IOException, catch)
+import           Data.TreeDiff
+                   (ToExpr)
+import           GHC.Generics
+                   (Generic, Generic1)
+import           Prelude                       hiding
                    (readFile)
 import           System.Directory
                    (createDirectoryIfMissing, getTemporaryDirectory,
@@ -50,24 +54,26 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Property, forAll, frequency, (===))
-import           Test.QuickCheck.Counterexamples
-                   (PropertyOf)
+                   (Gen, Property, frequency, (===))
+import           Test.QuickCheck.Monadic
+                   (monadicIO)
 
 import           Test.StateMachine
-import           Test.StateMachine.Internal.Parallel
-import           Test.StateMachine.Internal.Types
-import           Test.StateMachine.TH
-                   (deriveShows, deriveTestClasses)
-import           Utils
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 
 -- The actions of the ticket dispenser are:
 
-data Action (v :: * -> *) :: * -> * where
-  TakeTicket :: Action v Int
-  Reset      :: Action v ()
+data Action (r :: * -> *)
+  = TakeTicket
+  | Reset
+  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+
+data Response (r :: * -> *)
+  = GotTicket Int
+  | ResetOk
+  deriving (Show, Generic1, Rank2.Foldable)
 
 -- Which correspond to taking a ticket and getting the next number, and
 -- resetting the number counter of the dispenser.
@@ -76,40 +82,41 @@ data Action (v :: * -> *) :: * -> * where
 
 -- The dispenser has to be reset before use, hence the maybe integer.
 
-newtype Model (v :: * -> *) = Model (Maybe Int)
-  deriving (Eq, Show)
+newtype Model (r :: * -> *) = Model (Maybe Int)
+  deriving (Eq, Show, Generic)
 
-initModel :: Model v
+deriving instance ToExpr (Model Concrete)
+
+initModel :: Model r
 initModel = Model Nothing
 
-preconditions :: Precondition Model Action
-preconditions (Model Nothing)  TakeTicket = False
-preconditions (Model (Just _)) TakeTicket = True
-preconditions _                Reset      = True
+preconditions :: Model Symbolic -> Action Symbolic -> Logic
+preconditions (Model Nothing)  TakeTicket = Bot
+preconditions (Model (Just _)) TakeTicket = Top
+preconditions _                Reset      = Top
 
-transitions :: Transition Model Action
+transitions :: Model r -> Action r -> Response r -> Model r
 transitions (Model m) cmd _ = case cmd of
   TakeTicket -> Model (succ <$> m)
   Reset      -> Model (Just 0)
 
-postconditions :: Postcondition Model Action
-postconditions (Model m) cmd resp = case cmd of
-  TakeTicket -> Just resp == (succ <$> m)
-  Reset      -> True
+postconditions :: Model Concrete -> Action Concrete -> Response Concrete -> Logic
+postconditions (Model m) TakeTicket (GotTicket n) = Just n .== (succ <$> m)
+postconditions _         Reset      ResetOk       = Top
+postconditions _         _          _             = error "postconditions"
 
 ------------------------------------------------------------------------
 
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-generator :: Generator Model Action
-generator (Model Nothing)  = pure (Untyped Reset)
-generator (Model (Just _)) = frequency
-  [ (1, pure (Untyped Reset))
-  , (8, pure (Untyped TakeTicket))
+generator :: Model Symbolic -> Gen (Action Symbolic)
+generator _ = frequency
+  [ (1, pure Reset)
+  , (4, pure TakeTicket)
   ]
 
-shrinker :: Action v resp -> [Action v resp]
+shrinker :: Action Symbolic -> [Action Symbolic]
 shrinker _ = []
 
 ------------------------------------------------------------------------
@@ -131,36 +138,37 @@ semantics
                                            -- file lock used for
                                            -- synchronisation.
 
-  -> Action Concrete resp
+  -> Action Concrete
 
-  -> IO resp
+  -> IO (Response Concrete)
 
 semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
     lock <- lockFile tlock se
     i <- read <$> readFile tdb
-      `catch` (\(_ :: SomeException) -> return "-1")
+      `catch` (\(_ :: IOException) -> return "-1")
     writeFile tdb (show (i + 1))
-      `catch` (\(_ :: SomeException) -> return ())
+      `catch` (\(_ :: IOException) -> return ())
     unlockFile lock
-    return (i + 1)
+    return (GotTicket (i + 1))
   Reset      -> do
     lock <- lockFile tlock se
     writeFile tdb (show (0 :: Integer))
-      `catch` (\(_ :: SomeException) -> return ())
+      `catch` (\(_ :: IOException) -> return ())
     unlockFile lock
+    return ResetOk
 
-------------------------------------------------------------------------
-
-deriveShows       ''Action
-deriveTestClasses ''Action
+mock :: Model Symbolic -> Action Symbolic -> GenSym (Response Symbolic)
+mock (Model Nothing)  TakeTicket = error "mock: TakeTicket"
+mock (Model (Just n)) TakeTicket = GotTicket <$> pure n
+mock _                Reset      = pure ResetOk
 
 ------------------------------------------------------------------------
 
 type DbLock = (FilePath, FilePath)
 
-withDbLock :: (DbLock -> IO ()) -> IO ()
-withDbLock run = do
+setupLock :: IO DbLock
+setupLock = do
   tmp <- getTemporaryDirectory
   let tmpTD = tmp </> "ticket-dispenser"
   createDirectoryIfMissing True tmpTD
@@ -168,75 +176,47 @@ withDbLock run = do
   hClose dbh
   (tlock, lockh) <- openTempFile tmpTD "ticket-dispenser.lock"
   hClose lockh
-  run (tdb, tlock)
+  return (tdb, tlock)
+
+cleanupLock :: DbLock -> IO ()
+cleanupLock (tdb, tlock) = do
   removeFile tdb
   removeFile tlock
 
-sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO
-sm se files = stateMachine
-  generator shrinker preconditions transitions
-  postconditions initModel (semantics se files) id
+withDbLock :: (DbLock -> IO ()) -> IO ()
+withDbLock run = do
+  lock <- setupLock
+  run lock
+  cleanupLock lock
+
+sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
+sm se files = StateMachine
+  initModel transitions preconditions postconditions
+  Nothing Nothing generator Nothing
+  shrinker (semantics se files) id mock
 
 -- Sequentially the model is consistent (even though the lock is
 -- shared).
 
 prop_ticketDispenser :: DbLock -> Property
-prop_ticketDispenser files = monadicSequential sm' $ \prog -> do
-  (hist, _, res) <- runProgram sm' prog
-  prettyProgram sm' hist $
-    checkActionNames prog (res === Ok)
+prop_ticketDispenser files = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
+  (hist, _, res) <- runCommands sm' cmds
+  prettyCommands sm' hist $
+    checkCommandNames cmds (res === Ok)
   where
-  sm' = sm Shared files
+    sm' = sm Shared files
 
-prop_ticketDispenserParallel
-  :: SharedExclusive -> DbLock -> PropertyOf (ParallelProgram Action)
+prop_ticketDispenserParallel :: SharedExclusive -> DbLock -> Property
 prop_ticketDispenserParallel se files =
-  monadicParallelC sm' $ \prog ->
-    prettyParallelProgram prog =<< runParallelProgram' 100 sm' prog
+  forAllParallelCommands sm' $ \cmds -> monadicIO $
+    prettyParallelCommands cmds =<< runParallelCommandsNTimes 100 sm' cmds
   where
-  sm' = sm se files
+    sm' = sm se files
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.
-prop_ticketDispenserParallelOK :: DbLock -> PropertyOf (ParallelProgram Action)
+prop_ticketDispenserParallelOK :: DbLock -> Property
 prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 
--- If we allow file locks to be shared, then we get race conditions as
--- expected. The following property asserts that one of the smallest
--- counterexamples are found.
 prop_ticketDispenserParallelBad :: DbLock -> Property
-prop_ticketDispenserParallelBad files =
-  minimalShrinkHelper
-    shrinker preconditions (okTransition transitions) initModel
-    (prop_ticketDispenserParallel Shared files)
-    isMinimal
-  where
-  isMinimal :: ParallelProgram Action -> Bool
-  isMinimal pprog
-    =  parallelProgramLength pprog `elem` [2, 3]
-    && (structuralSubset
-          [ Untyped Reset ] [ Untyped TakeTicket, Untyped TakeTicket ] pprog ||
-        structuralSubset
-          [ Untyped Reset ] [ Untyped TakeTicket, Untyped Reset ] pprog ||
-        structuralSubset
-          [] [ Untyped Reset, Untyped Reset ] pprog)
-
-prop_ticketGenParallelValid :: Property
-prop_ticketGenParallelValid = forAll
-  (generateParallelProgram generator preconditions (okTransition transitions) initModel)
-  (validParallelProgram preconditions (okTransition transitions) initModel)
-
-prop_ticketShrinkParallelValid :: Property
-prop_ticketShrinkParallelValid = forAll
-  (generateParallelProgram generator preconditions (okTransition transitions) initModel) $ \p ->
-    all (validParallelProgram preconditions (okTransition transitions) initModel)
-        (shrinkParallelProgram shrinker preconditions (okTransition transitions) initModel p)
-
-------------------------------------------------------------------------
-
--- Instances needed for the last property.
-
-deriving instance Eq1 v => Eq (Action v resp)
-
-instance Eq (Untyped Action) where
-  Untyped act1 == Untyped act2 = cast act1 == Just act2
+prop_ticketDispenserParallelBad = prop_ticketDispenserParallel Shared

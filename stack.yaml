@@ -1,7 +1,7 @@
-resolver: lts-10.5
+resolver: lts-12.2
 packages:
   - '.'
-flags: {}
-extra-package-dbs: []
-extra-deps:
-  - quickcheck-with-counterexamples-1.0
+nix:
+  enable: false
+  pure: false
+  packages: [zlib]

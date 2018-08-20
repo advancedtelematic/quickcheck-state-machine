@@ -2,7 +2,7 @@
 
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Test.StateMachine.Internal.Parallel
+-- Module      :  Test.StateMachine.BoxDrawer
 -- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
 -- License     :  BSD-style (see the file LICENSE)
 --
@@ -15,16 +15,17 @@
 --
 -----------------------------------------------------------------------------
 
-module Test.StateMachine.Internal.Utils.BoxDrawer
+module Test.StateMachine.BoxDrawer
   ( EventType(..)
   , Fork(..)
   , exec
   ) where
 
+import           Prelude
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc, text, vsep)
 
-import           Test.StateMachine.Internal.Types
+import           Test.StateMachine.Types
                    (Pid(..))
 
 ------------------------------------------------------------------------

@@ -1,6 +1,9 @@
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE PolyKinds          #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell    #-}
 
@@ -20,23 +23,25 @@
 -----------------------------------------------------------------------------
 
 module DieHard
-  ( Action(..)
+  ( Command(..)
   , Model(..)
   , initModel
   , transitions
   , prop_dieHard
   ) where
 
-import           Data.Functor.Classes
-                   (Show1, liftShowsPrec)
+import           Data.TreeDiff
+                   (ToExpr)
+import           GHC.Generics
+                   (Generic, Generic1)
+import           Prelude
 import           Test.QuickCheck
-                   (elements, (===))
-import           Test.QuickCheck.Counterexamples
-                   (PropertyOf)
+                   (Gen, Property, oneof, (===))
+import           Test.QuickCheck.Monadic
+                   (monadicIO)
 
 import           Test.StateMachine
-import           Test.StateMachine.TH
-                   (deriveTestClasses)
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 
@@ -45,31 +50,32 @@ import           Test.StateMachine.TH
 
 -- We start of defining the different actions that are allowed:
 
-data Action (v :: * -> *) :: * -> * where
-  FillBig      :: Action v ()  -- Fill the 5-liter jug.
-  FillSmall    :: Action v ()  -- Fill the 3-liter jug.
-  EmptyBig     :: Action v ()  -- Empty the 5-liter jug.
-  EmptySmall   :: Action v ()
-  SmallIntoBig :: Action v ()  -- Pour the contents of the 3-liter jug
-                               -- into 5-liter jug.
-  BigIntoSmall :: Action v ()
+data Command (r :: * -> *)
+  = FillBig      -- Fill the 5-liter jug.
+  | FillSmall    -- Fill the 3-liter jug.
+  | EmptyBig     -- Empty the 5-liter jug.
+  | EmptySmall
+  | SmallIntoBig -- Pour the contents of the 3-liter jug
+                 -- into 5-liter jug.
+  | BigIntoSmall
+  deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
 
-deriving instance Show1 v => Show (Action v resp)
-
-instance Show1 (Action Symbolic) where
-  liftShowsPrec _ _ _ act _ = show act
+data Response (r :: * -> *) = Done
+  deriving (Show, Generic1, Rank2.Foldable)
 
 ------------------------------------------------------------------------
 
 -- The model (or state) keeps track of what amount of water is in the
 -- two jugs.
 
-data Model (v :: * -> *) = Model
+data Model (r :: * -> *) = Model
   { bigJug   :: Int
   , smallJug :: Int
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Generic)
 
-initModel :: Model v
+deriving instance ToExpr (Model Concrete)
+
+initModel :: Model r
 initModel = Model 0 0
 
 ------------------------------------------------------------------------
@@ -77,12 +83,12 @@ initModel = Model 0 0
 -- There are no pre-conditions for our actions. That simply means that
 -- any action can happen at any state.
 
-preconditions :: Precondition Model Action
-preconditions _ _ = True
+preconditions :: Model Symbolic -> Command Symbolic -> Logic
+preconditions _ _ = Top
 
 -- The transitions describe how the actions change the state.
 
-transitions :: Transition Model Action
+transitions :: Model r -> Command r -> Response r -> Model r
 transitions m FillBig   _  = m { bigJug   = 5 }
 transitions m FillSmall _  = m { smallJug = 3 }
 transitions m EmptyBig  _  = m { bigJug   = 0 }
@@ -105,45 +111,39 @@ transitions (Model big small) BigIntoSmall _ =
 -- actually does contain 4 liters, then a minimal counter example will
 -- be presented -- this will be our solution.
 
-postconditions :: Postcondition Model Action
-postconditions s c r = bigJug (transitions s c (Concrete r)) /= 4
+postconditions :: Model r -> Command r -> Response r -> Logic
+postconditions s c r = bigJug (transitions s c r) ./= 4
 
 ------------------------------------------------------------------------
 
 -- The generator of actions is simple, with equal distribution pick an
 -- action.
 
-generator :: Generator Model Action
-generator _ = elements
-  [ Untyped FillBig
-  , Untyped FillSmall
-  , Untyped EmptyBig
-  , Untyped EmptySmall
-  , Untyped SmallIntoBig
-  , Untyped BigIntoSmall
+generator :: Model Symbolic -> Gen (Command Symbolic)
+generator _ = oneof
+  [ return FillBig
+  , return FillSmall
+  , return EmptyBig
+  , return EmptySmall
+  , return SmallIntoBig
+  , return BigIntoSmall
   ]
 
 -- There's nothing to shrink.
 
-shrinker :: Action v resp -> [Action v resp ]
+shrinker :: Command r -> [Command r]
 shrinker _ = []
 
 ------------------------------------------------------------------------
 
--- We are not modeling an actual program here, so there's no semantics
--- for our actions. We are merely doing model-checking here.
+-- We are not modelling an actual program here, so there's no semantics
+-- for our actions. We are merely doing model checking.
 
-semantics :: Action v resp -> IO resp
-semantics FillBig      = return ()
-semantics FillSmall    = return ()
-semantics EmptyBig     = return ()
-semantics EmptySmall   = return ()
-semantics SmallIntoBig = return ()
-semantics BigIntoSmall = return ()
+semantics :: Command Concrete -> IO (Response Concrete)
+semantics _ = return Done
 
-------------------------------------------------------------------------
-
-deriveTestClasses ''Action
+mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
+mock _ _ = return Done
 
 ------------------------------------------------------------------------
 
@@ -152,64 +152,64 @@ deriveTestClasses ''Action
 -- To make the code fit on a line, we first group all things related to
 -- generation and execution of programs respectively.
 
-sm :: StateMachine Model Action IO
-sm = stateMachine
-  generator shrinker preconditions transitions
-  postconditions initModel semantics id
+sm :: StateMachine Model Command IO Response
+sm = StateMachine initModel transitions preconditions postconditions
+       (Just postconditions) Nothing
+       generator Nothing shrinker semantics id mock
 
-prop_dieHard :: PropertyOf (Program Action)
-prop_dieHard = monadicSequentialC sm $ \prog -> do
-  (hist, _, res) <- runProgram sm prog
-  prettyProgram sm hist $
-    checkActionNames prog (res === Ok)
+prop_dieHard :: Property
+prop_dieHard = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+  (hist, _model, res) <- runCommands sm cmds
+  prettyCommands sm hist (checkCommandNames cmds (res === Ok))
 
 -- If we run @quickCheck prop_dieHard@ we get:
 --
 -- @
---     *** Failed! Falsifiable (after 32 tests and 16 shrinks):
---     [FillBig,BigIntoSmall,EmptySmall,BigIntoSmall,FillBig,BigIntoSmall]
+-- *** Failed! Falsifiable (after 43 tests and 4 shrinks):
+-- Commands
+--   { unCommands =
+--       [ Command FillBig (fromList [])
+--       , Command BigIntoSmall (fromList [])
+--       , Command EmptySmall (fromList [])
+--       , Command BigIntoSmall (fromList [])
+--       , Command FillBig (fromList [])
+--       , Command BigIntoSmall (fromList [])
+--       ]
+--   }
+--
+-- Model {bigJug = 0,smallJug = 0}
+--
+--    == FillBig ==> Done [ 0 ]
+--
+-- Model {bigJug = -0 +5
+--       ,smallJug = 0}
+--
+--    == BigIntoSmall ==> Done [ 0 ]
+--
+-- Model {bigJug = -5 +2
+--       ,smallJug = -0 +3}
+--
+--    == EmptySmall ==> Done [ 0 ]
+--
+-- Model {bigJug = 2
+--       ,smallJug = -3 +0}
+--
+--    == BigIntoSmall ==> Done [ 0 ]
+--
+-- Model {bigJug = -2 +0
+--       ,smallJug = -0 +2}
+--
+--    == FillBig ==> Done [ 0 ]
+--
+-- Model {bigJug = -0 +5
+--       ,smallJug = 2}
+--
+--    == BigIntoSmall ==> Done [ 0 ]
+--
+-- Model {bigJug = -5 +4
+--       ,smallJug = -2 +3}
+--
+-- PostconditionFailed "PredicateC (4 :== 4)" /= Ok
 -- @
 --
--- Let's check if that's a valid solution by writing out the state after each action:
---
---   { bigJug   = 0
---   , smallJug = 0
---   }
---
---   == FillBig ==>
---
---   { bigJug   = 5
---   , smallJug = 0
---   }
---
---   == BigIntoSmall ==>
---
---   { bigJug   = 2
---   , smallJug = 3
---   }
---
---   == EmptySmall ==>
---
---   { bigJug   = 2
---   , smallJug = 0
---   }
---
---   == BigIntoSmall ==>
---
---   { bigJug   = 0
---   , smallJug = 2
---   }
---
---   == FillBig ==>
---
---   { bigJug   = 5
---   , smallJug = 2
---   }
---
---   == BigIntoSmall ==>
---
---   { bigJug   = 4
---   , smallJug = 3
---   }
---
--- Good.
+-- The counterexample is our solution.
