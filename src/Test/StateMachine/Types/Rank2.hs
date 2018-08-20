@@ -20,9 +20,11 @@ module Test.StateMachine.Types.Rank2
 
 import qualified Control.Applicative as Rank1
 import qualified Control.Monad       as Rank1
+import qualified Data.Foldable       as Rank1
+import qualified Data.Traversable    as Rank1
 import           GHC.Generics
                    ((:*:)((:*:)), (:+:)(L1, R1), Generic1, K1(K1),
-                   M1(M1), Rec1(Rec1), Rep1, U1(U1), from1, to1)
+                   M1(M1), Rec1(Rec1), Rep1, U1(U1), from1, to1, (:.:)(Comp1))
 import           Prelude             hiding
                    (Applicative(..), Foldable(..), Functor(..),
                    Traversable(..), (<$>))
@@ -55,6 +57,9 @@ instance (Functor f, Functor g) => Functor (f :+: g) where
 instance (Functor f, Functor g) => Functor (f :*: g) where
   fmap f (x :*: y) = fmap f x :*: fmap f y
 
+instance (Rank1.Functor f, Functor g) => Functor (f :.: g) where
+  fmap f (Comp1 fg) = Comp1 (Rank1.fmap (fmap f) fg)
+
 instance Functor f => Functor (M1 i c f) where
   fmap f (M1 x) = M1 (fmap f x)
 
@@ -86,6 +91,9 @@ instance (Foldable f, Foldable g) => Foldable (f :+: g) where
 instance (Foldable f, Foldable g) => Foldable (f :*: g) where
   foldMap f (x :*: y) = foldMap f x `mappend` foldMap f y
 
+instance (Rank1.Foldable f, Foldable g) => Foldable (f :.: g) where
+  foldMap f (Comp1 fg) = Rank1.foldMap (foldMap f) fg
+
 instance Foldable f => Foldable (M1 i c f) where
   foldMap f (M1 x) = foldMap f x
 
@@ -116,6 +124,9 @@ instance (Traversable f, Traversable g) => Traversable (f :+: g) where
 
 instance (Traversable f, Traversable g) => Traversable (f :*: g) where
   traverse f (x :*: y) = (:*:) Rank1.<$> traverse f x Rank1.<*> traverse f y
+
+instance (Rank1.Traversable f, Traversable g) => Traversable (f :.: g) where
+  traverse f (Comp1 fg) = Comp1 Rank1.<$> Rank1.traverse (traverse f) fg
 
 instance Traversable f => Traversable (M1 i c f) where
   traverse f (M1 x) = M1 Rank1.<$> traverse f x
