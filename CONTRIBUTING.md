@@ -4,7 +4,7 @@
 
   1. Update CHANGELOG.md;
   2. Bump version in .cabal file and fix bounds;
-  3. Make tarball with `stack sdist --pvp-bounds both`;
+  3. Make tarball with `stack sdist --pvp-bounds lower`;
   4. Upload tarball as a
      package
      [candidate](https://hackage.haskell.org/packages/candidates/upload), and if

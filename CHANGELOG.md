@@ -1,4 +1,4 @@
-#### 0.4.0 (2018-?-?)
+#### 0.4.0 (2018-8-21)
 
   * Major rewrite, addressing many issues:
 
