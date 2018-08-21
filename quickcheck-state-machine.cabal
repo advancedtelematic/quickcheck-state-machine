@@ -6,15 +6,16 @@ homepage:            https://github.com/advancedtelematic/quickcheck-state-machi
 license:             BSD3
 license-file:        LICENSE
 author:              Stevan Andjelkovic
-maintainer:          Stevan Andjelkovic <stevan@advancedtelematic.com>
-copyright:           Copyright (C) 2017, ATS Advanced Telematic Systems GmbH
+maintainer:          Stevan Andjelkovic <stevan.andjelkovic@here.com>
+copyright:           Copyright (C) 2017-2018, ATS Advanced Telematic Systems GmbH;
+                                   2018, HERE Europe B.V.
 category:            Testing
 build-type:          Simple
 extra-source-files:  README.md
                    , CHANGELOG.md
                    , CONTRIBUTING.md
 cabal-version:       >=1.10
-tested-with:         GHC == 8.2.2
+tested-with:         GHC == 8.2.2, GHC == 8.4.3
 
 library
   hs-source-dirs:      src
