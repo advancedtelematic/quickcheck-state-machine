@@ -300,7 +300,7 @@ might end up overwriting the other one -- creating the race condition.
 We shall come back to this example below, but if your are impatient you can
 find the full source
 code
-[here](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MutableReference.hs).
+[here](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MemoryReference.hs).
 
 ### How it works
 
@@ -378,13 +378,9 @@ Here are some more examples to get you started:
 
   * Mutable
     reference
-    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MutableReference.hs) --
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MemoryReference.hs) --
     this is a bigger example that shows both how the sequential property can
-    find normal bugs, and how the parallel property can find race conditions.
-    Several metaproperties, that for example check if the counterexamples are
-    minimal, are specified in a
-    separate
-    [module](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MutableReference/Prop.hs);
+    find normal bugs, and how the parallel property can find race conditions;
 
   * Circular buffer
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/CircularBuffer.hs)
