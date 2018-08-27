@@ -62,7 +62,6 @@ data StateMachine model cmd m resp = StateMachine
   , transition     :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
   , precondition   :: model Symbolic -> cmd Symbolic -> Logic
   , postcondition  :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
-  , spostcondition :: Maybe (model Symbolic -> cmd Symbolic -> resp Symbolic -> Logic)
   , invariant      :: Maybe (model Concrete -> Logic)
   , generator      :: model Symbolic -> Gen (cmd Symbolic)
   , distribution   :: Maybe (Matrix Int)

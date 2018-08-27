@@ -111,7 +111,7 @@ transitions (Model big small) BigIntoSmall _ =
 -- actually does contain 4 liters, then a minimal counter example will
 -- be presented -- this will be our solution.
 
-postconditions :: Model r -> Command r -> Response r -> Logic
+postconditions :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postconditions s c r = bigJug (transitions s c r) ./= 4
 
 ------------------------------------------------------------------------
@@ -154,8 +154,7 @@ mock _ _ = return Done
 
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transitions preconditions postconditions
-       (Just postconditions) Nothing
-       generator Nothing shrinker semantics id mock
+       Nothing generator Nothing shrinker semantics id mock
 
 prop_dieHard :: Property
 prop_dieHard = forAllCommands sm Nothing $ \cmds -> monadicIO $ do

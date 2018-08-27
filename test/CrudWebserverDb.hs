@@ -351,8 +351,7 @@ mock (Model m) act = case act of
 
 sm :: Warp.Port -> StateMachine Model Action (ReaderT ClientEnv IO) Response
 sm port = StateMachine initModel transitions preconditions postconditions
-            Nothing Nothing generator Nothing
-            shrinker semantics (runner port) mock
+            Nothing generator Nothing shrinker semantics (runner port) mock
 
 ------------------------------------------------------------------------
 -- * Sequential property

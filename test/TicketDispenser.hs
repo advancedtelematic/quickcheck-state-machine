@@ -192,8 +192,7 @@ withDbLock run = do
 sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
 sm se files = StateMachine
   initModel transitions preconditions postconditions
-  Nothing Nothing generator Nothing
-  shrinker (semantics se files) id mock
+  Nothing generator Nothing shrinker (semantics se files) id mock
 
 -- Sequentially the model is consistent (even though the lock is
 -- shared).
