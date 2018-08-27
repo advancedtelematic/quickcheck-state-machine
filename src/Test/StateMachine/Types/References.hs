@@ -11,7 +11,7 @@
 -- Copyright   :  (C) 2017, Jacob Stanley
 -- License     :  BSD-style (see the file LICENSE)
 --
--- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
