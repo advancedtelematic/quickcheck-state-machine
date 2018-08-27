@@ -170,7 +170,7 @@ record.
 ```haskell
 sm :: Bug -> StateMachine Model Command IO Response
 sm bug = StateMachine initModel transition precondition postcondition
-           Nothing Nothing generator Nothing shrinker (semantics bug) id mock
+           Nothing generator Nothing shrinker (semantics bug) id mock
 ```
 
 We can now define a sequential property as follows.
