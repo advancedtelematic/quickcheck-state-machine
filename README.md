@@ -118,16 +118,9 @@ transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
 transition m@(Model model) cmd resp = case (cmd, resp) of
   (Create, Created ref)        -> Model ((ref, 0) : model)
   (Read _, ReadValue _)        -> m
-  (Write ref x, Written)       -> Model ((ref, x) : filter ((/= ref) . fst) model)
+  (Write ref x, Written)       -> Model (update ref x model)
   (Increment ref, Incremented) -> case lookup ref model of
-    Just i  -> Model ((ref, succ i) : filter ((/= ref) . fst) model)
-transition :: Ord1 v => Model v -> Action v resp -> v resp -> Model v
-transition (Model m) New           ref = Model (m ++ [(Reference ref, 0)])
-transition m         (Read  _)     _   = m
-transition (Model m) (Write ref i) _   = Model (update ref i         m)
-transition (Model m) (Inc   ref)   _   = Model (update ref (old + 1) m)
-  where
-  Just old = lookup ref m
+    Just i  -> Model (update ref (succ i) model)
 
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 update ref i m = (ref, i) : filter ((/= ref) . fst) m
@@ -474,7 +467,7 @@ we can improve it on the issue tracker!
         author, Jean-Raymond Abrial, himself:
 
           + [Lecture 1](https://www.youtube.com/watch?v=2GP1pJINVT4):
-            introduction to modeling and Event-B (chapter 1 of the
+            introduction to modelling and Event-B (chapter 1 of the
             book) and start of "controlling cars on bridge" example
             (chapter 2);
 
@@ -501,7 +494,7 @@ we can improve it on the issue tracker!
 
     The books contain general advice how to model systems using state machines,
     and are hence relevant to us. For shorter texts on why state machines are
-    important for modeling, see:
+    important for modelling, see:
 
       - Lamport's
         [*Computation and State Machines*](https://www.microsoft.com/en-us/research/publication/computation-state-machines/);
