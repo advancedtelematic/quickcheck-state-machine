@@ -152,7 +152,7 @@ shrinker _             = []
 
 sm :: Bug -> StateMachine Model Command IO Response
 sm bug = StateMachine initModel transition precondition postcondition
-           Nothing Nothing generator Nothing shrinker (semantics bug) id mock
+           Nothing generator Nothing shrinker (semantics bug) id mock
 
 prop_sequential :: Bug -> Property
 prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
