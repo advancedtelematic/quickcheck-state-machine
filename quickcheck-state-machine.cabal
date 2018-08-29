@@ -93,6 +93,7 @@ test-suite quickcheck-state-machine-test
                        servant,
                        servant-client,
                        servant-server,
+                       stm,
                        strict,
                        string-conversions,
                        tasty,
@@ -106,6 +107,7 @@ test-suite quickcheck-state-machine-test
   other-modules:       CircularBuffer,
                        CrudWebserverDb,
                        DieHard,
+                       Echo,
                        MemoryReference,
                        TicketDispenser
 

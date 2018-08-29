@@ -7,6 +7,7 @@ import           Test.Tasty.QuickCheck
 import           CircularBuffer
 import qualified CrudWebserverDb       as WS
 import           DieHard
+import           Echo
 import           MemoryReference
 import           TicketDispenser
 
@@ -46,6 +47,12 @@ tests = testGroup "Tests"
           (expectFailure unpropStillBadRem)
       , testProperty "`prop_circularBuffer`: the fixed version is correct"
           prop_circularBuffer
+      ]
+  , testGroup "Echo"
+      [ testProperty "sequential"  (ioProperty (prop_echoOK <$> mkEnv))
+      , testProperty "parallel ok" (ioProperty (prop_echoParallelOK False <$> mkEnv))
+      , testProperty "parallel bad, see issue #218"
+          (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
       ]
   ]
   where
