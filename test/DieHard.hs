@@ -154,7 +154,7 @@ mock _ _ = return Done
 
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transitions preconditions postconditions
-       Nothing generator Nothing shrinker semantics id mock
+       Nothing generator Nothing shrinker semantics mock
 
 prop_dieHard :: Property
 prop_dieHard = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
