@@ -47,7 +47,7 @@ import           Data.Set
                    (Set)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property)
+                   (Gen)
 
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Types.Environment
@@ -67,7 +67,6 @@ data StateMachine model cmd m resp = StateMachine
   , distribution   :: Maybe (Matrix Int)
   , shrinker       :: cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
-  , runner         :: m Property -> IO Property
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
   }
 

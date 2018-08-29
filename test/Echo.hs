@@ -99,7 +99,6 @@ echoSM env = StateMachine
     , shrinker = mShrinker
     , semantics = mSemantics
     , mock = mMock
-    , runner = id
     }
     where
       mTransitions :: Model r -> Action r -> Response r -> Model r
