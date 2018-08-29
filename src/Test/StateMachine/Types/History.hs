@@ -1,3 +1,5 @@
+{-# LANGUAGE StandaloneDeriving #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Test.StateMachine.Types.History
@@ -37,6 +39,12 @@ import           Test.StateMachine.Types.References
 newtype History cmd resp = History
   { unHistory :: History' cmd resp }
 
+deriving instance (Eq (cmd Concrete), Eq (resp Concrete)) =>
+  Eq (History cmd resp)
+
+deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
+  Show (History cmd resp)
+
 type History' cmd resp = [(Pid, HistoryEvent cmd resp)]
 
 newtype Pid = Pid { unPid :: Int }
@@ -45,6 +53,12 @@ newtype Pid = Pid { unPid :: Int }
 data HistoryEvent cmd resp
   = Invocation !(cmd  Concrete) !(Set Var)
   | Response   !(resp Concrete)
+
+deriving instance (Eq (cmd Concrete), Eq (resp Concrete)) =>
+  Eq (HistoryEvent cmd resp)
+
+deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
+  Show (HistoryEvent cmd resp)
 
 ------------------------------------------------------------------------
 

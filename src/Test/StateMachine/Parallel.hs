@@ -26,6 +26,7 @@ module Test.StateMachine.Parallel
   , prop_splitCombine
   , runParallelCommands
   , runParallelCommandsNTimes
+  , executeParallelCommands
   , linearise
   , toBoxDrawings
   , prettyParallelCommands
@@ -33,8 +34,8 @@ module Test.StateMachine.Parallel
 
 import           Control.Arrow
                    ((***))
-import           Control.Concurrent.Async.Lifted
-                   (concurrently)
+import           Control.Concurrent.Async.Lifted.Safe
+                   (Forall, Pure, concurrently)
 import           Control.Concurrent.STM.TChan
                    (newTChanIO)
 import           Control.Monad
@@ -55,7 +56,7 @@ import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                          as S
+import qualified Data.Set                             as S
 import           Data.Tree
                    (Tree(Node))
 import           GHC.Generics
@@ -77,7 +78,7 @@ import           Test.StateMachine.Logic
                    (boolean)
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2     as Rank2
+import qualified Test.StateMachine.Types.Rank2        as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
@@ -257,14 +258,14 @@ prop_splitCombine xs = splitPlacesBlanks (map length xs) (concat xs) == xs
 ------------------------------------------------------------------------
 
 runParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                    => (MonadCatch m, MonadBaseControl IO m)
+                    => (MonadCatch m, MonadBaseControl IO m, Forall (Pure m))
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd
                     -> PropertyM m [(History cmd resp, Bool)]
 runParallelCommands sm = runParallelCommandsNTimes 10 sm
 
 runParallelCommandsNTimes :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                          => (MonadCatch m, MonadBaseControl IO m)
+                          => (MonadCatch m, MonadBaseControl IO m, Forall (Pure m))
                           => Int -- ^ How many times to execute the parallel program.
                           -> StateMachine model cmd m resp
                           -> ParallelCommands cmd
@@ -275,7 +276,7 @@ runParallelCommandsNTimes n sm cmds =
     return (hist, linearise sm hist)
 
 executeParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                        => (MonadCatch m, MonadBaseControl IO m)
+                        => (MonadCatch m, MonadBaseControl IO m, Forall (Pure m))
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd
                         -> m (History cmd resp, Reason)
