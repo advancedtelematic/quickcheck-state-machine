@@ -1,8 +1,15 @@
 module Main (main) where
 
 import           Prelude
+import           Test.DocTest
+                   (doctest)
 import           Test.Tasty
+                   (TestTree, defaultMain, testGroup, withResource)
+import           Test.Tasty.HUnit
+                   (testCase)
 import           Test.Tasty.QuickCheck
+                   (expectFailure, ioProperty, testProperty,
+                   withMaxSuccess)
 
 import           CircularBuffer
 import qualified CrudWebserverDb       as WS
@@ -14,7 +21,8 @@ import           TicketDispenser
 
 tests :: TestTree
 tests = testGroup "Tests"
-  [ testProperty "Die Hard"
+  [ testCase "Doctest Z module" (doctest ["src/Test/StateMachine/Z.hs"])
+  , testProperty "Die Hard"
       (expectFailure (withMaxSuccess 1000 prop_dieHard))
   , testGroup "Memory reference"
       [ testProperty "No bug"                             (prop_sequential None)

@@ -64,17 +64,43 @@ import           Test.StateMachine.Logic
 
 ------------------------------------------------------------------------
 
+infixr 6 `union`
+infixr 7 `intersect`
+infix  5 `isSubsetOf`
+infix  5 ~=
+infixr 4 <|
+infixl 4 |>
+infixr 4 <-|
+infixl 4 |->
+infixr 4 <+
+infixl 4 <**>
+infixl 4 <||>
+infixr 9 !
+infixr 4 .%
+infixr 9 .!
+infix  4 .=
+
+------------------------------------------------------------------------
+
 union :: Eq a => [a] -> [a] -> [a]
 union = L.union
 
 intersect :: Eq a => [a] -> [a] -> [a]
 intersect = L.intersect
 
+-- | Subset.
+--
+-- >>> boolean ([1, 2] `isSubsetOf` [3, 2, 1])
+-- True
 isSubsetOf :: (Eq a, Show a) => [a] -> [a] -> Logic
 r `isSubsetOf` s = r .== r `intersect` s
 
+-- | Set equality.
+--
+-- >>> boolean ([1, 1, 2] ~= [2, 1])
+-- True
 (~=) :: (Eq a, Show a) => [a] -> [a] -> Logic
-xs ~= ys = xs `isSubsetOf` ys :&& ys `isSubsetOf` xs
+xs ~= ys = xs `isSubsetOf` ys .&& ys `isSubsetOf` xs
 
 ------------------------------------------------------------------------
 
@@ -149,7 +175,13 @@ xs <-| xys = [ (x, y) | (x, y) <- xys, x `P.notElem` xs ]
 
 -- | Codomain substraction.
 --
--- >>> [ ('a', "apa"), ('b', "bepa") ] |-> ["apa"]
+-- >>> [ ('a', "apa"), ('b', "bepa"), ('c', "cepa") ] |-> ["apa"]
+-- [('b',"bepa"),('c',"cepa")]
+--
+-- >>> [ ('a', "apa"), ('b', "bepa"), ('c', "cepa") ] |-> ["apa", "cepa"]
+-- [('b',"bepa")]
+--
+-- >>> [ ('a', "apa"), ('b', "bepa"), ('c', "cepa") ] |-> ["apa"] |-> ["cepa"]
 -- [('b',"bepa")]
 --
 (|->) :: Eq b => Rel a b -> [b] -> Rel a b
@@ -168,7 +200,7 @@ image r xs = codomain (xs <| r)
 -- [('a',"apa"),('b',"bepa")]
 --
 (<+) :: (Eq a, Eq b) => Rel a b -> Rel a b -> Rel a b
-r <+ s  = domain s <-| r `union` s
+r <+ s  = (domain s <-| r) `union` s
 
 -- | Direct product.
 (<**>) :: Eq a => Rel a b -> Rel a c -> Rel a (b, c)
@@ -223,7 +255,7 @@ isBijection r xs ys = isTotalInj r xs :&& isTotalSurj r xs ys
 (!) :: (Eq a, Show a, Show b) => Fun a b -> a -> b
 f ! x = maybe (error msg) Prelude.id (lookup x f)
   where
-  msg = "!: failed to lookup `" ++ show x ++ "' in `" ++ show f ++ "'"
+    msg = "!: failed to lookup `" ++ show x ++ "' in `" ++ show f ++ "'"
 
 (.%) :: (Eq a, Eq b, Show a, Show b) => (Fun a b, a) -> (b -> b) -> Fun a b
 (f, x) .% g = f .! x .= g (f ! x)

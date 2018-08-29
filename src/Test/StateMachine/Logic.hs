@@ -35,6 +35,9 @@ module Test.StateMachine.Logic
   , elem
   , notElem
   , (.//)
+  , (.&&)
+  , (.||)
+  , (.=>)
   , forall
   , exists
   )
@@ -45,10 +48,6 @@ import           Prelude hiding
 import qualified Prelude
 
 ------------------------------------------------------------------------
-
-infixr 1 :=>
-infixr 2 :||
-infixr 3 :&&
 
 data Logic
   = Bot
@@ -191,6 +190,9 @@ infix  5 .>=
 infix  5 `elem`
 infix  5 `notElem`
 infixl 4 .//
+infixr 3 .&&
+infixr 2 .||
+infixr 1 .=>
 
 (.==) :: (Eq a, Show a) => a -> a -> Logic
 x .== y = Predicate (x :== y)
@@ -218,6 +220,15 @@ notElem x xs = Predicate (NotElem x xs)
 
 (.//) :: Logic -> String -> Logic
 l .// s = Annotate s l
+
+(.&&) :: Logic -> Logic -> Logic
+(.&&) = (:&&)
+
+(.||) :: Logic -> Logic -> Logic
+(.||) = (:||)
+
+(.=>) :: Logic -> Logic -> Logic
+(.=>) = (:=>)
 
 forall :: Show a => [a] -> (a -> Logic) -> Logic
 forall = Forall
