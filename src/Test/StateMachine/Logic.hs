@@ -187,8 +187,8 @@ infix  5 .<
 infix  5 .<=
 infix  5 .>
 infix  5 .>=
-infix  5 `elem`
-infix  5 `notElem`
+infix  8 `elem`
+infix  8 `notElem`
 infixl 4 .//
 infixr 3 .&&
 infixr 2 .||
