@@ -31,12 +31,12 @@ tests = testGroup "Tests"
       , testProperty "Race bug sequential"                (prop_sequential Race)
       , testProperty "Race bug parallel"   (expectFailure (prop_parallel   Race))
       ]
-  , testGroup "Crud webserver"
-      [ webServer WS.None  8800 "No bug"                       WS.prop_crudWebserverDb
-      , webServer WS.Logic 8801 "Logic bug"   (expectFailure . WS.prop_crudWebserverDb)
-      , webServer WS.Race  8802 "No race bug"                  WS.prop_crudWebserverDb
-      , webServer WS.Race  8803 "Race bug"    (expectFailure . WS.prop_crudWebserverDbParallel)
-      ]
+  -- , testGroup "Crud webserver"
+  --     [ webServer WS.None  8800 "No bug"                       WS.prop_crudWebserverDb
+  --     , webServer WS.Logic 8801 "Logic bug"   (expectFailure . WS.prop_crudWebserverDb)
+  --     , webServer WS.Race  8802 "No race bug"                  WS.prop_crudWebserverDb
+  --     , webServer WS.Race  8803 "Race bug"    (expectFailure . WS.prop_crudWebserverDbParallel)
+  --     ]
   , testGroup "Ticket dispenser"
       [ ticketDispenser "sequential"                   prop_ticketDispenser
       , ticketDispenser "parallel with exclusive lock" (withMaxSuccess 30 .
@@ -64,7 +64,7 @@ tests = testGroup "Tests"
       ]
   ]
   where
-    webServer bug port test prop =
+    _webServer bug port test prop =
       withResource (WS.setup bug WS.connectionString port) WS.cleanup
         (const (testProperty test (prop port)))
 
