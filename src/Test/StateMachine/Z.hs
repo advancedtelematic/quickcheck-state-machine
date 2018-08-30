@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Test.StateMachine.Z
@@ -15,12 +17,16 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Z
-  ( union
+  ( cons
+  , union
   , intersect
   , isSubsetOf
   , (~=)
   , Rel
   , Fun
+  , (:<->)
+  , (:->)
+  , (:/->)
   , empty
   , identity
   , singleton
@@ -50,15 +56,16 @@ module Test.StateMachine.Z
   , isTotalSurj
   , isBijection
   , (!)
+  , (!?)
   , (.%)
   , (.!)
   , (.=)
   ) where
 
 import qualified Data.List               as L
-import qualified Prelude                 as P
 import           Prelude                 hiding
                    (elem, notElem)
+import qualified Prelude                 as P
 
 import           Test.StateMachine.Logic
 
@@ -75,12 +82,14 @@ infixl 4 |->
 infixr 4 <+
 infixl 4 <**>
 infixl 4 <||>
-infixr 9 !
 infixr 4 .%
 infixr 9 .!
 infix  4 .=
 
 ------------------------------------------------------------------------
+
+cons :: a -> [a] -> [a]
+cons = (:)
 
 union :: Eq a => [a] -> [a] -> [a]
 union = L.union
@@ -109,6 +118,16 @@ type Rel a b = [(a, b)]
 
 -- | (Partial) functions.
 type Fun a b = Rel a b
+
+infixr 1 :->
+type a :-> b = Fun a b
+
+-- Partial function.
+infixr 1 :/->
+type a :/-> b = Fun a b
+
+infixr 1 :<->
+type a :<-> b = Rel a b
 
 ------------------------------------------------------------------------
 
@@ -256,6 +275,9 @@ isBijection r xs ys = isTotalInj r xs :&& isTotalSurj r xs ys
 f ! x = maybe (error msg) Prelude.id (lookup x f)
   where
     msg = "!: failed to lookup `" ++ show x ++ "' in `" ++ show f ++ "'"
+
+(!?) :: Eq a => Fun a b -> a -> Maybe b
+f !? x = lookup x f
 
 (.%) :: (Eq a, Eq b, Show a, Show b) => (Fun a b, a) -> (b -> b) -> Fun a b
 (f, x) .% g = f .! x .= g (f ! x)
