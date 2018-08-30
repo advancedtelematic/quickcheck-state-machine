@@ -34,8 +34,8 @@ module Test.StateMachine.Parallel
 
 import           Control.Arrow
                    ((***))
-import           Control.Concurrent.Async.Lifted.Safe
-                   (Forall, Pure, concurrently)
+import           Control.Concurrent.Async.Lifted
+                   (concurrently)
 import           Control.Concurrent.STM.TChan
                    (newTChanIO)
 import           Control.Monad
@@ -258,14 +258,14 @@ prop_splitCombine xs = splitPlacesBlanks (map length xs) (concat xs) == xs
 ------------------------------------------------------------------------
 
 runParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                    => (MonadCatch m, MonadBaseControl IO m, Forall (Pure m))
+                    => (MonadCatch m, MonadBaseControl IO m)
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd
                     -> PropertyM m [(History cmd resp, Bool)]
 runParallelCommands sm = runParallelCommandsNTimes 10 sm
 
 runParallelCommandsNTimes :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                          => (MonadCatch m, MonadBaseControl IO m, Forall (Pure m))
+                          => (MonadCatch m, MonadBaseControl IO m)
                           => Int -- ^ How many times to execute the parallel program.
                           -> StateMachine model cmd m resp
                           -> ParallelCommands cmd
@@ -276,7 +276,7 @@ runParallelCommandsNTimes n sm cmds =
     return (hist, linearise sm hist)
 
 executeParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                        => (MonadCatch m, MonadBaseControl IO m, Forall (Pure m))
+                        => (MonadCatch m, MonadBaseControl IO m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd
                         -> m (History cmd resp, Reason)
