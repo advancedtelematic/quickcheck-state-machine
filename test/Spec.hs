@@ -1,6 +1,10 @@
 module Main (main) where
 
 import           Prelude
+import           System.Exit
+                   (ExitCode(..))
+import           System.Process
+                   (rawSystem)
 import           Test.DocTest
                    (doctest)
 import           Test.Tasty
@@ -20,8 +24,8 @@ import           TicketDispenser
 
 ------------------------------------------------------------------------
 
-tests :: TestTree
-tests = testGroup "Tests"
+tests :: Bool -> TestTree
+tests docker0 = testGroup "Tests"
   [ testCase "Doctest Z module" (doctest ["src/Test/StateMachine/Z.hs"])
   , testProperty "Die Hard"
       (expectFailure (withMaxSuccess 1000 prop_dieHard))
@@ -31,12 +35,12 @@ tests = testGroup "Tests"
       , testProperty "Race bug sequential"                (prop_sequential Race)
       , testProperty "Race bug parallel"   (expectFailure (prop_parallel   Race))
       ]
-  -- , testGroup "Crud webserver"
-  --     [ webServer WS.None  8800 "No bug"                       WS.prop_crudWebserverDb
-  --     , webServer WS.Logic 8801 "Logic bug"   (expectFailure . WS.prop_crudWebserverDb)
-  --     , webServer WS.Race  8802 "No race bug"                  WS.prop_crudWebserverDb
-  --     , webServer WS.Race  8803 "Race bug"    (expectFailure . WS.prop_crudWebserverDbParallel)
-  --     ]
+  , testGroup "Crud webserver"
+      [ webServer docker0 WS.None  8800 "No bug"                       WS.prop_crudWebserverDb
+      , webServer docker0 WS.Logic 8801 "Logic bug"   (expectFailure . WS.prop_crudWebserverDb)
+      , webServer docker0 WS.Race  8802 "No race bug"                  WS.prop_crudWebserverDb
+      , webServer docker0 WS.Race  8803 "Race bug"    (expectFailure . WS.prop_crudWebserverDbParallel)
+      ]
   , testGroup "Ticket dispenser"
       [ ticketDispenser "sequential"                   prop_ticketDispenser
       , ticketDispenser "parallel with exclusive lock" (withMaxSuccess 30 .
@@ -64,9 +68,10 @@ tests = testGroup "Tests"
       ]
   ]
   where
-    _webServer bug port test prop =
-      withResource (WS.setup bug WS.connectionString port) WS.cleanup
-        (const (testProperty test (prop port)))
+    webServer docker bug port test prop
+      | docker    = withResource (WS.setup bug WS.connectionString port) WS.cleanup
+                     (const (testProperty test (prop port)))
+      | otherwise = testCase ("No docker, skipping: " ++ test) (return ())
 
     ticketDispenser test prop =
       withResource setupLock cleanupLock
@@ -75,4 +80,10 @@ tests = testGroup "Tests"
 ------------------------------------------------------------------------
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  -- Check if docker is avaiable.
+  ec <- rawSystem "docker" ["version"]
+  let docker = case ec of
+                 ExitSuccess   -> True
+                 ExitFailure _ -> False
+  defaultMain (tests docker)
