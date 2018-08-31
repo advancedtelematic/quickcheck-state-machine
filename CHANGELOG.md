@@ -1,3 +1,10 @@
+#### 0.4.1 (2018-8-31)
+
+  * Minor fixes release:
+
+    - Fix broken link and code in README;
+    - Disable web server tests when docker isn't available (issue #222).
+
 #### 0.4.0 (2018-8-21)
 
   * Major rewrite, addressing many issues:
