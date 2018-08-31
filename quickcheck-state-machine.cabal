@@ -1,5 +1,5 @@
 name:                quickcheck-state-machine
-version:             0.4.0
+version:             0.4.1
 synopsis:            Test monadic programs using state machine based models
 description:         See README at <https://github.com/advancedtelematic/quickcheck-state-machine#readme>
 homepage:            https://github.com/advancedtelematic/quickcheck-state-machine#readme
