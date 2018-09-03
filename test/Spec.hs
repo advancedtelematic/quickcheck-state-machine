@@ -54,7 +54,7 @@ tests docker0 = testGroup "Tests"
       , testProperty "`unpropFullIsEmpty`: the second bug is found"
           (expectFailure unpropFullIsEmpty)
       , testProperty "`unpropBadRem`: the third bug is found"
-          (expectFailure unpropBadRem)
+          (expectFailure (withMaxSuccess 1000 unpropBadRem))
       , testProperty "`unpropStillBadRem`: the fourth bug is found"
           (expectFailure unpropStillBadRem)
       , testProperty "`prop_circularBuffer`: the fixed version is correct"
