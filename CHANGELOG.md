@@ -1,3 +1,8 @@
+#### 0.4.2 (2018-9-3)
+
+  * Fix bug that made tests fail on systems without docker;
+  * Remove some unused dependencies found by the weeder tool.
+
 #### 0.4.1 (2018-8-31)
 
   * Minor fixes release:
