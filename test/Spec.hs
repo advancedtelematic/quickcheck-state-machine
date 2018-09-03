@@ -1,5 +1,9 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Main (main) where
 
+import           Control.Exception
+                   (catch)
 import           Prelude
 import           System.Exit
                    (ExitCode(..))
@@ -83,6 +87,7 @@ main :: IO ()
 main = do
   -- Check if docker is avaiable.
   ec <- rawSystem "docker" ["version"]
+          `catch` (\(_ :: IOError) -> return (ExitFailure 127))
   let docker = case ec of
                  ExitSuccess   -> True
                  ExitFailure _ -> False
