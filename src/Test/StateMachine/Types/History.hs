@@ -79,6 +79,9 @@ findResponse pid (e                     : es)               =
 --   response event.
 data Operation cmd resp = Operation (cmd Concrete) (resp Concrete) Pid
 
+deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
+  Show (Operation cmd resp)
+
 makeOperations :: History' cmd resp -> [Operation cmd resp]
 makeOperations [] = []
 makeOperations ((pid1, Invocation cmd _) : (pid2, Response resp) : hist)
