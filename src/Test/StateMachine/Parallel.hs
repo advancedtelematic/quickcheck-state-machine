@@ -56,7 +56,7 @@ import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                             as S
+import qualified Data.Set                          as S
 import           Data.Tree
                    (Tree(Node))
 import           GHC.Generics
@@ -75,10 +75,9 @@ import           Text.Show.Pretty
 import           Test.StateMachine.BoxDrawer
 import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic
-                   (boolean)
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2        as Rank2
+import qualified Test.StateMachine.Types.Rank2     as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
@@ -257,19 +256,21 @@ prop_splitCombine xs = splitPlacesBlanks (map length xs) (concat xs) == xs
 
 ------------------------------------------------------------------------
 
-runParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+runParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
+                    => (Rank2.Traversable cmd, Rank2.Foldable resp)
                     => (MonadCatch m, MonadBaseControl IO m)
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd
-                    -> PropertyM m [(History cmd resp, Bool)]
+                    -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommands sm = runParallelCommandsNTimes 10 sm
 
-runParallelCommandsNTimes :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
+                          => (Rank2.Traversable cmd, Rank2.Foldable resp)
                           => (MonadCatch m, MonadBaseControl IO m)
                           => Int -- ^ How many times to execute the parallel program.
                           -> StateMachine model cmd m resp
                           -> ParallelCommands cmd
-                          -> PropertyM m [(History cmd resp, Bool)]
+                          -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommandsNTimes n sm cmds =
   replicateM n $ do
     (hist, _reason) <- run (executeParallelCommands sm cmds)
@@ -319,22 +320,22 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
 -- | Try to linearise a history of a parallel program execution using a
 --   sequential model. See the *Linearizability: a correctness condition for
 --   concurrent objects* paper linked to from the README for more info.
-linearise :: forall model cmd m resp. StateMachine model cmd m resp
-          -> History cmd resp -> Bool
+linearise :: forall model cmd m resp. (Show (cmd Concrete), Show (resp Concrete))
+          => StateMachine model cmd m resp -> History cmd resp -> Logic
 linearise StateMachine { transition,  postcondition, initModel } = go . unHistory
   where
-    go :: [(Pid, HistoryEvent cmd resp)] -> Bool
-    go [] = True
-    go es = any (step initModel) (interleavings es)
+    go :: [(Pid, HistoryEvent cmd resp)] -> Logic
+    go [] = Top
+    go es = exists (interleavings es) (step initModel)
 
-    step :: model Concrete -> Tree (Operation cmd resp) -> Bool
+    step :: model Concrete -> Tree (Operation cmd resp) -> Logic
     step model (Node (Operation cmd resp _) roses) =
-      boolean (postcondition model cmd resp) &&
-        any' (step (transition model cmd resp)) roses
+      postcondition model cmd resp .&&
+        exists' roses (step (transition model cmd resp))
 
-any' :: (a -> Bool) -> [a] -> Bool
-any' _ [] = True
-any' p xs = any p xs
+exists' :: Show a => [a] -> (a -> Logic) -> Logic
+exists' [] _ = Top
+exists' xs p = exists xs p
 
 ------------------------------------------------------------------------
 
@@ -343,10 +344,24 @@ any' p xs = any p xs
 prettyParallelCommands :: (MonadIO m, Rank2.Foldable cmd)
                        => (Show (cmd Concrete), Show (resp Concrete))
                        => ParallelCommands cmd
-                       -> [(History cmd resp, Bool)] -- ^ Output of 'runParallelCommands'.
+                       -> [(History cmd resp, Logic)] -- ^ Output of 'runParallelCommands'.
                        -> PropertyM m ()
 prettyParallelCommands cmds =
-  mapM_ (\(hist, bool) -> print (toBoxDrawings cmds hist) `whenFailM` property bool)
+  mapM_ (\(hist, l) -> printCounterexample hist (logic l) `whenFailM` property (boolean l))
+    where
+      printCounterexample hist  (VFalse ce) = do
+        print (toBoxDrawings cmds hist)
+        putStrLn ""
+        print (simplify ce)
+        putStrLn ""
+      printCounterexample _hist _
+        = error "prettyParallelCommands: impossible, because `boolean l` was False."
+
+      simplify :: Counterexample -> Counterexample
+      simplify (ExistsC _ [Fst ce])     = ce
+      simplify (ExistsC _ (Snd ce : _)) = simplify ce
+      simplify _                        = error "simplify: impossible, \
+                                                \ because of the structure linearise."
 
 -- | Draw an ASCII diagram of the history of a parallel program. Useful for
 --   seeing how a race condition might have occured.
@@ -378,7 +393,7 @@ toBoxDrawings (ParallelCommands prefix suffixes) = toBoxDrawings'' allVars
               (pid, Response   _)   -> (Close, pid)
 
         evT :: [(EventType, Pid)]
-        evT = toEventType (filter (\e -> fst e `elem` map Pid [1, 2]) h)
+        evT = toEventType (filter (\e -> fst e `Prelude.elem` map Pid [1, 2]) h)
 
 getAllUsedVars :: Rank2.Foldable cmd => Commands cmd -> Set Var
 getAllUsedVars = foldMap (\(Command cmd _) -> getUsedVars cmd) . unCommands

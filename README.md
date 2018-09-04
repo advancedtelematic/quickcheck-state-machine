@@ -280,6 +280,8 @@ ParallelCommands
 │ [] ← Read (Reference (Concrete Opaque))      │ │
 │                                → ReadValue 1 │ │
 └──────────────────────────────────────────────┘ │
+
+AnnotateC "Read" (PredicateC (1 :/= 2))
 ```
 
 As we can see above, a mutable reference is first created, and then in
