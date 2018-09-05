@@ -8,7 +8,8 @@ import           Prelude
 import           System.Exit
                    (ExitCode(..))
 import           System.Process
-                   (rawSystem)
+                   (StdStream(CreatePipe), proc, std_out,
+                   waitForProcess, withCreateProcess)
 import           Test.DocTest
                    (doctest)
 import           Test.Tasty
@@ -86,9 +87,14 @@ tests docker0 = testGroup "Tests"
 main :: IO ()
 main = do
   -- Check if docker is avaiable.
-  ec <- rawSystem "docker" ["version"]
+  ec <- rawSystemNoStdout "docker" ["version"]
           `catch` (\(_ :: IOError) -> return (ExitFailure 127))
   let docker = case ec of
                  ExitSuccess   -> True
                  ExitFailure _ -> False
   defaultMain (tests docker)
+    where
+      rawSystemNoStdout cmd args =
+        withCreateProcess
+          (proc cmd args) { std_out = CreatePipe }
+          (\_ _ _ -> waitForProcess)
