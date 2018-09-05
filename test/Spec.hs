@@ -32,7 +32,7 @@ tests :: Bool -> TestTree
 tests docker0 = testGroup "Tests"
   [ testCase "Doctest Z module" (doctest ["src/Test/StateMachine/Z.hs"])
   , testProperty "Die Hard"
-      (expectFailure (withMaxSuccess 1000 prop_dieHard))
+      (expectFailure (withMaxSuccess 2000 prop_dieHard))
   , testGroup "Memory reference"
       [ testProperty "No bug"                             (prop_sequential None)
       , testProperty "Logic bug"           (expectFailure (prop_sequential Logic))
