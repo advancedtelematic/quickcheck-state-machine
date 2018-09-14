@@ -37,6 +37,8 @@ module Test.StateMachine.Sequential
   , executeCommands
   , prettyPrintHistory
   , prettyCommands
+  , saveHistory
+  , saveCommands
   , commandNames
   , commandNamesInOrder
   , checkCommandNames
@@ -77,12 +79,18 @@ import           Data.Proxy
 import           Data.Set
                    (Set)
 import qualified Data.Set                          as S
+import           Data.Time
+                   (defaultTimeLocale, formatTime, getZonedTime)
 import           Data.TreeDiff
-                   (ToExpr, ansiWlBgEditExpr, ediff)
+                   (ToExpr, ansiWlBgOnlyEditExpr, ediff)
 import qualified Data.Vector                       as V
 import           GHC.Generics
                    (Generic1, Rep1, from1)
 import           Prelude
+import           System.Directory
+                   (createDirectoryIfMissing)
+import           System.FilePath
+                   ((</>))
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
                    generate, resize, shrinkList, sized, suchThat)
@@ -276,6 +284,9 @@ executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
 executeCommands StateMachine { transition, postcondition, invariant, semantics } hchan pid check =
   go . unCommands
   where
+    getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
+    getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
+
     go []                         = return Ok
     go (Command scmd vars : cmds) = do
       (env, model) <- get
@@ -308,11 +319,8 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
                 )
             go cmds
 
-getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
-getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
-
 modelDiff :: ToExpr (model r) => model r -> Maybe (model r) -> Doc
-modelDiff model = ansiWlBgEditExpr . flip ediff model . fromMaybe model
+modelDiff model = ansiWlBgOnlyEditExpr . flip ediff model . fromMaybe model
 
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
                    => (Show (cmd Concrete), Show (resp Concrete))
@@ -328,7 +336,7 @@ prettyPrintHistory StateMachine { initModel, transition }
     go :: model Concrete -> Maybe (model Concrete) -> [Operation cmd resp] -> Doc
     go current previous []                             =
       PP.line <> modelDiff current previous <> PP.line <> PP.line
-    go current previous [Crash cmd err pid] =
+    go current previous [Crash cmd err _pid] =
       mconcat
         [ PP.line
         , modelDiff current previous
@@ -337,12 +345,9 @@ prettyPrintHistory StateMachine { initModel, transition }
         , PP.string (show cmd)
         , PP.string " ==> "
         , PP.string err
-        , PP.string " [ "
-        , PP.int (unPid pid)
-        , PP.string " ]"
         , PP.line
         ]
-    go current previous (Operation cmd resp pid : ops) =
+    go current previous (Operation cmd resp _pid : ops) =
       mconcat
         [ PP.line
         , modelDiff current previous
@@ -351,9 +356,6 @@ prettyPrintHistory StateMachine { initModel, transition }
         , PP.string (show cmd)
         , PP.string " ==> "
         , PP.string (show resp)
-        , PP.string " [ "
-        , PP.int (unPid pid)
-        , PP.string " ]"
         , PP.line
         , go (transition current cmd resp) (Just current) ops
         ]
@@ -366,6 +368,57 @@ prettyCommands :: (MonadIO m, ToExpr (model Concrete))
                -> Property
                -> PropertyM m ()
 prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
+
+saveHistory :: forall model cmd m resp. ToExpr (model Concrete)
+            => (Show (cmd Concrete), Show (resp Concrete))
+            => StateMachine model cmd m resp
+            -> FilePath
+            -> Reason
+            -> History cmd resp
+            -> IO ()
+saveHistory StateMachine { initModel, transition } dir reason
+  = write
+  . show
+  . reverse
+  . go initModel Nothing []
+  . makeOperations
+  . unHistory
+  where
+    go :: model Concrete -> Maybe (model Concrete) -> [String] -> [Operation cmd resp]
+       -> [String]
+    go current previous acc []                              =
+      show reason : show (modelDiff current previous) : acc
+    go current previous acc (Operation cmd resp _pid : ops) =
+      go (transition current cmd resp) (Just current)
+         ( show (modelDiff current previous)
+         : show cmd
+         : show resp
+         : acc
+         )
+         ops
+
+    write :: String -> IO ()
+    write s = do
+      ztime <- getZonedTime
+      let date = formatTime defaultTimeLocale "%F" ztime
+          time = formatTime defaultTimeLocale "%H-%M-%S" ztime
+      createDirectoryIfMissing True (dir </> date)
+      writeFile (dir </> date </> time)
+                s
+      putStrLn ""
+      putStrLn ("Saved history: " <> dir </> date </> time)
+      putStrLn ""
+
+saveCommands :: (MonadIO m, ToExpr (model Concrete))
+             => (Show (cmd Concrete), Show (resp Concrete))
+             => StateMachine model cmd m resp
+             -> FilePath
+             -> History cmd resp
+             -> Reason
+             -> Property
+             -> PropertyM m ()
+saveCommands sm dir hist reason prop =
+  saveHistory sm dir reason hist `whenFailM` prop
 
 ------------------------------------------------------------------------
 

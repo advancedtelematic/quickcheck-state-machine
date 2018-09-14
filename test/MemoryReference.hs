@@ -157,7 +157,7 @@ sm bug = StateMachine initModel transition precondition postcondition
 prop_sequential :: Bug -> Property
 prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
   (hist, _model, res) <- runCommands sm' cmds
-  prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
+  saveCommands sm' "/tmp" hist res (checkCommandNames cmds (res === Ok))
     where
       sm' = sm bug
 

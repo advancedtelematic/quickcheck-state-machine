@@ -20,6 +20,7 @@ module Test.StateMachine
   , transitionMatrix
   , runCommands
   , prettyCommands
+  , saveCommands
   , checkCommandNames
   , commandNames
   , commandNamesInOrder
