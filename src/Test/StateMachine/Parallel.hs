@@ -329,7 +329,9 @@ linearise StateMachine { transition,  postcondition, initModel } = go . unHistor
     go es = exists (interleavings es) (step initModel)
 
     step :: model Concrete -> Tree (Operation cmd resp) -> Logic
-    step model (Node (Operation cmd resp _) roses) =
+    step _model (Node (Crash _cmd _err _pid) _roses) =
+      error "Not implemented yet, see issue #162 for more details."
+    step model (Node (Operation cmd resp _) roses)   =
       postcondition model cmd resp .&&
         exists' roses (step (transition model cmd resp))
 
@@ -384,6 +386,7 @@ toBoxDrawings (ParallelCommands prefix suffixes) = toBoxDrawings'' allVars
           | vars `S.isSubsetOf` knownVars = show (S.toList vars) ++ " ← " ++ show cmd
           | otherwise                     = show cmd
         out (Response resp) = show resp
+        out (Exception err) = err
 
         toEventType :: History' cmd resp -> [(EventType, Pid)]
         toEventType = map go
@@ -391,6 +394,7 @@ toBoxDrawings (ParallelCommands prefix suffixes) = toBoxDrawings'' allVars
             go e = case e of
               (pid, Invocation _ _) -> (Open,  pid)
               (pid, Response   _)   -> (Close, pid)
+              (pid, Exception  _)   -> (Close, pid)
 
         evT :: [(EventType, Pid)]
         evT = toEventType (filter (\e -> fst e `Prelude.elem` map Pid [1, 2]) h)
