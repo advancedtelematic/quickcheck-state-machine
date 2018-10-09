@@ -1,7 +1,6 @@
 resolver: lts-12.2
 packages:
   - '.'
-  - '../tree-diff'
 nix:
   enable: false
   pure: false

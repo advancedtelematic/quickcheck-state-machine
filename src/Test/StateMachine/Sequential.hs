@@ -82,7 +82,7 @@ import qualified Data.Set                          as S
 import           Data.Time
                    (defaultTimeLocale, formatTime, getZonedTime)
 import           Data.TreeDiff
-                   (ToExpr, ansiWlBgOnlyEditExpr, ediff)
+                   (ToExpr, ansiWlBgEditExpr, ediff)
 import qualified Data.Vector                       as V
 import           GHC.Generics
                    (Generic1, Rep1, from1)
@@ -320,7 +320,7 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
             go cmds
 
 modelDiff :: ToExpr (model r) => model r -> Maybe (model r) -> Doc
-modelDiff model = ansiWlBgOnlyEditExpr . flip ediff model . fromMaybe model
+modelDiff model = ansiWlBgEditExpr . flip ediff model . fromMaybe model
 
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
                    => (Show (cmd Concrete), Show (resp Concrete))
@@ -391,8 +391,8 @@ saveHistory StateMachine { initModel, transition } dir reason
     go current previous acc (Operation cmd resp _pid : ops) =
       go (transition current cmd resp) (Just current)
          ( show (modelDiff current previous)
-         : show cmd
          : show resp
+         : show cmd
          : acc
          )
          ops
