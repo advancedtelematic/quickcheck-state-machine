@@ -283,11 +283,13 @@ executeCommands StateMachine { transition, postcondition, invariant, semantics }
       liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
       !ecresp <- lift (fmap Right (semantics ccmd))
                    `catch` (\(err :: IOException) ->
-                               return (Left (ExceptionThrown (displayException err))))
+                               return (Left (displayException err)))
                    `catch` (\(err :: ErrorCall) ->
-                               return (Left (ExceptionThrown (displayException err))))
+                               return (Left (displayException err)))
       case ecresp of
-        Left err    -> return err
+        Left err    -> do
+          liftBaseWith (const (atomically (writeTChan hchan (pid, Exception err))))
+          return ExceptionThrown
         Right cresp -> do
           liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
           if check
@@ -326,6 +328,20 @@ prettyPrintHistory StateMachine { initModel, transition }
     go :: model Concrete -> Maybe (model Concrete) -> [Operation cmd resp] -> Doc
     go current previous []                             =
       PP.line <> modelDiff current previous <> PP.line <> PP.line
+    go current previous [Crash cmd err pid] =
+      mconcat
+        [ PP.line
+        , modelDiff current previous
+        , PP.line, PP.line
+        , PP.string "   == "
+        , PP.string (show cmd)
+        , PP.string " ==> "
+        , PP.string err
+        , PP.string " [ "
+        , PP.int (unPid pid)
+        , PP.string " ]"
+        , PP.line
+        ]
     go current previous (Operation cmd resp pid : ops) =
       mconcat
         [ PP.line
@@ -341,6 +357,7 @@ prettyPrintHistory StateMachine { initModel, transition }
         , PP.line
         , go (transition current cmd resp) (Just current) ops
         ]
+    go _ _ _ = error "prettyPrintHistory: impossible."
 
 prettyCommands :: (MonadIO m, ToExpr (model Concrete))
                => (Show (cmd Concrete), Show (resp Concrete))

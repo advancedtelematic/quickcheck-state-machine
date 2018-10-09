@@ -53,6 +53,7 @@ newtype Pid = Pid { unPid :: Int }
 data HistoryEvent cmd resp
   = Invocation !(cmd  Concrete) !(Set Var)
   | Response   !(resp Concrete)
+  | Exception  !String
 
 deriving instance (Eq (cmd Concrete), Eq (resp Concrete)) =>
   Eq (HistoryEvent cmd resp)
@@ -77,16 +78,21 @@ findResponse pid (e                     : es)               =
 
 -- | An operation packs up an invocation event with its corresponding
 --   response event.
-data Operation cmd resp = Operation (cmd Concrete) (resp Concrete) Pid
+data Operation cmd resp
+  = Operation (cmd Concrete) (resp Concrete) Pid
+  | Crash     (cmd Concrete) String Pid
 
 deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
   Show (Operation cmd resp)
 
 makeOperations :: History' cmd resp -> [Operation cmd resp]
 makeOperations [] = []
+makeOperations [(pid1, Invocation cmd _), (pid2, Exception err)]
+  | pid1 == pid2 = [Crash cmd err pid1]
+  | otherwise    = error "makeOperations: impossible, pid mismatch."
 makeOperations ((pid1, Invocation cmd _) : (pid2, Response resp) : hist)
   | pid1 == pid2 = Operation cmd resp pid1 : makeOperations hist
-  | otherwise    = error "makeOperations: pid mismatch."
+  | otherwise    = error "makeOperations: impossible, pid mismatch."
 makeOperations _ = error "makeOperations: impossible."
 
 -- | Given a history, return all possible interleavings of invocations

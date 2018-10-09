@@ -88,7 +88,7 @@ data Reason
   | PreconditionFailed
   | PostconditionFailed String
   | InvariantBroken String
-  | ExceptionThrown String
+  | ExceptionThrown
   deriving (Eq, Show)
 
 data ParallelCommandsF t cmd = ParallelCommands
