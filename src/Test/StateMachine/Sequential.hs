@@ -84,8 +84,8 @@ import           GHC.Generics
                    (Generic1, Rep1, from1)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, collect, cover,
-                   generate, resize, shrinkList, sized, suchThat)
+                   (Gen, Property, Testable, choose, collect, generate,
+                   resize, shrinkList, sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -376,7 +376,7 @@ checkCommandNames :: forall cmd. (Generic1 cmd, GConName1 (Rep1 cmd))
                   => Commands cmd -> Property -> Property
 checkCommandNames cmds
   = collect names
-  . cover (length names == numOfConstructors) 1 "coverage"
+  . oldCover (length names == numOfConstructors) 1 "coverage"
   where
     names             = commandNames cmds
     numOfConstructors = length (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic)))
