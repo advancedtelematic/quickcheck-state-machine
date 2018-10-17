@@ -66,7 +66,8 @@ deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
 takeInvocations :: History' cmd resp -> [(Pid, cmd Concrete)]
 takeInvocations []                               = []
 takeInvocations ((pid, Invocation cmd _) : hist) = (pid, cmd) : takeInvocations hist
-takeInvocations ((_,   Response     _)   : _)    = []
+takeInvocations ((_,   Response _)       : _)    = []
+takeInvocations ((_,   Exception _)      : _)    = []
 
 findResponse :: Pid -> History' cmd resp -> [(resp Concrete, History' cmd resp)]
 findResponse _   []                                         = []
