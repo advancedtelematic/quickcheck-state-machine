@@ -78,7 +78,7 @@ import           Data.Set
                    (Set)
 import qualified Data.Set                          as S
 import           Data.TreeDiff
-                   (ToExpr, ansiWlBgEditExpr, ediff)
+                   (ToExpr, ansiWlBgEditExprCompact, ediff)
 import qualified Data.Vector                       as V
 import           GHC.Generics
                    (Generic1, Rep1, from1)
@@ -312,7 +312,7 @@ getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
 getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
 
 modelDiff :: ToExpr (model r) => model r -> Maybe (model r) -> Doc
-modelDiff model = ansiWlBgEditExpr . flip ediff model . fromMaybe model
+modelDiff model = ansiWlBgEditExprCompact . flip ediff model . fromMaybe model
 
 prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
                    => (Show (cmd Concrete), Show (resp Concrete))
