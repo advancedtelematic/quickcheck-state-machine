@@ -3,7 +3,9 @@
 module Main (main) where
 
 import           Control.Exception
-                   (catch)
+                   (ErrorCall(ErrorCall), Exception, catch)
+import           Data.List
+                   (isPrefixOf)
 import           Prelude
 import           System.Exit
                    (ExitCode(..))
@@ -12,19 +14,25 @@ import           System.Process
                    waitForProcess, withCreateProcess)
 import           Test.DocTest
                    (doctest)
+import           Test.QuickCheck
+                   (sample)
 import           Test.Tasty
                    (TestTree, defaultMain, testGroup, withResource)
 import           Test.Tasty.HUnit
-                   (testCase)
+                   (assertFailure, testCase)
 import           Test.Tasty.QuickCheck
                    (expectFailure, ioProperty, testProperty,
                    withMaxSuccess)
+import qualified Test.Tasty.QuickCheckSM      as QCSM
 
 import           CircularBuffer
-import qualified CrudWebserverDb       as WS
+import qualified CrudWebserverDb              as WS
 import           DieHard
 import           Echo
 import           MemoryReference
+import           ProcessRegistry
+import           Test.StateMachine.Sequential
+                   (generateCommands)
 import           TicketDispenser
 
 ------------------------------------------------------------------------
@@ -72,6 +80,21 @@ tests docker0 = testGroup "Tests"
       , testProperty "parallel bad, see issue #218"
           (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
       ]
+  , testGroup "ProcessRegistry"
+      [ QCSM.testProperty "sequential" prop_processRegistry markovGood
+      , testCase "markovDeadlock"
+          (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
+            (sample (generateCommands (sm markovDeadlock) Nothing)))
+      , testCase "markovNotStochastic1"
+          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic1) Nothing)))
+      , testCase "markovNotStochastic2"
+          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic2) Nothing)))
+      , testCase "markovNotStochastic3"
+          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic3) Nothing)))
+      ]
   ]
   where
     webServer docker bug port test prop
@@ -82,6 +105,13 @@ tests docker0 = testGroup "Tests"
     ticketDispenser test prop =
       withResource setupLock cleanupLock
         (\ioLock -> testProperty test (ioProperty (prop <$> ioLock)))
+
+assertException :: Exception e => (e -> Bool) -> IO a -> IO ()
+assertException p io = do
+  r <- (io >> return False) `catch` (return . p)
+  if r
+  then return ()
+  else assertFailure "assertException: No or wrong exception thrown"
 
 ------------------------------------------------------------------------
 

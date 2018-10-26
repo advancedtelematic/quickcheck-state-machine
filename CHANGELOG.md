@@ -1,3 +1,8 @@
+#### 0.5.0 (201?-?-?)
+
+  * Add possibility to generate commands using a Markov chain, similar to how
+    they do it in the Cleanroom software engineering literature;
+
 #### 0.4.4 (???)
 
   * Check if the pre-condition holds before executing an action.

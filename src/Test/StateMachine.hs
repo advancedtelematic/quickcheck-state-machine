@@ -17,21 +17,22 @@ module Test.StateMachine
 
   ( -- * Sequential property combinators
     forAllCommands
-  , transitionMatrix
   , runCommands
   , prettyCommands
   , checkCommandNames
   , commandNames
   , commandNamesInOrder
+  , tabulateState
 
-  -- * Parallel property combinators
+    -- * Parallel property combinators
   , forAllParallelCommands
   , runParallelCommands
   , runParallelCommandsNTimes
   , prettyParallelCommands
 
     -- * Types
-  , StateMachine(StateMachine)
+  , AdvancedStateMachine(StateMachine)
+  , StateMachine
   , Concrete
   , Symbolic
   , Reference
@@ -45,11 +46,25 @@ module Test.StateMachine
 
   , module Test.StateMachine.Logic
 
+  , module Test.StateMachine.Markov
+
+    -- * Re-export
+  , FiniteEnum
+  , GBounded
+  , GEnum
+  , ToExpr
+
   ) where
 
+import           Data.TreeDiff
+                   (ToExpr)
+import           Generic.Data
+                   (FiniteEnum, GBounded, GEnum)
 import           Prelude
                    ()
+
 import           Test.StateMachine.Logic
+import           Test.StateMachine.Markov
 import           Test.StateMachine.Parallel
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types

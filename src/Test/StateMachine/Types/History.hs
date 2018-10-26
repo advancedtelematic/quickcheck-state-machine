@@ -21,6 +21,8 @@ module Test.StateMachine.Types.History
   , Pid(..)
   , HistoryEvent(..)
   , Operation(..)
+  , operationCommand
+  , operationIsCrash
   , makeOperations
   , interleavings
   )
@@ -85,6 +87,14 @@ data Operation cmd resp
 
 deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
   Show (Operation cmd resp)
+
+operationCommand :: Operation cmd resp -> cmd Concrete
+operationCommand (Operation cmd _resp _pid) = cmd
+operationCommand (Crash     cmd _err  _pid) = cmd
+
+operationIsCrash :: Operation cmd resp -> Bool
+operationIsCrash Operation {} = False
+operationIsCrash Crash {}     = True
 
 makeOperations :: History' cmd resp -> [Operation cmd resp]
 makeOperations [] = []

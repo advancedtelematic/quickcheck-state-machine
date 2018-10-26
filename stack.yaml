@@ -2,8 +2,26 @@ resolver: lts-12.2
 packages:
   - '.'
 extra-deps:
+  - base-orphans-0.8
+  - generic-data-0.3.0.0
   - tree-diff-0.0.2
+  - git: https://github.com/stevana/quickcheck.git
+    commit: 6a09f77fcffcc3c22e28504e4a1ab5ff2cd0737f
+  - git: https://github.com/advancedtelematic/markov-chain-usage-model.git
+    commit: 8cb2c50d4837f51dd94fe8949c535a557a0b0e3a
+  # - ../markov-chain-usage-model
 nix:
   enable: false
   pure: false
-  packages: [zlib]
+  packages: [
+    blas
+    gfortran.cc
+    glpk
+    gsl
+    haskellPackages.tasty-discover
+    liblapack
+    sundials
+    zlib
+    ]
+
+allow-newer: true
