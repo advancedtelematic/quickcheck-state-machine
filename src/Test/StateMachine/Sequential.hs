@@ -26,8 +26,6 @@ module Test.StateMachine.Sequential
   ( forAllCommands
   , generateCommands
   , generateCommandsState
-  , measureFrequency
-  , calculateFrequency
   , getUsedVars
   , shrinkCommands
   , liftShrinkCommand
@@ -41,28 +39,25 @@ module Test.StateMachine.Sequential
   , commandNames
   , commandNamesInOrder
   , checkCommandNames
-  , transitionMatrix
   )
   where
 
 import           Control.Exception
                    (ErrorCall, IOException, displayException)
+import           Control.Monad
+                   (unless)
 import           Control.Monad.Catch
                    (MonadCatch, catch)
-import           Control.Monad.State
-                   (State, StateT, evalState, evalStateT, get, lift, put,
-                   runStateT)
+import           Control.Monad.State.Strict
+                   (MonadIO, State, StateT, evalState, evalStateT, get,
+                   lift, put, runStateT)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
-import           Data.List
-                   (elemIndex)
 import qualified Data.Map                          as M
 import           Data.Map.Strict
                    (Map)
-import           Data.Matrix
-                   (Matrix, getRow, matrix)
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
@@ -76,11 +71,11 @@ import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
 import qualified Data.Vector                       as V
 import           GHC.Generics
-                   (Generic1, Rep1, from1)
+                   (Generic1, Rep1)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, collect, generate,
-                   resize, shrinkList, sized, suchThat)
+                   (Gen, Property, Testable, choose, collect, cover,
+                   shrinkList, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -94,6 +89,7 @@ import           UnliftIO
 
 import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic
+import           Test.StateMachine.Markov
 import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types.Rank2     as Rank2
 import           Test.StateMachine.Utils
@@ -102,9 +98,9 @@ import           Test.StateMachine.Utils
 
 forAllCommands :: Testable prop
                => (Show (cmd Symbolic), Show (model Symbolic))
-               => (Generic1 cmd, GConName1 (Rep1 cmd))
+               => (Show submodel, Eq submodel)
                => (Rank2.Foldable cmd, Rank2.Foldable resp)
-               => StateMachine model cmd m resp
+               => AdvancedStateMachine model submodel cmd m resp
                -> Maybe Int -- ^ Minimum number of commands.
                -> (Commands cmd -> prop)     -- ^ Predicate.
                -> Property
@@ -112,91 +108,104 @@ forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
 generateCommands :: (Rank2.Foldable resp, Show (model Symbolic))
-                 => (Generic1 cmd, GConName1 (Rep1 cmd))
-                 => StateMachine model cmd m resp
+                 => (Show submodel, Eq submodel)
+                 => Show (cmd Symbolic)
+                 => AdvancedStateMachine model submodel cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Gen (Commands cmd)
 generateCommands sm@StateMachine { initModel } mnum =
-  evalStateT (generateCommandsState sm newCounter mnum) (initModel, Nothing)
+  evalStateT (generateCommandsState sm newCounter mnum) initModel
 
-generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
-                      => Show (model Symbolic)
-                      => (Generic1 cmd, GConName1 (Rep1 cmd))
-                      => StateMachine model cmd m resp
+generateCommandsState :: forall model submodel cmd m resp. Rank2.Foldable resp
+                      => (Show submodel, Eq submodel)
+                      => (Show (model Symbolic), Show (cmd Symbolic))
+                      => AdvancedStateMachine model submodel cmd m resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.
-                      -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen (Commands cmd)
-generateCommandsState StateMachine { precondition, generator, transition
-                                   , mock, distribution } counter0 mnum = do
-  size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
-  Commands <$> go size0 counter0 []
+                      -> StateT (model Symbolic) Gen (Commands cmd)
+generateCommandsState StateMachine { precondition, generator, transition, distribution, mock } counter0 mnum
+  = case distribution of
+      Nothing     -> sizeBased
+      Just markov -> chainBased markov
   where
-    go :: Int -> Counter -> [Command cmd]
-       -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen [Command cmd]
-    go 0    _       cmds = return (reverse cmds)
-    go size counter cmds = do
-      (model, mprevious) <- get
-      mnext <- lift $ commandFrequency (generator model) distribution mprevious
-                  `suchThatOneOf` (boolean . precondition model)
-      case mnext of
-        Nothing   -> error $ concat
-                       [ "A deadlock occured while generating commands.\n"
-                       , "No pre-condition holds in the following model:\n"
-                       , ppShow model
-                       -- XXX: show trace of commands generated so far?
-                       ]
-        Just next -> do
-          let (resp, counter') = runGenSym (mock model next) counter
-          put (transition model next resp, Just next)
-          go (size - 1) counter' (Command next (getUsedVars resp) : cmds)
+    sizeBased :: StateT (model Symbolic) Gen (Commands cmd)
+    sizeBased = do
+      size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
+      Commands <$> go size0 counter0 []
+      where
+        go :: Int -> Counter -> [Command cmd]
+           -> StateT (model Symbolic) Gen [Command cmd]
+        go 0    _       cmds = return (reverse cmds)
+        go size counter cmds = do
+          model <- get
+          mnext <- lift $ [(1, generator model)] `suchThatOneOf` (boolean . precondition model)
+          case mnext of
+            Nothing   -> error $ concat
+                           [ "A deadlock occured while generating commands.\n"
+                           , "No pre-condition holds in the following model:\n"
+                           , ppShow model
+                           -- XXX: show trace of commands generated so far?
+                           ]
+            Just next -> do
+              let (resp, counter') = runGenSym (mock model next) counter
+              put (transition model next resp)
+              go (size - 1) counter' (Command next (getUsedVars resp) : cmds)
 
-commandFrequency :: forall cmd. (Generic1 cmd, GConName1 (Rep1 cmd))
-                 => Gen (cmd Symbolic) -> Maybe (Matrix Int) -> Maybe (cmd Symbolic)
-                 -> [(Int, Gen (cmd Symbolic))]
-commandFrequency gen Nothing             _          = [ (1, gen) ]
-commandFrequency gen (Just distribution) mprevious  =
-  [ (freq, gen `suchThat` ((== con) . gconName1 . from1)) | (freq, con) <- weights ]
-    where
-      idx = case mprevious of
-              Nothing       -> 1
-              Just previous ->
-                let
-                  rep = from1 previous
-                  con = gconName1 rep
-                  err = "genetateCommandState: no command: " <> con
-                in
-                  fromMaybe (error err) ((+ 2) <$>
-                    elemIndex con (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic))))
-      row     = V.toList (getRow idx distribution)
-      weights = zip row (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic)))
+    chainBased :: Markov (model Symbolic) submodel (cmd Symbolic)
+               -> StateT (model Symbolic) Gen (Commands cmd)
+    chainBased markov@(Markov classify _) = Commands <$> go counter0 []
+      where
+        go :: Counter -> [Command cmd] -> StateT (model Symbolic) Gen [Command cmd]
+        go counter cmds = do
+          model <- get
+          let gen = runMarkov markov model
+          ecmd  <- lift (gen `suchThatEither` \case
+                           Stop              -> True
+                           Continue (cmd, _) -> boolean (precondition model cmd))
+          case ecmd of
+            Left ces -> error $ concat
+                          [ "\n"
+                          , "A deadlock occured while generating commands.\n"
+                          , "No pre-condition holds in the following model:\n\n"
+                          , "    " ++ ppShow model
+                          , "\n\n"
+                          , "    " ++ ppShow (classify model)
+                          , "\n\nThe following commands have been generated so far:\n\n"
+                          , "    " ++ ppShow (reverse cmds)
+                          , "\n\n"
+                          , "Example commands generated whose pre-condition doesn't hold:\n\n"
+                          , "    " ++ ppShow ces
+                          , "\n"
+                          ]
+            Right Stop                        -> return (reverse cmds)
+            Right (Continue (cmd, submodel')) -> do
+              let (resp, counter') = runGenSym (mock model cmd) counter
+                  model'           = transition model cmd resp
 
-measureFrequency :: (Rank2.Foldable resp, Show (model Symbolic))
-                 => (Generic1 cmd, GConName1 (Rep1 cmd))
-                 => StateMachine model cmd m resp
-                 -> Maybe Int -- ^ Minimum number of commands.
-                 -> Int       -- ^ Maximum number of commands.
-                 -> IO (Map (String, Maybe String) Int)
-measureFrequency sm min0 size = do
-  cmds <- generate (sequence [ resize n (generateCommands sm min0) | n <- [0, 2..size] ])
-  return (M.unions (map calculateFrequency cmds))
+              unless (classify model' == submodel') $
+                error $ concat
+                  [ "\n"
+                  , "The transition function and the Markov chain do not agree on what the\n"
+                  , "next model is. After the command:\n\n"
+                  , "    " ++ ppShow cmd
+                  , "\n\n"
+                  , "transition function says the next model is:\n\n"
+                  , "    " ++ ppShow (classify model')
+                  , "\n\n"
+                  , "while the Markov chain says it is:\n\n"
+                  , "    " ++ ppShow submodel'
+                  , "\n"
+                  ]
 
-calculateFrequency :: (Generic1 cmd, GConName1 (Rep1 cmd))
-                   => Commands cmd -> Map (String, Maybe String) Int
-calculateFrequency = go M.empty . unCommands
-  where
-    go m [] = m
-    go m [cmd]
-      = M.insertWith (\_ old -> old + 1) (gconName cmd, Nothing) 1 m
-    go m (cmd1 : cmd2 : cmds)
-      = go (M.insertWith (\_ old -> old + 1) (gconName cmd1,
-                                              Just (gconName cmd2)) 1 m) cmds
+              put model'
+              go counter' (Command cmd (getUsedVars resp) : cmds)
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
 
 -- | Shrink commands in a pre-condition and scope respecting way.
 shrinkCommands :: (Rank2.Foldable cmd, Rank2.Foldable resp)
-               => StateMachine model cmd m resp -> Commands cmd
+               => AdvancedStateMachine model submodel cmd m resp -> Commands cmd
                -> [Commands cmd]
 shrinkCommands sm@StateMachine { initModel, shrinker }
   = filterMaybe ( flip evalState (initModel, S.empty, newCounter)
@@ -216,8 +225,8 @@ filterMaybe f (x : xs) = case f x of
   Nothing ->     filterMaybe f xs
   Just y  -> y : filterMaybe f xs
 
-validCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
-              => StateMachine model cmd m resp -> Commands cmd
+validCommands :: forall model submodel cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
+              => AdvancedStateMachine model submodel cmd m resp -> Commands cmd
               -> State (model Symbolic, Set Var, Counter) (Maybe (Commands cmd))
 validCommands StateMachine { precondition, transition, mock } =
   fmap (fmap Commands) . go . unCommands
@@ -243,6 +252,7 @@ validCommands StateMachine { precondition, transition, mock } =
 runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
             => (MonadCatch m, MonadIO m)
             => StateMachine model cmd m resp
+            => AdvancedStateMachine model submodel cmd m resp
             -> Commands cmd
             -> PropertyM m (History cmd resp, model Concrete, Reason)
 runCommands sm@StateMachine { initModel } = run . go
@@ -266,7 +276,7 @@ getChanContents chan = reverse <$> atomically (go' [])
 
 executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                 => (MonadCatch m, MonadIO m)
-                => StateMachine model cmd m resp
+                => AdvancedStateMachine model submodel cmd m resp
                 -> TChan (Pid, HistoryEvent cmd resp)
                 -> Pid
                 -> Bool -- ^ Check invariant and post-condition?
@@ -313,9 +323,9 @@ getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
 modelDiff :: ToExpr (model r) => model r -> Maybe (model r) -> Doc
 modelDiff model = ansiWlBgEditExprCompact . flip ediff model . fromMaybe model
 
-prettyPrintHistory :: forall model cmd m resp. ToExpr (model Concrete)
+prettyPrintHistory :: forall model submodel cmd m resp. ToExpr (model Concrete)
                    => (Show (cmd Concrete), Show (resp Concrete))
-                   => StateMachine model cmd m resp
+                   => AdvancedStateMachine model submodel cmd m resp
                    -> History cmd resp
                    -> IO ()
 prettyPrintHistory StateMachine { initModel, transition }
@@ -360,7 +370,7 @@ prettyPrintHistory StateMachine { initModel, transition }
 
 prettyCommands :: (MonadIO m, ToExpr (model Concrete))
                => (Show (cmd Concrete), Show (resp Concrete))
-               => StateMachine model cmd m resp
+               => AdvancedStateMachine model submodel cmd m resp
                -> History cmd resp
                -> Property
                -> PropertyM m ()
@@ -393,15 +403,3 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
   where
     go :: [String] -> Command cmd -> [String]
     go ih cmd = gconName cmd : ih
-
-
-transitionMatrix :: forall cmd. GConName1 (Rep1 cmd)
-                 => Proxy (cmd Symbolic)
-                 -> (String -> String -> Int) -> Matrix Int
-transitionMatrix _ f =
-  let cons = gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic))
-      n    = length cons
-      m    = succ n
-  in matrix m n $ \case
-                    (1, j) -> f "<START>"               (cons !! pred j)
-                    (i, j) -> f (cons !! pred (pred i)) (cons !! pred j)

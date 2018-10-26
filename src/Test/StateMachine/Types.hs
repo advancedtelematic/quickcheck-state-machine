@@ -21,7 +21,8 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Types
-  ( StateMachine(..)
+  ( StateMachine
+  , AdvancedStateMachine(..)
   , Command(..)
   , Commands(..)
   , lengthCommands
@@ -39,17 +40,18 @@ module Test.StateMachine.Types
 
 import           Data.Functor.Classes
                    (Ord1, Show1)
-import           Data.Matrix
-                   (Matrix)
 import           Data.Semigroup
                    (Semigroup)
 import           Data.Set
                    (Set)
+import           Data.Void
+                   (Void)
 import           Prelude
 import           Test.QuickCheck
                    (Gen)
 
 import           Test.StateMachine.Logic
+import           Test.StateMachine.Markov
 import           Test.StateMachine.Types.Environment
 import           Test.StateMachine.Types.GenSym
 import           Test.StateMachine.Types.History
@@ -57,14 +59,16 @@ import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 
-data StateMachine model cmd m resp = StateMachine
+type StateMachine model cmd m resp = AdvancedStateMachine model Void cmd m resp
+
+data AdvancedStateMachine model submodel cmd m resp = StateMachine
   { initModel      :: forall r. model r
   , transition     :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
   , precondition   :: model Symbolic -> cmd Symbolic -> Logic
   , postcondition  :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
   , invariant      :: Maybe (model Concrete -> Logic)
   , generator      :: model Symbolic -> Gen (cmd Symbolic)
-  , distribution   :: Maybe (Matrix Int)
+  , distribution   :: Maybe (Markov (model Symbolic) submodel (cmd Symbolic))
   , shrinker       :: cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)

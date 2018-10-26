@@ -17,7 +17,6 @@ module Test.StateMachine
 
   ( -- * Sequential property combinators
     forAllCommands
-  , transitionMatrix
   , runCommands
   , prettyCommands
   , checkCommandNames
@@ -31,7 +30,8 @@ module Test.StateMachine
   , prettyParallelCommands
 
     -- * Types
-  , StateMachine(StateMachine)
+  , AdvancedStateMachine(StateMachine)
+  , StateMachine
   , Concrete
   , Symbolic
   , Reference
@@ -45,6 +45,8 @@ module Test.StateMachine
 
   , module Test.StateMachine.Logic
 
+  , module Test.StateMachine.Markov
+
   ) where
 
 import           Prelude
@@ -53,3 +55,4 @@ import           Test.StateMachine.Logic
 import           Test.StateMachine.Parallel
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
+import           Test.StateMachine.Markov

@@ -21,7 +21,7 @@ module Test.StateMachine.Types.GenSym
   )
   where
 
-import           Control.Monad.State
+import           Control.Monad.State.Strict
                    (State, get, put, runState)
 import           Data.Typeable
                    (Typeable)

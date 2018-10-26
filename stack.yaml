@@ -3,6 +3,8 @@ packages:
   - '.'
 extra-deps:
   - tree-diff-0.0.2
+  - generic-data-0.3.0.0
+  - base-orphans-0.8
 nix:
   enable: false
   pure: false

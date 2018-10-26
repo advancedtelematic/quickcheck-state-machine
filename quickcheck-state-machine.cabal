@@ -33,6 +33,7 @@ library
                      , Test.StateMachine.BoxDrawer
                      , Test.StateMachine.ConstructorName
                      , Test.StateMachine.Logic
+                     , Test.StateMachine.Markov
                      , Test.StateMachine.Parallel
                      , Test.StateMachine.Sequential
                      , Test.StateMachine.Types
@@ -50,10 +51,11 @@ library
         base >=4.9 && <5,
         containers >=0.5.7.1,
         exceptions >=0.8.3,
-        matrix >=0.3.5.0,
+        generic-data >=0.3.0.0,
         mtl >=2.2.1,
         pretty-show,
         QuickCheck >=2.9.2,
+        random,
         split >=0.2.3.3,
         tree-diff >=0.0.2,
         vector >=0.12.0.1,
@@ -71,8 +73,8 @@ test-suite quickcheck-state-machine-test
                        doctest,
                        filelock,
                        filepath,
+                       hashtables >=1.2,
                        http-client,
-                       matrix >=0.3.5.0,
                        monad-logger,
                        mtl,
                        network,
@@ -105,7 +107,8 @@ test-suite quickcheck-state-machine-test
                        DieHard,
                        Echo,
                        MemoryReference,
-                       TicketDispenser
+                       TicketDispenser,
+                       ProcessRegistry
 
   ghc-options:
               -threaded -rtsopts -with-rtsopts=-N
