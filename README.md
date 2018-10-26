@@ -140,8 +140,7 @@ postcondition (Model m) cmd resp = case (cmd, resp) of
   (Increment _ref, Incremented) -> Top
 ```
 
-Finally, we have to explain how to generate, mock responses given a model, and
-shrink actions.
+Next we have to explain how to generate and shrink actions.
 
 ```haskell
 generator :: Model Symbolic -> Gen (Command Symbolic)
@@ -152,17 +151,26 @@ generator (Model model) = frequency
   , (4, Increment <$> elements (domain model))
   ]
 
+shrinker :: Command Symbolic -> [Command Symbolic]
+shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrinker _             = []
+```
+
+Finally, we show how to mock responses given a model.
+
+```haskell
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
 mock (Model m) cmd = case cmd of
   Create      -> Created   <$> genSym
   Read ref    -> ReadValue <$> pure (m ! ref)
   Write _ _   -> pure Written
   Increment _ -> pure Incremented
-
-shrinker :: Command Symbolic -> [Command Symbolic]
-shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
-shrinker _             = []
 ```
+
+(`mock` is a hack to make it possible for responses to have multiple reference,
+and an experiment which maybe one day will let us create mocked APIs. See issue
+[#236](https://github.com/advancedtelematic/quickcheck-state-machine/issues/236)
+for further details.)
 
 To be able to fit the code on a line we pack up all of them above into a
 record.
