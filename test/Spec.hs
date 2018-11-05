@@ -15,7 +15,7 @@ import           System.Process
 import           Test.DocTest
                    (doctest)
 import           Test.QuickCheck
-                   (resize, sample)
+                   (sample)
 import           Test.Tasty
                    (TestTree, defaultMain, testGroup, withResource)
 import           Test.Tasty.HUnit
@@ -32,8 +32,6 @@ import           MemoryReference
 import           ProcessRegistry
 import           Test.StateMachine.Sequential
                    (generateCommands)
-import           Test.StateMachine.Utils
-                   (bigSample)
 import           TicketDispenser
 
 ------------------------------------------------------------------------
@@ -84,11 +82,17 @@ tests docker0 = testGroup "Tests"
   , testGroup "ProcessRegistry"
       [ testProperty "sequential" (prop_processRegistry markovGood)
       , testCase "markovDeadlock"
-          (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err) -- XXX: still flaky
-            (bigSample (generateCommands (sm markovDeadlock) Nothing)))
+          (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
+            (sample (generateCommands (sm markovDeadlock) Nothing)))
       , testCase "markovTransitionMismatch"
           (assertException (\(ErrorCall err) -> "\nThe transition" `isPrefixOf` err)
-            (bigSample (generateCommands (sm markovTransitionMismatch) Nothing)))
+            (sample (generateCommands (sm markovTransitionMismatch) Nothing)))
+      , testCase "markovNotStochastic"
+          (assertException (\(ErrorCall err) -> "The probabilites" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic) Nothing)))
+      , testCase "markovNotStochastic'"
+          (assertException (\(ErrorCall err) -> "The probabilites" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic') Nothing)))
       ]
   ]
   where

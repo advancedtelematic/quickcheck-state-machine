@@ -28,7 +28,6 @@ module Test.StateMachine.Utils
   , suchThatOneOf
   , oldCover
   , suchThatEither
-  , bigSample
   )
   where
 
@@ -36,7 +35,7 @@ import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, again, counterexample,
                    frequency, resize, shrinking, sized, suchThatMaybe,
-                   whenFail, generate)
+                   whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
@@ -126,7 +125,7 @@ oldCover x n s p =
 #endif
 
 suchThatEither :: Gen a -> (a -> Bool) -> Gen (Either [a] a)
-gen `suchThatEither` p = sized (try [] 0 . max 1)
+gen `suchThatEither` p = sized (try [] 0 . max 100)
   where
     try ces _ 0 = return (Left (reverse ces))
     try ces k n = do

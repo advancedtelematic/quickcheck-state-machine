@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -11,6 +12,8 @@ module Test.StateMachine.Markov
   )
   where
 
+import           Control.Monad
+                   (unless)
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
                    gmaxBound, gminBound)
@@ -44,8 +47,11 @@ runMarkov (Markov classify dist) m = pickGen (dist (classify m))
   where
     pickGen :: [(Int, Continue (m -> Gen a, s))] -> Gen (Continue (a, s))
     pickGen gens = do
+      let probs = map fst gens
+      !_ <- unless (all (\p -> 0 <= p && p <= 100) probs && sum probs == 100) $
+        error "The probabilites don't add up to 100."
       stdGen <- mkStdGen <$> chooseAny
-      frequencyR [ (freq, go gen) | (freq, gen) <- gens ] stdGen
+      frequencyR [ (prob, go gen) | (prob, gen) <- gens ] stdGen
       where
         go :: Continue (m -> Gen a, s) -> Gen (Continue (a, s))
         go Stop               = return Stop
