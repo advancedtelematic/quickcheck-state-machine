@@ -34,6 +34,8 @@ module TicketDispenser
   )
   where
 
+import           Control.Concurrent
+                   (threadDelay)
 import           Control.Exception
                    (IOException, catch)
 import           Data.TreeDiff
@@ -145,18 +147,27 @@ semantics
 semantics se (tdb, tlock) cmd = case cmd of
   TakeTicket -> do
     lock <- lockFile tlock se
-    i <- read <$> readFile tdb
-      `catch` (\(_ :: IOException) -> return "-1")
-    writeFile tdb (show (i + 1))
-      `catch` (\(_ :: IOException) -> return ())
+    i <- read <$> retryingReadFile tdb
+    retryingWriteFile tdb (show (i + 1))
     unlockFile lock
     return (GotTicket (i + 1))
   Reset      -> do
     lock <- lockFile tlock se
-    writeFile tdb (show (0 :: Integer))
-      `catch` (\(_ :: IOException) -> return ())
+    retryingWriteFile tdb (show (0 :: Integer))
     unlockFile lock
     return ResetOk
+
+retryingReadFile :: FilePath -> IO String
+retryingReadFile fp = go
+  where
+    go = readFile fp `catch`
+           (\(_ :: IOException) -> threadDelay 100000 >> go)
+
+retryingWriteFile :: FilePath -> String -> IO ()
+retryingWriteFile fp s = go
+  where
+    go = writeFile fp s `catch`
+           (\(_ :: IOException) -> threadDelay 100000 >> go)
 
 mock :: Model Symbolic -> Action Symbolic -> GenSym (Response Symbolic)
 mock (Model Nothing)  TakeTicket = error "mock: TakeTicket"
