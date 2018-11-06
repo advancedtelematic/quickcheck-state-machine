@@ -360,10 +360,11 @@ prettyParallelCommands cmds =
         = error "prettyParallelCommands: impossible, because `boolean l` was False."
 
       simplify :: Counterexample -> Counterexample
-      simplify (ExistsC _ [Fst ce])     = ce
-      simplify (ExistsC _ (Snd ce : _)) = simplify ce
-      simplify _                        = error "simplify: impossible, \
-                                                \ because of the structure linearise."
+      simplify (ExistsC _ [Fst ce])       = ce
+      simplify (ExistsC x (Fst ce : ces)) = ce `EitherC` simplify (ExistsC x ces)
+      simplify (ExistsC _ (Snd ce : _))   = simplify ce
+      simplify _                          = error "simplify: impossible,\
+                                                  \ because of the structure of linearise."
 
 -- | Draw an ASCII diagram of the history of a parallel program. Useful for
 --   seeing how a race condition might have occured.
