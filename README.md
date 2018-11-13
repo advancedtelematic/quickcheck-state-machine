@@ -447,10 +447,10 @@ we can improve it on the issue tracker!
     [video](https://vimeo.com/6638041)] -- this is the first paper to describe
     how Erlang's QuickCheck works (including the parallel testing);
 
-  * *Linearizability: a correctness condition for concurrent
-    objects* [[PDF](https://cs.brown.edu/~mph/HerlihyW90/p463-herlihy.pdf)], this
-    is a classic paper that describes the main technique of the parallel
-    property;
+  * *Linearizability: a correctness condition for concurrent objects*
+    [[PDF](https://cs.brown.edu/~mph/HerlihyW90/p463-herlihy.pdf), TLA+
+    [formalisation](https://github.com/lorin/tla-linearizability)], this is a classic
+    paper that describes the main technique of the parallel property;
 
   * Aphyr's blogposts about [Jepsen](https://github.com/jepsen-io/jepsen), which
     also uses the linearisability technique, and has found bugs in many
