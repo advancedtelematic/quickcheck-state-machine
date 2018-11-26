@@ -1,6 +1,8 @@
 resolver: lts-12.2
 packages:
   - '.'
+extra-deps:
+  - tree-diff-0.0.2
 nix:
   enable: false
   pure: false
