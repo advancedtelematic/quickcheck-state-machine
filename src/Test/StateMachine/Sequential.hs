@@ -44,8 +44,6 @@ module Test.StateMachine.Sequential
 
 import           Control.Exception
                    (ErrorCall, IOException, displayException)
-import           Control.Monad
-                   (unless)
 import           Control.Monad.Catch
                    (MonadCatch, catch)
 import           Control.Monad.State.Strict
@@ -69,9 +67,10 @@ import           Data.Set
 import qualified Data.Set                          as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
-import qualified Data.Vector                       as V
+import           Generic.Data
+                   (FiniteEnum, GBounded, GEnum)
 import           GHC.Generics
-                   (Generic1, Rep1)
+                   (Generic, Generic1, Rep, Rep1)
 import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, cover,
@@ -97,8 +96,8 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 forAllCommands :: Testable prop
-               => (Show (cmd Symbolic), Show (model Symbolic))
-               => (Show submodel, Eq submodel)
+               => (Show (cmd Symbolic), Show (model Symbolic), Show submodel)
+               => (Generic submodel, GEnum FiniteEnum (Rep submodel), GBounded (Rep submodel))
                => (Rank2.Foldable cmd, Rank2.Foldable resp)
                => AdvancedStateMachine model submodel cmd m resp
                -> Maybe Int -- ^ Minimum number of commands.
@@ -108,8 +107,8 @@ forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
 generateCommands :: (Rank2.Foldable resp, Show (model Symbolic))
-                 => (Show submodel, Eq submodel)
-                 => Show (cmd Symbolic)
+                 => (Generic submodel, GEnum FiniteEnum (Rep submodel), GBounded (Rep submodel))
+                 => (Show submodel, Show (cmd Symbolic))
                  => AdvancedStateMachine model submodel cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
                  -> Gen (Commands cmd)
@@ -117,16 +116,16 @@ generateCommands sm@StateMachine { initModel } mnum =
   evalStateT (generateCommandsState sm newCounter mnum) initModel
 
 generateCommandsState :: forall model submodel cmd m resp. Rank2.Foldable resp
-                      => (Show submodel, Eq submodel)
-                      => (Show (model Symbolic), Show (cmd Symbolic))
+                      => (Generic submodel, GEnum FiniteEnum (Rep submodel), GBounded (Rep submodel))
+                      => (Show (model Symbolic), Show submodel, Show (cmd Symbolic))
                       => AdvancedStateMachine model submodel cmd m resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.
                       -> StateT (model Symbolic) Gen (Commands cmd)
 generateCommandsState StateMachine { precondition, generator, transition, distribution, mock } counter0 mnum
   = case distribution of
-      Nothing     -> sizeBased
-      Just markov -> chainBased markov
+      Nothing              -> sizeBased
+      Just (markov, start) -> chainBased markov start
   where
     sizeBased :: StateT (model Symbolic) Gen (Commands cmd)
     sizeBased = do
@@ -152,13 +151,14 @@ generateCommandsState StateMachine { precondition, generator, transition, distri
               go (size - 1) counter' (Command next (getUsedVars resp) : cmds)
 
     chainBased :: Markov (model Symbolic) submodel (cmd Symbolic)
+               -> submodel
                -> StateT (model Symbolic) Gen (Commands cmd)
-    chainBased markov@(Markov classify _) = Commands <$> go counter0 []
+    chainBased markov start = Commands <$> go counter0 [] start
       where
-        go :: Counter -> [Command cmd] -> StateT (model Symbolic) Gen [Command cmd]
-        go counter cmds = do
+        go :: Counter -> [Command cmd] -> submodel -> StateT (model Symbolic) Gen [Command cmd]
+        go counter cmds submodel = do
           model <- get
-          let gen = runMarkov markov model
+          let gen = runMarkov markov model submodel
           ecmd  <- lift (gen `suchThatEither` \case
                            Stop              -> True
                            Continue (cmd, _) -> boolean (precondition model cmd))
@@ -168,8 +168,6 @@ generateCommandsState StateMachine { precondition, generator, transition, distri
                           , "A deadlock occured while generating commands.\n"
                           , "No pre-condition holds in the following model:\n\n"
                           , "    " ++ ppShow model
-                          , "\n\n"
-                          , "    " ++ ppShow (classify model)
                           , "\n\nThe following commands have been generated so far:\n\n"
                           , "    " ++ ppShow (reverse cmds)
                           , "\n\n"
@@ -180,25 +178,8 @@ generateCommandsState StateMachine { precondition, generator, transition, distri
             Right Stop                        -> return (reverse cmds)
             Right (Continue (cmd, submodel')) -> do
               let (resp, counter') = runGenSym (mock model cmd) counter
-                  model'           = transition model cmd resp
-
-              unless (classify model' == submodel') $
-                error $ concat
-                  [ "\n"
-                  , "The transition function and the Markov chain do not agree on what the\n"
-                  , "next model is. After the command:\n\n"
-                  , "    " ++ ppShow cmd
-                  , "\n\n"
-                  , "transition function says the next model is:\n\n"
-                  , "    " ++ ppShow (classify model')
-                  , "\n\n"
-                  , "while the Markov chain says it is:\n\n"
-                  , "    " ++ ppShow submodel'
-                  , "\n"
-                  ]
-
-              put model'
-              go counter' (Command cmd (getUsedVars resp) : cmds)
+              put (transition model cmd resp)
+              go counter' (Command cmd (getUsedVars resp) : cmds) submodel'
 
 getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)

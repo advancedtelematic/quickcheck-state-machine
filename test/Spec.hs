@@ -84,15 +84,15 @@ tests docker0 = testGroup "Tests"
       , testCase "markovDeadlock"
           (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
             (sample (generateCommands (sm markovDeadlock) Nothing)))
-      , testCase "markovTransitionMismatch"
-          (assertException (\(ErrorCall err) -> "\nThe transition" `isPrefixOf` err)
-            (sample (generateCommands (sm markovTransitionMismatch) Nothing)))
-      , testCase "markovNotStochastic"
-          (assertException (\(ErrorCall err) -> "The probabilites" `isPrefixOf` err)
-            (sample (generateCommands (sm markovNotStochastic) Nothing)))
-      , testCase "markovNotStochastic'"
-          (assertException (\(ErrorCall err) -> "The probabilites" `isPrefixOf` err)
-            (sample (generateCommands (sm markovNotStochastic') Nothing)))
+      , testCase "markovNotStochastic1"
+          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic1) Nothing)))
+      , testCase "markovNotStochastic2"
+          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic2) Nothing)))
+      , testCase "markovNotStochastic3"
+          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+            (sample (generateCommands (sm markovNotStochastic3) Nothing)))
       ]
   ]
   where

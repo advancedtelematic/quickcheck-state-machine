@@ -44,8 +44,6 @@ import           Data.Semigroup
                    (Semigroup)
 import           Data.Set
                    (Set)
-import           Data.Void
-                   (Void)
 import           Prelude
 import           Test.QuickCheck
                    (Gen)
@@ -59,7 +57,7 @@ import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 
-type StateMachine model cmd m resp = AdvancedStateMachine model Void cmd m resp
+type StateMachine model cmd m resp = AdvancedStateMachine model () cmd m resp
 
 data AdvancedStateMachine model submodel cmd m resp = StateMachine
   { initModel      :: forall r. model r
@@ -68,7 +66,7 @@ data AdvancedStateMachine model submodel cmd m resp = StateMachine
   , postcondition  :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
   , invariant      :: Maybe (model Concrete -> Logic)
   , generator      :: model Symbolic -> Gen (cmd Symbolic)
-  , distribution   :: Maybe (Markov (model Symbolic) submodel (cmd Symbolic))
+  , distribution   :: Maybe (Markov (model Symbolic) submodel (cmd Symbolic), submodel)
   , shrinker       :: cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
