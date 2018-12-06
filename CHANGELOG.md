@@ -1,3 +1,12 @@
+#### 0.4.3 (2018-12-7)
+
+  * Support QuickCheck-2.12.*;
+  * Use new compact diffing of records from tree-diff library when displaying
+    counterexamples;
+  * Explain mock better in the README;
+  * Handle exceptions more gracefully;
+  * Show, possibly multiple, counterexample when parallel property fails.
+
 #### 0.4.2 (2018-9-3)
 
   * Fix bug that made tests fail on systems without docker;
