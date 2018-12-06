@@ -21,6 +21,8 @@ module Test.StateMachine.Types.Rank2
 import qualified Control.Applicative as Rank1
 import qualified Control.Monad       as Rank1
 import qualified Data.Foldable       as Rank1
+import           Data.Kind
+                   (Type)
 import qualified Data.Traversable    as Rank1
 import           GHC.Generics
                    ((:*:)((:*:)), (:+:)(L1, R1), Generic1, K1(K1),
@@ -31,7 +33,7 @@ import           Prelude             hiding
 
 ------------------------------------------------------------------------
 
-class Functor (f :: (k -> *) -> *) where
+class Functor (f :: (k -> Type) -> Type) where
   fmap :: (forall x. p x -> q x) -> f p -> f q
   default fmap :: (Generic1 f, Functor (Rep1 f))
                => (forall x. p x -> q x) -> f p -> f q
@@ -68,7 +70,7 @@ instance Functor f => Functor (Rec1 f) where
 
 ------------------------------------------------------------------------
 
-class Foldable (f :: (k -> *) -> *) where
+class Foldable (f :: (k -> Type) -> Type) where
   foldMap :: Monoid m => (forall x. p x -> m) -> f p -> m
   default foldMap :: (Generic1 f, Foldable (Rep1 f), Monoid m)
                   => (forall a. p a -> m) -> f p -> m
@@ -102,7 +104,7 @@ instance Foldable f => Foldable (Rec1 f) where
 
 ------------------------------------------------------------------------
 
-class (Functor t, Foldable t) => Traversable (t :: (k -> *) -> *) where
+class (Functor t, Foldable t) => Traversable (t :: (k -> Type) -> Type) where
   traverse :: Rank1.Applicative f => (forall a. p a -> f (q a)) -> t p -> f (t q)
   default traverse :: (Generic1 t, Traversable (Rep1 t), Rank1.Applicative f)
                    => (forall a. p a -> f (q a)) -> t p -> f (t q)
