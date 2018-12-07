@@ -25,6 +25,7 @@ module Test.StateMachine.Utils
   , shrinkPair
   , shrinkPair'
   , suchThatOneOf
+  , oldCover
   )
   where
 
@@ -37,7 +38,7 @@ import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
                    (Property(MkProperty), property, unProperty, (.&&.),
-                   (.||.))
+                   (.||.), cover)
 #if !MIN_VERSION_QuickCheck(2,10,0)
 import           Test.QuickCheck.Property
                    (succeeded)
@@ -110,3 +111,13 @@ gens0 `suchThatOneOf` p = go gens0 (length gens0 - 1)
            case mx of
              Just x  -> return (Just x)
              Nothing -> go (gens' ++ gens'') (n - 1)
+
+-- QuickCheck-2.12.0 introduced a breaking change in the cover combinator, see
+-- issue #248 for details.
+oldCover :: Testable prop => Bool -> Int -> String -> prop -> Property
+oldCover x n s p =
+#if !MIN_VERSION_QuickCheck(2,12,0)
+  cover x n s p
+#else
+  cover (fromIntegral n) x s p
+#endif
