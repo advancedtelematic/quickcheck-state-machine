@@ -23,7 +23,7 @@ module Test.StateMachine
   , commandNames
   , commandNamesInOrder
 
-  -- * Parallel property combinators
+    -- * Parallel property combinators
   , forAllParallelCommands
   , runParallelCommands
   , runParallelCommandsNTimes
@@ -47,12 +47,23 @@ module Test.StateMachine
 
   , module Test.StateMachine.Markov
 
+    -- * Re-export
+  , FiniteEnum
+  , GBounded
+  , GEnum
+  , ToExpr
+
   ) where
 
+import           Data.TreeDiff
+                   (ToExpr)
+import           Generic.Data
+                   (FiniteEnum, GBounded, GEnum)
 import           Prelude
                    ()
+
 import           Test.StateMachine.Logic
+import           Test.StateMachine.Markov
 import           Test.StateMachine.Parallel
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import           Test.StateMachine.Markov
