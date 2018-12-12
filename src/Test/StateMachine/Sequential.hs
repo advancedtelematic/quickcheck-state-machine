@@ -4,6 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 -----------------------------------------------------------------------------
@@ -250,10 +251,11 @@ runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
 runCommands sm@StateMachine { initModel } = run . go
   where
     go cmds = do
-      hchan                <- liftBaseWith (const newTChanIO)
-      (reason, (_, model)) <- runStateT (executeCommands sm hchan (Pid 0) True cmds)
-                                          (emptyEnvironment, initModel)
-      hist                 <- liftBaseWith (const (getChanContents hchan))
+      hchan <- liftBaseWith (const newTChanIO)
+      (reason, (_, _, _, model)) <- runStateT
+        (executeCommands sm hchan (Pid 0) True cmds)
+        (emptyEnvironment, initModel, newCounter, initModel)
+      hist <- liftBaseWith (const (getChanContents hchan))
       return (History hist, model, reason)
 
 getChanContents :: TChan a -> IO [a]
@@ -272,41 +274,41 @@ executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                 -> Pid
                 -> Bool -- ^ Check invariant and post-condition?
                 -> Commands cmd
-                -> StateT (Environment, model Concrete) m Reason
-executeCommands StateMachine { transition, postcondition, invariant, semantics } hchan pid check =
+                -> StateT (Environment, model Symbolic, Counter, model Concrete) m Reason
+executeCommands StateMachine {..} hchan pid check =
   go . unCommands
   where
     go []                         = return Ok
     go (Command scmd vars : cmds) = do
-      (env, model) <- get
-      let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
-      liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
-      !ecresp <- lift (fmap Right (semantics ccmd))
-                   `catch` (\(err :: IOException) ->
-                               return (Left (displayException err)))
-                   `catch` (\(err :: ErrorCall) ->
-                               return (Left (displayException err)))
-      case ecresp of
-        Left err    -> do
-          liftBaseWith (const (atomically (writeTChan hchan (pid, Exception err))))
-          return ExceptionThrown
-        Right cresp -> do
-          liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
-          if check
-          then case logic (postcondition model ccmd cresp) of
-            VFalse ce -> return (PostconditionFailed (show ce))
-            VTrue     -> case logic (fromMaybe (const Top) invariant model) of
-                           VFalse ce' -> return (InvariantBroken (show ce'))
-                           VTrue      -> do
-                             put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
-                                 , transition model ccmd cresp
-                                 )
-                             go cmds
-          else do
-            put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
-                , transition model ccmd cresp
-                )
-            go cmds
+      (env, smodel, counter, cmodel) <- get
+      case (check, logic (precondition smodel scmd)) of
+        (True, VFalse ce) -> return (PreconditionFailed (show ce))
+        _                 -> do
+          let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
+          liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
+          !ecresp <- lift (fmap Right (semantics ccmd))
+                       `catch` (\(err :: IOException) ->
+                                   return (Left (displayException err)))
+                       `catch` (\(err :: ErrorCall) ->
+                                   return (Left (displayException err)))
+          case ecresp of
+            Left err    -> do
+              liftBaseWith (const (atomically (writeTChan hchan (pid, Exception err))))
+              return ExceptionThrown
+            Right cresp -> do
+              liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
+              let (sresp, counter') = runGenSym (mock smodel scmd) counter
+              case (check, logic (postcondition cmodel ccmd cresp)) of
+                (True, VFalse ce) -> return (PostconditionFailed (show ce))
+                _                 -> case (check, logic (fromMaybe (const Top) invariant cmodel)) of
+                                       (True, VFalse ce') -> return (InvariantBroken (show ce'))
+                                       _                  -> do
+                                         put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+                                             , transition smodel scmd sresp
+                                             , counter'
+                                             , transition cmodel ccmd cresp
+                                             )
+                                         go cmds
 
 getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
 getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])

@@ -39,6 +39,7 @@ tests docker0 = testGroup "Tests"
       , testProperty "Logic bug"           (expectFailure (prop_sequential Logic))
       , testProperty "Race bug sequential"                (prop_sequential Race)
       , testProperty "Race bug parallel"   (expectFailure (prop_parallel   Race))
+      , testProperty "Precondition failed" prop_precondition
       ]
   , testGroup "Crud webserver"
       [ webServer docker0 WS.None  8800 "No bug"                       WS.prop_crudWebserverDb

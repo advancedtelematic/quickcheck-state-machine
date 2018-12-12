@@ -68,6 +68,7 @@ test-suite quickcheck-state-machine-test
   main-is:             Spec.hs
   build-depends:       base,
                        bytestring,
+                       containers,
                        directory,
                        doctest,
                        filelock,
