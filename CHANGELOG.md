@@ -1,3 +1,7 @@
+#### 0.4.4 (???)
+
+  * Check if the pre-condition holds before executing an action.
+
 #### 0.4.3 (2018-12-7)
 
   * Support QuickCheck-2.12.*;
