@@ -285,9 +285,9 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
 
   hchan <- liftBaseWith (const newTChanIO)
 
-  (reason0, (env0, _cmodel)) <- runStateT
+  (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) True prefix)
-    (emptyEnvironment, initModel)
+    (emptyEnvironment, initModel, newCounter, initModel)
 
   if reason0 /= Ok
   then do
@@ -299,14 +299,14 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
     return (History hist, reason)
   where
     go hchan (_, env) (Pair cmds1 cmds2) = do
-      ((reason1, (env1, _)), (reason2, (env2, _))) <- concurrently
+      ((reason1, (env1, _, _, _)), (reason2, (env2, _, _, _))) <- concurrently
 
         -- XXX: Post-conditions not checked, so we can pass in initModel here...
         -- It would be better if we made executeCommands take a Maybe model
         -- instead of the boolean...
 
-        (runStateT (executeCommands sm hchan (Pid 1) False cmds1) (env, initModel))
-        (runStateT (executeCommands sm hchan (Pid 2) False cmds2) (env, initModel))
+        (runStateT (executeCommands sm hchan (Pid 1) False cmds1) (env, initModel, newCounter, initModel))
+        (runStateT (executeCommands sm hchan (Pid 2) False cmds2) (env, initModel, newCounter, initModel))
       return ( reason1 `combineReason` reason2
              , env1 <> env2
              )

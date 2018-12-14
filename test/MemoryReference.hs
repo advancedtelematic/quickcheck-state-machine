@@ -12,6 +12,7 @@
 module MemoryReference
   ( prop_sequential
   , prop_parallel
+  , prop_precondition
   , Bug(..)
   )
   where
@@ -23,6 +24,7 @@ import           Data.Functor.Classes
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
+import qualified Data.Set                      as Set
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -34,11 +36,14 @@ import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
-                   shrink, (===))
+                   once, shrink, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
+import           Test.StateMachine.Types
+                   (Commands(..), Reference(..), Symbolic(..), Var(..))
+import qualified Test.StateMachine.Types       as Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Z
 
@@ -166,3 +171,13 @@ prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
   prettyParallelCommands cmds =<< runParallelCommands sm' cmds
     where
       sm' = sm bug
+
+prop_precondition :: Property
+prop_precondition = once $ monadicIO $ do
+  (hist, _model, res) <- runCommands sm' cmds
+  prettyCommands sm' hist
+    (res === PreconditionFailed "PredicateC (NotElem (Reference (Symbolic (Var 0))) [])")
+    where
+      sm'  = sm None
+      cmds = Commands
+        [ Types.Command (Read (Reference (Symbolic (Var 0)))) Set.empty ]

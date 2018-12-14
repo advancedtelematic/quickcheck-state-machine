@@ -85,7 +85,7 @@ lengthCommands = length . unCommands
 
 data Reason
   = Ok
-  | PreconditionFailed
+  | PreconditionFailed String
   | PostconditionFailed String
   | InvariantBroken String
   | ExceptionThrown
