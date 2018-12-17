@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Test.StateMachine.Markov
   ( Markov(..)
@@ -9,9 +9,16 @@ module Test.StateMachine.Markov
   , tabulate
   , checkStochastic
   , gatherTransitions
+  , markovToDot
   )
   where
 
+import           Data.GraphViz
+                   (graphElemsToDot, quickParams)
+import           Data.GraphViz.Commands
+                   (GraphvizOutput(Pdf), addExtension, runGraphviz)
+import           Data.GraphViz.Exception
+                   (GraphvizException, handle)
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
                    gmaxBound, gminBound)
@@ -135,3 +142,32 @@ lookupMarkov (Markov markov) state conName = go (map snd (markov state))
       | conName == conName' = Just (NormalState state')
       | otherwise           = go cs
     go (Stop : _cs) = Just StopState
+
+------------------------------------------------------------------------
+
+markovToDot :: (Show state, Generic state)
+            => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
+            => Markov model state cmd -> state -> FilePath -> IO (Either String FilePath)
+markovToDot markov start fp =
+  handle (\(e :: GraphvizException) -> return (Left (show e))) $ do
+    let gr :: ([(String, String)], [(String, String, ConstructorName)])
+        gr = markovToGraphElems markov start
+    Right <$> addExtension (runGraphviz (uncurry (graphElemsToDot quickParams) gr)) Pdf fp
+
+markovToGraphElems :: (Show state, Generic state)
+                   => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
+                   => Markov model state cmd -> state
+                   -> ([(String, String)], [(String, String, ConstructorName)])
+markovToGraphElems markov _start = (nodes, edges)
+  where
+    table = tabulate markov
+    exit  = "Exit"
+    nodes = (exit, exit)
+          : map (\e -> let s = show (fst e) in (s, s)) (unMarkovTable table)
+    edges = concatMap (\(s, es) ->
+                          map (\(freq, cont) -> let (s', a) = f freq cont in (show s, s', a))
+                              es)
+                      (unMarkovTable table)
+      where
+        f freq Stop                   = (exit, " Exit\n(" ++ show freq ++ "%)")
+        f freq (Continue con _gen s') = (show s', ' ' : con ++ "\n(" ++ show freq ++ "%)")
