@@ -44,7 +44,9 @@ import           GHC.Generics
                    (Generic)
 import           Prelude
 
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.ConstructorName
+                   (GConName1, gconName1, gconNames1)
+import qualified Test.StateMachine.Types.Rank2     as Rank2
 
 ------------------------------------------------------------------------
 
@@ -98,7 +100,7 @@ instance ToExpr a => ToExpr (Concrete a) where
   toExpr (Concrete x) = toExpr x
 
 data Reference a r = Reference (r a)
-  deriving Generic
+  deriving (Generic)
 
 instance ToExpr (r a) => ToExpr (Reference a r)
 
@@ -123,6 +125,10 @@ instance (Show1 r, Show a) => Show (Reference a r) where
       showsPrec1 p v
     where
       appPrec = 10
+
+instance GConName1 (Reference a) where
+  gconName1  _ = ""
+  gconNames1 _ = []
 
 reference :: Typeable a => a -> Reference a Concrete
 reference = Reference . Concrete

@@ -5,6 +5,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MonoLocalBinds             #-}
 {-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
@@ -40,14 +41,21 @@ module Test.StateMachine.Types
 
 import           Data.Functor.Classes
                    (Ord1, Show1)
+import           Data.Proxy
+                   (Proxy(Proxy))
 import           Data.Semigroup
                    (Semigroup)
 import           Data.Set
                    (Set)
+import           GHC.Generics
+                   (Generic1, Rep1, from1)
 import           Prelude
 import           Test.QuickCheck
                    (Gen)
 
+import           Test.StateMachine.ConstructorName
+                   (GConName, GConName1, gconName, gconName1,
+                   gconNames, gconNames1)
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Markov
 import           Test.StateMachine.Types.Environment
@@ -59,14 +67,14 @@ import           Test.StateMachine.Types.References
 
 type StateMachine model cmd m resp = AdvancedStateMachine model () cmd m resp
 
-data AdvancedStateMachine model submodel cmd m resp = StateMachine
+data AdvancedStateMachine model state cmd m resp = StateMachine
   { initModel      :: forall r. model r
   , transition     :: forall r. (Show1 r, Ord1 r) => model r -> cmd r -> resp r -> model r
   , precondition   :: model Symbolic -> cmd Symbolic -> Logic
   , postcondition  :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
   , invariant      :: Maybe (model Concrete -> Logic)
   , generator      :: model Symbolic -> Gen (cmd Symbolic)
-  , distribution   :: Maybe (Markov (model Symbolic) submodel (cmd Symbolic), submodel)
+  , distribution   :: Maybe (Markov model state cmd, state)
   , shrinker       :: cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
@@ -75,6 +83,10 @@ data AdvancedStateMachine model submodel cmd m resp = StateMachine
 data Command cmd = Command !(cmd Symbolic) !(Set Var)
 
 deriving instance Show (cmd Symbolic) => Show (Command cmd)
+
+instance (Generic1 cmd, GConName1 (Rep1 cmd)) => GConName (Command cmd) where
+  gconName  (Command cmd _) = gconName1  (from1 cmd)
+  gconNames _               = gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic))
 
 newtype Commands cmd = Commands
   { unCommands :: [Command cmd] }

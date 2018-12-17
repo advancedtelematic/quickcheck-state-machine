@@ -19,23 +19,21 @@ module Test.StateMachine.ConstructorName
 import           Data.Proxy
                    (Proxy(Proxy))
 import           GHC.Generics
-                   ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D,
-                   Generic1, K1, M1, Rec1, Rep1, S, U1, conName, from1,
-                   unM1, unRec1)
+                   ((:*:)((:*:)), (:+:)(L1, R1), C, Constructor, D, K1,
+                   M1, Rec1, S, U1, conName, unM1, unRec1)
 import           Prelude
-
-import           Test.StateMachine.Types
-                   (Command(..), Reference, Symbolic)
 
 ------------------------------------------------------------------------
 
+type ConstructorName = String
+
 class GConName a where
-  gconName  :: a -> String
-  gconNames :: Proxy a -> [String]
+  gconName  :: a -> ConstructorName
+  gconNames :: Proxy a -> [ConstructorName]
 
 class GConName1 f where
-  gconName1  :: f a -> String
-  gconNames1 :: Proxy (f a) -> [String]
+  gconName1  :: f a -> ConstructorName
+  gconNames1 :: Proxy (f a) -> [ConstructorName]
 
 instance GConName1 U1 where
   gconName1  _ = ""
@@ -76,13 +74,3 @@ instance (GConName1 f, GConName1 g) => GConName1 (f :*: g) where
 instance GConName1 f => GConName1 (Rec1 f) where
   gconName1                          = gconName1  . unRec1
   gconNames1 (_ :: Proxy (Rec1 f p)) = gconNames1 (Proxy :: Proxy (f p))
-
-------------------------------------------------------------------------
-
-instance GConName1 (Reference a) where
-  gconName1  _ = ""
-  gconNames1 _ = []
-
-instance (Generic1 cmd, GConName1 (Rep1 cmd)) => GConName (Command cmd) where
-  gconName  (Command cmd _) = gconName1  (from1 cmd)
-  gconNames _               = gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic))

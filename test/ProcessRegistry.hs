@@ -31,6 +31,7 @@ module ProcessRegistry
   , markovNotStochastic2
   , markovNotStochastic3
   , sm
+  , initFiniteModel
   )
   where
 
@@ -222,80 +223,83 @@ data Fin2
 
 type FiniteModel = (Fin2, Fin2)
 
+initFiniteModel :: FiniteModel
+initFiniteModel = (Zero, Zero)
+
 instance Arbitrary Name where
   arbitrary = elements (map Name ["A", "B", "C"])
 
-markovGood :: Markov (Model Symbolic) FiniteModel (Action Symbolic)
+markovGood :: Markov Model FiniteModel Action
 markovGood = Markov f
   where
-    f :: FiniteModel
-     -> [(Int, Continue (Model Symbolic -> Gen (Action Symbolic), FiniteModel))]
-    f (Zero, Zero) = [ (100, Continue (const (pure Spawn), (One, Zero))) ]
+    f :: FiniteModel -> [(Int, Continue Model FiniteModel Action)]
+    f (Zero, Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
 
     f (One,  Zero) = [ (10,  Stop)
-                     , (30,  Continue (const (pure Spawn), (Two, Zero)))
-                     , (40,  Continue (\m -> Register <$> arbitrary <*> elements (pids m), (One, One)))
-                     , (20,  Continue (\m -> Kill <$> elements (pids m), (Zero, Zero)))
+                     , (30,  Continue "Spawn" (const (pure Spawn)) (Two, Zero))
+                     , (40,  Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (One, One))
+                     , (20,  Continue "Kill" (\m -> Kill <$> elements (pids m)) (Zero, Zero))
                      ]
     f (One,  One)  = [ (10,  Stop)
-                     , (50,  Continue (const (pure Spawn), (Two, One)))
-                     , (20,  Continue (\m -> Unregister <$> elements (Map.keys (registry m)), (One, Zero)))
-                     , (20,  Continue (\m -> WhereIs <$> elements (Map.keys (registry m)), (One, One)))
+                     , (50,  Continue "Spawn" (const (pure Spawn)) (Two, One))
+                     , (20,  Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (One, Zero))
+                     , (20,  Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (One, One))
                      ]
     f (Two, Zero)  = [ (30, Stop)
-                     , (50, Continue (\m -> Register <$> arbitrary <*> elements (pids m), (Two, One)))
-                     , (20, Continue (\m -> Kill <$> elements (pids m), (One, Zero)))
+                     , (50, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, One))
+                     , (20, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, Zero))
                      ]
 
     f (Two, One)   = [ (30, Stop)
-                     , (20, Continue (\m -> Register <$> arbitrary <*> elements (pids m), (Two, Two)))
-                     , (10, Continue (\m -> Kill <$> elements (pids m), (One, One)))
-                     , (20, Continue (\m -> Unregister <$> elements (Map.keys (registry m)), (Two, Zero)))
-                     , (20, Continue (\m -> WhereIs <$> elements (Map.keys (registry m)), (Two, One)))
+                     , (20, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, Two))
+                     , (10, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, One))
+                     , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, Zero))
+                     , (20, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, One))
                      ]
     f (Two, Two)   = [ (30, Stop)
-                     , (20, Continue (\m -> Unregister <$> elements (Map.keys (registry m)), (Two, One)))
-                     , (50, Continue (\m -> WhereIs <$> elements (Map.keys (registry m)), (Two, Two)))
+                     , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, One))
+                     , (50, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, Two))
                      ]
     f _            = []
 
-markovDeadlock :: Markov (Model Symbolic) FiniteModel (Action Symbolic)
+markovDeadlock :: Markov Model FiniteModel Action
 markovDeadlock = Markov f
   where
     nameGen :: Gen Name
     nameGen = return (Name "A")
 
-    f :: FiniteModel
-      -> [(Int, Continue (Model Symbolic -> Gen (Action Symbolic), FiniteModel))]
-    f (Zero, Zero) = [ (100, Continue (const (pure Spawn), (One, Zero))) ]
-    f (One,  Zero) = [ (100, Continue (const (pure Spawn), (Two, Zero))) ]
-    f (Two, Zero)  = [ (100, Continue (\m -> Register <$> nameGen
-                                                      <*> elements (pids m), (Two, One))) ]
-    f (Two, One)   = [ (100, Continue (\m -> Register <$> nameGen
-                                                      <*> elements (pids m), (Two, Two))) ]
+    f :: FiniteModel -> [(Int, Continue Model FiniteModel Action)]
+    f (Zero, Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
+    f (One,  Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (Two, Zero)) ]
+    f (Two, Zero)  = [ (100, Continue "Register"
+                               (\m -> Register <$> nameGen
+                                               <*> elements (pids m)) (Two, One)) ]
+    f (Two, One)   = [ (100, Continue "Register"
+                               (\m -> Register <$> nameGen
+                                               <*> elements (pids m)) (Two, Two)) ]
     f (Two, Two)   = [ (100, Stop) ]
     f _            = []
 
-markovNotStochastic1 :: Markov (Model Symbolic) FiniteModel (Action Symbolic)
+markovNotStochastic1 :: Markov Model FiniteModel Action
 markovNotStochastic1 = Markov f
   where
-    f (Zero, Zero) = [ (90, Continue (const (pure Spawn), (One, Zero))) ]
+    f (Zero, Zero) = [ (90, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
     f (One, Zero)  = [ (100, Stop) ]
     f _            = []
 
-markovNotStochastic2 :: Markov (Model Symbolic) FiniteModel (Action Symbolic)
+markovNotStochastic2 :: Markov Model FiniteModel Action
 markovNotStochastic2 = Markov f
   where
-    f (Zero, Zero) = [ (110, Continue (const (pure Spawn), (One, Zero)))
+    f (Zero, Zero) = [ (110, Continue "Spawn" (const (pure Spawn)) (One, Zero))
                      , (-10, Stop)
                      ]
     f (One, Zero)  = [ (100, Stop) ]
     f _            = []
 
-markovNotStochastic3 :: Markov (Model Symbolic) FiniteModel (Action Symbolic)
+markovNotStochastic3 :: Markov Model FiniteModel Action
 markovNotStochastic3 = Markov f
   where
-    f (Zero, Zero) = [ (90, Continue (const (pure Spawn), (One, Zero)))
+    f (Zero, Zero) = [ (90, Continue "Spawn" (const (pure Spawn)) (One, Zero))
                      , (10, Stop)
                      ]
     f (One, Zero)  = [ (100, Stop) ]
@@ -313,14 +317,13 @@ mock _m act = case act of
   Unregister _name    -> pure Unregistered
   WhereIs _name       -> HereIs <$> genSym
 
-sm :: Markov (Model Symbolic) FiniteModel (Action Symbolic)
+sm :: Markov Model FiniteModel Action
    -> AdvancedStateMachine Model FiniteModel Action IO Response
 sm chain = StateMachine initModel transition precondition postcondition
        Nothing undefined (Just (chain, (Zero, Zero))) shrinker semantics mock
                -- ^ XXX: Either Generator Markov? Would be a breaking change...
 
-prop_processRegistry :: Markov (Model Symbolic) FiniteModel (Action Symbolic)
-                     -> Property
+prop_processRegistry :: Markov Model FiniteModel Action -> Property
 prop_processRegistry chain = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm' cmds
