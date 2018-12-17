@@ -45,19 +45,13 @@ module Test.StateMachine.Sequential
   )
   where
 
-import           Control.Concurrent.STM
-                   (atomically)
-import           Control.Concurrent.STM.TChan
-                   (TChan, newTChanIO, tryReadTChan, writeTChan)
 import           Control.Exception
                    (ErrorCall, IOException, displayException)
 import           Control.Monad.Catch
                    (MonadCatch, catch)
 import           Control.Monad.State
-                   (MonadIO, State, StateT, evalState, evalStateT, get,
-                   lift, put, runStateT)
-import           Control.Monad.Trans.Control
-                   (MonadBaseControl, liftBaseWith)
+                   (State, StateT, evalState, evalStateT, get, lift, put,
+                   runStateT)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
@@ -94,6 +88,9 @@ import           Text.PrettyPrint.ANSI.Leijen
 import qualified Text.PrettyPrint.ANSI.Leijen      as PP
 import           Text.Show.Pretty
                    (ppShow)
+import           UnliftIO
+                   (MonadIO, TChan, newTChanIO, tryReadTChan, writeTChan,
+                   atomically)
 
 import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic
@@ -244,21 +241,21 @@ validCommands StateMachine { precondition, transition, mock } =
         return Nothing
 
 runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-            => (MonadCatch m, MonadBaseControl IO m)
+            => (MonadCatch m, MonadIO m)
             => StateMachine model cmd m resp
             -> Commands cmd
             -> PropertyM m (History cmd resp, model Concrete, Reason)
 runCommands sm@StateMachine { initModel } = run . go
   where
     go cmds = do
-      hchan <- liftBaseWith (const newTChanIO)
+      hchan <- newTChanIO
       (reason, (_, _, _, model)) <- runStateT
         (executeCommands sm hchan (Pid 0) True cmds)
         (emptyEnvironment, initModel, newCounter, initModel)
-      hist <- liftBaseWith (const (getChanContents hchan))
+      hist <- getChanContents hchan
       return (History hist, model, reason)
 
-getChanContents :: TChan a -> IO [a]
+getChanContents :: MonadIO m => TChan a -> m [a]
 getChanContents chan = reverse <$> atomically (go' [])
   where
     go' acc = do
@@ -268,7 +265,7 @@ getChanContents chan = reverse <$> atomically (go' [])
         Nothing -> return acc
 
 executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                => (MonadCatch m, MonadBaseControl IO m)
+                => (MonadCatch m, MonadIO m)
                 => StateMachine model cmd m resp
                 -> TChan (Pid, HistoryEvent cmd resp)
                 -> Pid
@@ -285,7 +282,7 @@ executeCommands StateMachine {..} hchan pid check =
         (True, VFalse ce) -> return (PreconditionFailed (show ce))
         _                 -> do
           let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
-          liftBaseWith (const (atomically (writeTChan hchan (pid, Invocation ccmd vars))))
+          atomically (writeTChan hchan (pid, Invocation ccmd vars))
           !ecresp <- lift (fmap Right (semantics ccmd))
                        `catch` (\(err :: IOException) ->
                                    return (Left (displayException err)))
@@ -293,10 +290,10 @@ executeCommands StateMachine {..} hchan pid check =
                                    return (Left (displayException err)))
           case ecresp of
             Left err    -> do
-              liftBaseWith (const (atomically (writeTChan hchan (pid, Exception err))))
+              atomically (writeTChan hchan (pid, Exception err))
               return ExceptionThrown
             Right cresp -> do
-              liftBaseWith (const (atomically (writeTChan hchan (pid, Response cresp))))
+              atomically (writeTChan hchan (pid, Response cresp))
               let (sresp, counter') = runGenSym (mock smodel scmd) counter
               case (check, logic (postcondition cmodel ccmd cresp)) of
                 (True, VFalse ce) -> return (PostconditionFailed (show ce))

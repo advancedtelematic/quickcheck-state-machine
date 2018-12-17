@@ -24,10 +24,6 @@ module Echo
   )
   where
 
-import           Control.Concurrent.STM
-                   (atomically)
-import           Control.Concurrent.STM.TVar
-                   (TVar, newTVarIO, readTVar, writeTVar)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -37,6 +33,8 @@ import           Test.QuickCheck
                    (Gen, Property, arbitrary, oneof, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
+import           UnliftIO
+                   (TVar, newTVarIO, readTVar, writeTVar, atomically)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types

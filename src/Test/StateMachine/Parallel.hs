@@ -34,18 +34,12 @@ module Test.StateMachine.Parallel
 
 import           Control.Arrow
                    ((***))
-import           Control.Concurrent.Async.Lifted
-                   (concurrently)
-import           Control.Concurrent.STM.TChan
-                   (newTChanIO)
 import           Control.Monad
                    (foldM, replicateM)
 import           Control.Monad.Catch
                    (MonadCatch)
 import           Control.Monad.State
-                   (MonadIO, State, evalState, put, runStateT)
-import           Control.Monad.Trans.Control
-                   (MonadBaseControl, liftBaseWith)
+                   (State, evalState, put, runStateT)
 import           Data.Bifunctor
                    (bimap)
 import           Data.List
@@ -71,6 +65,8 @@ import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 import           Text.Show.Pretty
                    (ppShow)
+import           UnliftIO
+                   (MonadIO, MonadUnliftIO, concurrently, newTChanIO)
 
 import           Test.StateMachine.BoxDrawer
 import           Test.StateMachine.ConstructorName
@@ -258,7 +254,7 @@ prop_splitCombine xs = splitPlacesBlanks (map length xs) (concat xs) == xs
 
 runParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                     => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                    => (MonadCatch m, MonadBaseControl IO m)
+                    => (MonadCatch m, MonadUnliftIO m)
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd
                     -> PropertyM m [(History cmd resp, Logic)]
@@ -266,7 +262,7 @@ runParallelCommands sm = runParallelCommandsNTimes 10 sm
 
 runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                          => (MonadCatch m, MonadBaseControl IO m)
+                          => (MonadCatch m, MonadUnliftIO m)
                           => Int -- ^ How many times to execute the parallel program.
                           -> StateMachine model cmd m resp
                           -> ParallelCommands cmd
@@ -277,13 +273,13 @@ runParallelCommandsNTimes n sm cmds =
     return (hist, linearise sm hist)
 
 executeParallelCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-                        => (MonadCatch m, MonadBaseControl IO m)
+                        => (MonadCatch m, MonadUnliftIO m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd
                         -> m (History cmd resp, Reason)
 executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) = do
 
-  hchan <- liftBaseWith (const newTChanIO)
+  hchan <- newTChanIO
 
   (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) True prefix)
@@ -291,11 +287,11 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
 
   if reason0 /= Ok
   then do
-    hist <- liftBaseWith (const (getChanContents hchan))
+    hist <- getChanContents hchan
     return (History hist, reason0)
   else do
     (reason, _) <- foldM (go hchan) (reason0, env0) suffixes
-    hist <- liftBaseWith (const (getChanContents hchan))
+    hist <- getChanContents hchan
     return (History hist, reason)
   where
     go hchan (_, env) (Pair cmds1 cmds2) = do

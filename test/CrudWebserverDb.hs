@@ -61,20 +61,14 @@ module CrudWebserverDb
 
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar, threadDelay)
-import           Control.Concurrent.Async.Lifted
-                   (Async, async, cancel, waitEither)
 import           Control.Exception
                    (IOException, bracket)
 import           Control.Exception
                    (catch)
-import           Control.Monad.IO.Class
-                   (liftIO)
 import           Control.Monad.Logger
                    (NoLoggingT, runNoLoggingT)
 import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
-import           Control.Monad.Trans.Control
-                   (MonadBaseControl, liftBaseWith)
 import           Control.Monad.Trans.Resource
                    (ResourceT)
 import qualified Data.ByteString.Char8           as BS
@@ -133,6 +127,8 @@ import           Test.QuickCheck.Instances
                    ()
 import           Test.QuickCheck.Monadic
                    (monadic)
+import           UnliftIO
+                   (MonadIO, Async, liftIO, async, cancel, waitEither)
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Types.Rank2   as Rank2
@@ -449,9 +445,9 @@ burl :: Warp.Port -> BaseUrl
 burl port = BaseUrl Http "localhost" port ""
 
 setup
-  :: MonadBaseControl IO m
+  :: MonadIO m
   => Bug -> (String -> ConnectionString) -> Warp.Port -> m (String, Async ())
-setup bug conn port = liftBaseWith $ \_ -> do
+setup bug conn port = liftIO $ do
   (pid, dbIp) <- setupDb
   signal   <- newEmptyMVar
   aServer  <- async (runServer bug (conn dbIp) port (putMVar signal ()))
