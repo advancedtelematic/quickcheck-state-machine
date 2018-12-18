@@ -50,16 +50,14 @@ library
         base >=4.9 && <5,
         containers >=0.5.7.1,
         exceptions >=0.8.3,
-        lifted-async >=0.9.3,
         matrix >=0.3.5.0,
-        monad-control >=1.0.2.2,
         mtl >=2.2.1,
         pretty-show,
         QuickCheck >=2.9.2,
         split >=0.2.3.3,
-        stm >=2.4.4.1,
         tree-diff >=0.0.2,
-        vector >=0.12.0.1
+        vector >=0.12.0.1,
+        unliftio >=0.2.7.0
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-test
@@ -74,9 +72,7 @@ test-suite quickcheck-state-machine-test
                        filelock,
                        filepath,
                        http-client,
-                       lifted-async >=0.9.3,
                        matrix >=0.3.5.0,
-                       monad-control >=1.0.2.2,
                        monad-logger,
                        mtl,
                        network,
@@ -92,7 +88,6 @@ test-suite quickcheck-state-machine-test
                        servant,
                        servant-client,
                        servant-server,
-                       stm,
                        strict,
                        string-conversions,
                        tasty,
@@ -102,7 +97,8 @@ test-suite quickcheck-state-machine-test
                        tree-diff,
                        vector >=0.12.0.1,
                        wai,
-                       warp
+                       warp,
+                       unliftio
 
   other-modules:       CircularBuffer,
                        CrudWebserverDb,
