@@ -5,7 +5,11 @@ extra-deps:
   - base-orphans-0.8
   - generic-data-0.3.0.0
   - tree-diff-0.0.2
+  - git: https://github.com/stevana/quickcheck.git
+    commit: 238af2d190765e77b0944361c9dc58432ae26ecb
 nix:
   enable: false
   pure: false
   packages: [zlib]
+
+allow-newer: true

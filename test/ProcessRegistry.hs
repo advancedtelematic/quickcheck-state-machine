@@ -235,26 +235,23 @@ markovGood = Markov f
     f :: FiniteModel -> [(Int, Continue Model FiniteModel Action)]
     f (Zero, Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
 
-    f (One,  Zero) = [ (10,  Stop)
-                     , (30,  Continue "Spawn" (const (pure Spawn)) (Two, Zero))
+    f (One,  Zero) = [ (40,  Continue "Spawn" (const (pure Spawn)) (Two, Zero))
                      , (40,  Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (One, One))
                      , (20,  Continue "Kill" (\m -> Kill <$> elements (pids m)) (Zero, Zero))
                      ]
-    f (One,  One)  = [ (10,  Stop)
-                     , (50,  Continue "Spawn" (const (pure Spawn)) (Two, One))
+    f (One,  One)  = [ (50,  Continue "Spawn" (const (pure Spawn)) (Two, One))
                      , (20,  Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (One, Zero))
-                     , (20,  Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (One, One))
+                     , (30,  Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (One, One))
                      ]
-    f (Two, Zero)  = [ (30, Stop)
-                     , (50, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, One))
+    f (Two, Zero)  = [ (80, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, One))
                      , (20, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, Zero))
                      ]
 
-    f (Two, One)   = [ (30, Stop)
-                     , (20, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, Two))
+    f (Two, One)   = [ (40, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, Two))
                      , (10, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, One))
                      , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, Zero))
                      , (20, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, One))
+                     , (10, Stop)
                      ]
     f (Two, Two)   = [ (30, Stop)
                      , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, One))
@@ -327,6 +324,7 @@ prop_processRegistry :: Markov Model FiniteModel Action -> Property
 prop_processRegistry chain = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm' cmds
+  tabulateState sm' hist
   prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
     where
       sm' = sm chain

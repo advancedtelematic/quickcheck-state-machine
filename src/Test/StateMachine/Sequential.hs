@@ -39,6 +39,7 @@ module Test.StateMachine.Sequential
   , commandNames
   , commandNamesInOrder
   , checkCommandNames
+  , tabulateState
   )
   where
 
@@ -53,6 +54,8 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
+import           Data.List
+                   (groupBy, sortBy)
 import qualified Data.Map                          as M
 import           Data.Map.Strict
                    (Map)
@@ -70,13 +73,13 @@ import           Data.TreeDiff
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum)
 import           GHC.Generics
-                   (Generic, Generic1, Rep, Rep1)
+                   (Generic, Generic1, Rep, Rep1, from1)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, collect, cover,
-                   shrinkList, sized)
+                   (Gen, Property, Testable, choose, collect,
+                   shrinkList, sized, tabulate)
 import           Test.QuickCheck.Monadic
-                   (PropertyM, run)
+                   (PropertyM, monitor, run)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 import qualified Text.PrettyPrint.ANSI.Leijen      as PP
@@ -383,3 +386,41 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
   where
     go :: [String] -> Command cmd -> [String]
     go ih cmd = gconName cmd : ih
+
+------------------------------------------------------------------------
+
+tabulateState :: (Generic1 cmd, GConName1 (Rep1 cmd))
+              => (MonadIO m, Show state)
+              => AdvancedStateMachine model state cmd m resp
+              -> History cmd resp
+              -> PropertyM m ()
+tabulateState StateMachine {..} hist = case distribution of
+  Nothing              -> error "tabulateState: A Markov chain must be specified."
+  Just (markov, start) -> do
+    let stateTransitions = go markov start initModel [] (makeOperations (unHistory hist))
+    mapM_ (monitor . uncurry tabulate) (groupByState stateTransitions)
+  where
+    go _markov _state _model acc []         = reverse acc
+    go markov  state  model  acc (op : ops) =
+      let
+        cmd     = operationCommand op
+        conName = gconName1 (from1 cmd)
+        state'  = fromMaybe (error ("gatherTransition: " ++ conName ++
+                                    " not found in Markov chain."))
+                            (lookupMarkov markov state conName)
+      in
+        case op of
+          Operation _cmd resp _pid
+            | boolean (postcondition model cmd resp) ->
+                go markov state' (transition model cmd resp)
+                   ((state, conName, Right state') : acc) ops
+            | otherwise -> reverse ((state, conName, Left state') : acc)
+          Crash _cmd _err _pid -> reverse ((state, conName, Left state') : acc)
+
+    groupByState
+      = map (\xs -> case xs of
+                []         -> error "groupByState: impossible."
+                (s, _) : _ -> (s, map snd xs))
+      . groupBy (\x y -> fst x == fst y)
+      . sortBy (\x y -> fst x `compare` fst y)
+      . map (\(state, _conName, state') -> (show state, show state'))
