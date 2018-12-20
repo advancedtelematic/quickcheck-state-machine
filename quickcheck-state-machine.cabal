@@ -53,6 +53,7 @@ library
         exceptions >=0.8.3,
         generic-data >=0.3.0.0,
         graphviz,
+        hmatrix,
         mtl >=2.2.1,
         pretty-show,
         QuickCheck >=2.9.2,

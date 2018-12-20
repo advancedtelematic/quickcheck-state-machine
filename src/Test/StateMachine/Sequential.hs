@@ -86,8 +86,8 @@ import qualified Text.PrettyPrint.ANSI.Leijen      as PP
 import           Text.Show.Pretty
                    (ppShow)
 import           UnliftIO
-                   (MonadIO, TChan, newTChanIO, tryReadTChan, writeTChan,
-                   atomically)
+                   (TChan, atomically, newTChanIO, tryReadTChan,
+                   writeTChan)
 
 import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic

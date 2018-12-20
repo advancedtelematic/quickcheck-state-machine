@@ -68,7 +68,7 @@ import           Text.PrettyPrint.ANSI.Leijen
 import           Text.Show.Pretty
                    (ppShow)
 import           UnliftIO
-                   (MonadIO, MonadUnliftIO, concurrently, newTChanIO)
+                   (MonadUnliftIO, concurrently, newTChanIO)
 
 import           Test.StateMachine.BoxDrawer
 import           Test.StateMachine.Logic

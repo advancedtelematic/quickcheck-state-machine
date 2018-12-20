@@ -10,6 +10,7 @@ module Test.StateMachine.Markov
   , checkStochastic
   , markovToDot
   , lookupMarkov
+  , transitionMatrix
   )
   where
 
@@ -21,7 +22,7 @@ import           Data.GraphViz.Exception
                    (GraphvizException, handle)
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
-                   gmaxBound, gminBound)
+                   gfromFiniteEnum, gmaxBound, gminBound)
 import           GHC.Generics
                    (Generic, Rep)
 import           Prelude
@@ -140,3 +141,42 @@ markovToGraphElems markov _start = (nodes, edges)
       where
         f freq Stop                   = (exit, " Exit\n(" ++ show freq ++ "%)")
         f freq (Continue con _gen s') = (show s', ' ' : con ++ "\n(" ++ show freq ++ "%)")
+
+------------------------------------------------------------------------
+
+transitionMatrix :: forall model state cmd. (Eq state, Generic state)
+                 => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
+                 => Markov model state cmd -> (Int, [Double])
+transitionMatrix markov = (size, values)
+  where
+    size = length states + 1 -- + 1 for the stop/exit/sink state.
+
+    states :: [state]
+    states = gfiniteEnumFromTo gminBound gmaxBound
+
+    values :: [Double]
+    values = [ 0.01 * fromIntegral (lookupFrequency markov from to)
+             | from <- map Just states ++ [Nothing]
+             , to   <- map Just states ++ [Nothing]
+             ]
+
+lookupFrequency :: forall model state cmd. Eq state
+                => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+                => Markov model state cmd -> Maybe state -> Maybe state -> Int
+lookupFrequency _markov Nothing Nothing = 0 -- From stop to stop.
+lookupFrequency _markov Nothing (Just to)
+  | gfromFiniteEnum to == 0 = 100 -- Recurrent Markov chain, always connect exit to start state.
+  | otherwise               = 0   -- The exit state isn't connected to any other state.
+lookupFrequency markov (Just from) to =
+  case lookup from (unMarkovTable (markovTable markov)) of
+    Nothing  -> error "lookupFrequency: impossible."
+    Just es0 -> go es0
+  where
+    go :: [(Int, Continue model state cmd)] -> Int
+    go []                  = 0
+    go ((freq, Stop) : es) = case to of
+      Nothing -> freq
+      Just _  -> go es
+    go ((freq, Continue _conName _gen state') : es)
+      | to == Just state' = freq
+      | otherwise         = go es
