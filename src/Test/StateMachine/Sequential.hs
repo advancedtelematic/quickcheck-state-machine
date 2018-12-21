@@ -77,7 +77,7 @@ import           GHC.Generics
 import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect,
-                   shrinkList, sized, tabulate)
+                   shrinkList, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, monitor, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -398,7 +398,7 @@ tabulateState StateMachine {..} hist = case distribution of
   Nothing              -> error "tabulateState: A Markov chain must be specified."
   Just (markov, start) -> do
     let stateTransitions = go markov start initModel [] (makeOperations (unHistory hist))
-    mapM_ (monitor . uncurry tabulate) (groupByState stateTransitions)
+    mapM_ (monitor . uncurry newTabulate) (groupByState stateTransitions)
   where
     go _markov _state _model acc []         = reverse acc
     go markov  state  model  acc (op : ops) =

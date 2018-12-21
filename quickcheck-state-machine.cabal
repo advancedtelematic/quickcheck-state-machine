@@ -56,7 +56,7 @@ library
         hmatrix,
         mtl >=2.2.1,
         pretty-show,
-        QuickCheck >=2.12,
+        QuickCheck >=2.9.2,
         random,
         split >=0.2.3.3,
         tree-diff >=0.0.2,

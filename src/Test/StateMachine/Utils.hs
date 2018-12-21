@@ -27,6 +27,7 @@ module Test.StateMachine.Utils
   , suchThatMaybeN
   , suchThatOneOf
   , oldCover
+  , newTabulate
   , suchThatEither
   )
   where
@@ -36,6 +37,9 @@ import           Test.QuickCheck
                    (Gen, Property, Testable, again, counterexample,
                    frequency, resize, shrinking, sized, suchThatMaybe,
                    whenFail)
+#if MIN_VERSION_QuickCheck(2,12,0)
+import           Test.QuickCheck (tabulate)
+#endif
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
@@ -114,7 +118,7 @@ gens0 `suchThatOneOf` p = go gens0 (length gens0 - 1)
              Just x  -> return (Just x)
              Nothing -> go (gens' ++ gens'') (n - 1)
 
--- QuickCheck-2.12.0 introduced a breaking change in the cover combinator, see
+-- QuickCheck-2.12 introduced a breaking change in the cover combinator, see
 -- issue #248 for details.
 oldCover :: Testable prop => Bool -> Int -> String -> prop -> Property
 oldCover x n s p =
@@ -122,6 +126,15 @@ oldCover x n s p =
   cover x n s p
 #else
   cover (fromIntegral n) x s p
+#endif
+
+-- The tabulate combinator was only introduced in QuickCheck-2.12.
+newTabulate :: Testable prop => String -> [String] -> prop -> Property
+newTabulate key values p =
+#if !MIN_VERSION_QuickCheck(2,12,0)
+  property p
+#else
+  tabulate key values p
 #endif
 
 suchThatEither :: Gen a -> (a -> Bool) -> Gen (Either [a] a)
