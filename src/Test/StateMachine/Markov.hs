@@ -170,7 +170,7 @@ lookupFrequency _markov Nothing (Just to)
 lookupFrequency markov (Just from) to =
   case lookup from (unMarkovTable (markovTable markov)) of
     Nothing  -> error "lookupFrequency: impossible."
-    Just es0 -> go es0
+    Just es  -> go es
   where
     go :: [(Int, Continue model state cmd)] -> Int
     go []                  = 0
