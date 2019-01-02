@@ -79,7 +79,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 forAllParallelCommands :: Testable prop
-                       => (Show (cmd Symbolic), Show (model Symbolic))
+                       => (Show (cmd Symbolic))
                        => (Generic1 cmd, GConName1 (Rep1 cmd))
                        => (Rank2.Foldable cmd, Rank2.Foldable resp)
                        => StateMachine model cmd m resp
@@ -89,7 +89,7 @@ forAllParallelCommands sm =
   forAllShrinkShow (generateParallelCommands sm) (shrinkParallelCommands sm) ppShow
 
 generateParallelCommands :: forall model cmd m resp
-                          . (Rank2.Foldable resp, Show (model Symbolic))
+                          . (Rank2.Foldable resp)
                          => (Generic1 cmd, GConName1 (Rep1 cmd))
                          => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd)

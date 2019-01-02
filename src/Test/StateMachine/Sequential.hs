@@ -101,7 +101,7 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 forAllCommands :: Testable prop
-               => (Show (cmd Symbolic), Show (model Symbolic))
+               => (Show (cmd Symbolic))
                => (Generic1 cmd, GConName1 (Rep1 cmd))
                => (Rank2.Foldable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp
@@ -111,7 +111,7 @@ forAllCommands :: Testable prop
 forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
-generateCommands :: (Rank2.Foldable resp, Show (model Symbolic))
+generateCommands :: (Rank2.Foldable resp)
                  => (Generic1 cmd, GConName1 (Rep1 cmd))
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
@@ -120,7 +120,6 @@ generateCommands sm@StateMachine { initModel } mnum =
   evalStateT (generateCommandsState sm newCounter mnum) (initModel, Nothing)
 
 generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
-                      => Show (model Symbolic)
                       => (Generic1 cmd, GConName1 (Rep1 cmd))
                       => StateMachine model cmd m resp
                       -> Counter
@@ -139,12 +138,8 @@ generateCommandsState StateMachine { precondition, generator, transition
       mnext <- lift $ commandFrequency (generator model) distribution mprevious
                   `suchThatOneOf` (boolean . precondition model)
       case mnext of
-        Nothing   -> error $ concat
-                       [ "A deadlock occured while generating commands.\n"
-                       , "No pre-condition holds in the following model:\n"
-                       , ppShow model
-                       -- XXX: show trace of commands generated so far?
-                       ]
+        -- When no pre-condition holds: stop the test
+        Nothing   -> return (reverse cmds)
         Just next -> do
           let (resp, counter') = runGenSym (mock model next) counter
           put (transition model next resp, Just next)
@@ -170,7 +165,7 @@ commandFrequency gen (Just distribution) mprevious  =
       row     = V.toList (getRow idx distribution)
       weights = zip row (gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic)))
 
-measureFrequency :: (Rank2.Foldable resp, Show (model Symbolic))
+measureFrequency :: (Rank2.Foldable resp)
                  => (Generic1 cmd, GConName1 (Rep1 cmd))
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
