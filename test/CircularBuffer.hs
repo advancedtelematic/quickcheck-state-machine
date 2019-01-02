@@ -282,6 +282,7 @@ sm :: Version -> Bugs -> StateMachine Model Action IO Response
 sm version bugs = StateMachine
   initModel transition (precondition bugs) postcondition
   Nothing (generator version) Nothing shrinker (semantics bugs) mock
+  (const False)
 
 -- | Property parameterized by spec version and bugs.
 prepropcircularBuffer :: Version -> Bugs -> Property

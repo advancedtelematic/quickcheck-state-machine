@@ -127,7 +127,7 @@ generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       -> Maybe Int -- ^ Minimum number of commands.
                       -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen (Commands cmd)
 generateCommandsState StateMachine { precondition, generator, transition
-                                   , mock, distribution } counter0 mnum = do
+                                   , mock, distribution, stopcondition } counter0 mnum = do
   size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0 []
   where
@@ -136,19 +136,22 @@ generateCommandsState StateMachine { precondition, generator, transition
     go 0    _       cmds = return (reverse cmds)
     go size counter cmds = do
       (model, mprevious) <- get
-      mnext <- lift $ commandFrequency (generator model) distribution mprevious
-                  `suchThatOneOf` (boolean . precondition model)
-      case mnext of
-        Nothing   -> error $ concat
-                       [ "A deadlock occured while generating commands.\n"
-                       , "No pre-condition holds in the following model:\n"
-                       , ppShow model
-                       -- XXX: show trace of commands generated so far?
-                       ]
-        Just next -> do
-          let (resp, counter') = runGenSym (mock model next) counter
-          put (transition model next resp, Just next)
-          go (size - 1) counter' (Command next (getUsedVars resp) : cmds)
+      if stopcondition model
+        then return (reverse cmds)
+        else do
+          mnext <- lift $ commandFrequency (generator model) distribution mprevious
+                      `suchThatOneOf` (boolean . precondition model)
+          case mnext of
+            Nothing   -> error $ concat
+                           [ "A deadlock occured while generating commands.\n"
+                           , "No pre-condition holds in the following model:\n"
+                           , ppShow model
+                           -- XXX: show trace of commands generated so far?
+                           ]
+            Just next -> do
+              let (resp, counter') = runGenSym (mock model next) counter
+              put (transition model next resp, Just next)
+              go (size - 1) counter' (Command next (getUsedVars resp) : cmds)
 
 commandFrequency :: forall cmd. (Generic1 cmd, GConName1 (Rep1 cmd))
                  => Gen (cmd Symbolic) -> Maybe (Matrix Int) -> Maybe (cmd Symbolic)

@@ -68,6 +68,7 @@ data StateMachine model cmd m resp = StateMachine
   , shrinker       :: cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
+  , stopcondition  :: model Symbolic -> Bool
   }
 
 data Command cmd = Command !(cmd Symbolic) !(Set Var)

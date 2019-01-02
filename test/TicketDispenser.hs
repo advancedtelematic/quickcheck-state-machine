@@ -193,6 +193,7 @@ sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
 sm se files = StateMachine
   initModel transitions preconditions postconditions
   Nothing generator Nothing shrinker (semantics se files) mock
+  (const False)
 
 -- Sequentially the model is consistent (even though the lock is
 -- shared).

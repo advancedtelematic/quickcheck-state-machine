@@ -347,7 +347,7 @@ mock (Model m) act = case act of
 
 sm :: StateMachine Model Action (ReaderT ClientEnv IO) Response
 sm = StateMachine initModel transitions preconditions postconditions
-       Nothing generator Nothing shrinker semantics mock
+       Nothing generator Nothing shrinker semantics mock (const False)
 
 ------------------------------------------------------------------------
 -- * Sequential property
