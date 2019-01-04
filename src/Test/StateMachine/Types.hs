@@ -43,8 +43,6 @@ import           Data.Matrix
                    (Matrix)
 import           Data.Semigroup
                    (Semigroup)
-import           Data.Set
-                   (Set)
 import           Prelude
 import           Test.QuickCheck
                    (Gen)
