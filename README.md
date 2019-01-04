@@ -430,6 +430,15 @@ repo, `cd` into it, fire up `stack ghci --test`, load the different examples,
 e.g. `:l test/CrudWebserverDb.hs`, and run the different properties
 interactively.
 
+### Real world examples
+
+More examples from the "real world":
+
+  * Adjoint's implementation of the Raft consensus algorithm, contains state
+    machine
+    [tests](https://github.com/adjoint-io/raft/blob/master/test/QuickCheckStateMachine.hs)
+    combined with fault injection (node and network failures).
+
 ### How to contribute
 
 The `quickcheck-state-machine` library is still very experimental.
@@ -439,9 +448,9 @@ we can improve it on the issue tracker!
 
 ### See also
 
-  * The QuickCheck
-    bugtrack [issue](https://github.com/nick8325/quickcheck/issues/139) -- where
-    the initial discussion about how how to add state machine based testing to
+  * The QuickCheck bugtrack
+    [issue](https://github.com/nick8325/quickcheck/issues/139) -- where the
+    initial discussion about how to add state machine based testing to
     QuickCheck started;
 
   * *Finding Race Conditions in Erlang with QuickCheck and
