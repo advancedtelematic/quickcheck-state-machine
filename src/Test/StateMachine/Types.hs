@@ -70,7 +70,7 @@ data StateMachine model cmd m resp = StateMachine
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
   }
 
-data Command cmd = Command !(cmd Symbolic) !(Set Var)
+data Command cmd = Command !(cmd Symbolic) ![Var]
 
 deriving instance Show (cmd Symbolic) => Show (Command cmd)
 

@@ -69,8 +69,6 @@ import           Data.Monoid
                    ((<>))
 import           Data.Proxy
                    (Proxy(..))
-import           Data.Set
-                   (Set)
 import qualified Data.Set                          as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
@@ -103,7 +101,7 @@ import           Test.StateMachine.Utils
 forAllCommands :: Testable prop
                => (Show (cmd Symbolic), Show (model Symbolic))
                => (Generic1 cmd, GConName1 (Rep1 cmd))
-               => (Rank2.Foldable cmd, Rank2.Foldable resp)
+               => (Rank2.Traversable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp
                -> Maybe Int -- ^ Minimum number of commands.
                -> (Commands cmd -> prop)     -- ^ Predicate.
@@ -191,15 +189,15 @@ calculateFrequency = go M.empty . unCommands
       = go (M.insertWith (\_ old -> old + 1) (gconName cmd1,
                                               Just (gconName cmd2)) 1 m) cmds
 
-getUsedVars :: Rank2.Foldable f => f Symbolic -> Set Var
-getUsedVars = Rank2.foldMap (\(Symbolic v) -> S.singleton v)
+getUsedVars :: Rank2.Foldable f => f Symbolic -> [Var]
+getUsedVars = Rank2.foldMap (\(Symbolic v) -> [v])
 
 -- | Shrink commands in a pre-condition and scope respecting way.
-shrinkCommands :: (Rank2.Foldable cmd, Rank2.Foldable resp)
+shrinkCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp -> Commands cmd
                -> [Commands cmd]
 shrinkCommands sm@StateMachine { initModel, shrinker }
-  = filterMaybe ( flip evalState (initModel, S.empty, newCounter)
+  = filterMaybe ( flip evalState (initModel, M.empty, newCounter)
                 . validCommands sm
                 . Commands)
   . shrinkList (liftShrinkCommand shrinker)
@@ -216,29 +214,43 @@ filterMaybe f (x : xs) = case f x of
   Nothing ->     filterMaybe f xs
   Just y  -> y : filterMaybe f xs
 
-validCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
+validCommands :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
               => StateMachine model cmd m resp -> Commands cmd
-              -> State (model Symbolic, Set Var, Counter) (Maybe (Commands cmd))
+              -> State (model Symbolic, Map Var Var, Counter) (Maybe (Commands cmd))
 validCommands StateMachine { precondition, transition, mock } =
   fmap (fmap Commands) . go . unCommands
   where
-    go :: [Command cmd] -> State (model Symbolic, Set Var, Counter) (Maybe [Command cmd])
-    go []                         = return (Just [])
-    go (Command cmd _vars : cmds) = do
+    -- As we validate we keep track of the variables that are in scope, in terms
+    -- of a mapping from old variables to new variables. For example, if a
+    -- command previously returned variables @[x',y']@, and in the new model
+    -- returns @[x,y]@, we extend our scope mapping with @[(x',x),(y',y)]@.
+    -- Later commands will then be translated accordingly, replacing references
+    -- to @x'@ by references to @y'@; references for which we have no updated
+    -- variable in scope are considered invalid: this may happen if those later
+    -- commands refer to a command which shrinking deleted altogether, /or/ it
+    -- may happen when the command was not deleted but in the new model returned
+    -- fewer references.
+    go :: [Command cmd] -> State (model Symbolic, Map Var Var, Counter) (Maybe [Command cmd])
+    go []                          = return (Just [])
+    go (Command cmd' vars' : cmds) = do
       (model, scope, counter) <- get
-      if boolean (precondition model cmd) && getUsedVars cmd `S.isSubsetOf` scope
-      then do
-        let (resp, counter') = runGenSym (mock model cmd) counter
-            vars             = getUsedVars resp
-        put ( transition model cmd resp
-            , vars `S.union` scope
-            , counter')
-        mih <- go cmds
-        case mih of
-          Nothing -> return Nothing
-          Just ih -> return (Just (Command cmd vars : ih))
-      else
-        return Nothing
+      case Rank2.traverse (remapVars scope) cmd' of
+        Just cmd | boolean (precondition model cmd) -> do
+          let (resp, counter') = runGenSym (mock model cmd) counter
+              vars             = getUsedVars resp
+
+          put ( transition model cmd resp
+              , M.fromList (zip vars' vars) `M.union` scope
+              , counter')
+          mih <- go cmds
+          case mih of
+            Nothing -> return Nothing
+            Just ih -> return (Just (Command cmd vars : ih))
+        _otherwise ->
+          return Nothing
+
+    remapVars :: Map Var Var -> Symbolic a -> Maybe (Symbolic a)
+    remapVars scope (Symbolic v) = Symbolic <$> M.lookup v scope
 
 runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
             => (MonadCatch m, MonadIO m)
@@ -282,7 +294,7 @@ executeCommands StateMachine {..} hchan pid check =
         (True, VFalse ce) -> return (PreconditionFailed (show ce))
         _                 -> do
           let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
-          atomically (writeTChan hchan (pid, Invocation ccmd vars))
+          atomically (writeTChan hchan (pid, Invocation ccmd (S.fromList vars)))
           !ecresp <- lift (fmap Right (semantics ccmd))
                        `catch` (\(err :: IOException) ->
                                    return (Left (displayException err)))
@@ -300,7 +312,7 @@ executeCommands StateMachine {..} hchan pid check =
                 _                 -> case (check, logic (fromMaybe (const Top) invariant cmodel)) of
                                        (True, VFalse ce') -> return (InvariantBroken (show ce'))
                                        _                  -> do
-                                         put ( insertConcretes (S.toList vars) (getUsedConcrete cresp) env
+                                         put ( insertConcretes vars (getUsedConcrete cresp) env
                                              , transition smodel scmd sresp
                                              , counter'
                                              , transition cmodel ccmd cresp

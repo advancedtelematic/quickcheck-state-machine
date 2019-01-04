@@ -24,7 +24,6 @@ import           Data.Functor.Classes
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
-import qualified Data.Set                      as Set
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -180,4 +179,4 @@ prop_precondition = once $ monadicIO $ do
     where
       sm'  = sm None
       cmds = Commands
-        [ Types.Command (Read (Reference (Symbolic (Var 0)))) Set.empty ]
+        [ Types.Command (Read (Reference (Symbolic (Var 0)))) [] ]

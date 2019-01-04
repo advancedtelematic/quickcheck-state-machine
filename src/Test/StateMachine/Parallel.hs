@@ -46,6 +46,9 @@ import           Data.List
                    (partition, permutations)
 import           Data.List.Split
                    (splitPlacesBlanks)
+import           Data.Map
+                   (Map)
+import qualified Data.Map                          as M
 import           Data.Monoid
                    ((<>))
 import           Data.Set
@@ -81,7 +84,7 @@ import           Test.StateMachine.Utils
 forAllParallelCommands :: Testable prop
                        => (Show (cmd Symbolic), Show (model Symbolic))
                        => (Generic1 cmd, GConName1 (Rep1 cmd))
-                       => (Rank2.Foldable cmd, Rank2.Foldable resp)
+                       => (Rank2.Traversable cmd, Rank2.Foldable resp)
                        => StateMachine model cmd m resp
                        -> (ParallelCommands cmd -> prop)     -- ^ Predicate.
                        -> Property
@@ -161,13 +164,13 @@ advanceModel StateMachine { transition, mock } model0 counter0 =
 -- | Shrink a parallel program in a pre-condition and scope respecting
 --   way.
 shrinkParallelCommands
-  :: forall cmd model m resp. Rank2.Foldable cmd
+  :: forall cmd model m resp. Rank2.Traversable cmd
   => Rank2.Foldable resp
   => StateMachine model cmd m resp
   -> (ParallelCommands cmd -> [ParallelCommands cmd])
 shrinkParallelCommands sm@StateMachine { shrinker, initModel }
                        (ParallelCommands prefix suffixes)
-  = filterMaybe (flip evalState (initModel, S.empty, newCounter) . validParallelCommands sm)
+  = filterMaybe (flip evalState (initModel, M.empty, newCounter) . validParallelCommands sm)
       [ ParallelCommands prefix' (map toPair suffixes')
       | (prefix', suffixes') <- shrinkPair' shrinkCommands' shrinkSuffixes
                                             (prefix, map fromPair suffixes)
@@ -203,9 +206,9 @@ shrinkParallelCommands sm@StateMachine { shrinker, initModel }
       map (id *** flip (,) ys) (pickOneReturnRest xs) ++
       map (id ***      (,) xs) (pickOneReturnRest ys)
 
-validParallelCommands :: forall model cmd m resp. (Rank2.Foldable cmd, Rank2.Foldable resp)
+validParallelCommands :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
                       => StateMachine model cmd m resp -> ParallelCommands cmd
-                      -> State (model Symbolic, Set Var, Counter) (Maybe (ParallelCommands cmd))
+                      -> State (model Symbolic, Map Var Var, Counter) (Maybe (ParallelCommands cmd))
 validParallelCommands sm@StateMachine { initModel } (ParallelCommands prefix suffixes) = do
   let prefixLength       = lengthCommands prefix
       leftSuffixes       = map (\(Pair l _r) -> l) suffixes
@@ -215,7 +218,7 @@ validParallelCommands sm@StateMachine { initModel } (ParallelCommands prefix suf
       leftSuffix         = mconcat leftSuffixes
       rightSuffix        = mconcat rightSuffixes
   mleft  <- validCommands sm (prefix <> leftSuffix)
-  put (initModel, S.empty, newCounter)
+  put (initModel, M.empty, newCounter)
   mright <- validCommands sm (prefix <> rightSuffix)
   case (mleft, mright) of
     (Nothing, Nothing)      -> return Nothing
@@ -397,4 +400,4 @@ toBoxDrawings (ParallelCommands prefix suffixes) = toBoxDrawings'' allVars
         evT = toEventType (filter (\e -> fst e `Prelude.elem` map Pid [1, 2]) h)
 
 getAllUsedVars :: Rank2.Foldable cmd => Commands cmd -> Set Var
-getAllUsedVars = foldMap (\(Command cmd _) -> getUsedVars cmd) . unCommands
+getAllUsedVars = S.fromList . foldMap (\(Command cmd _) -> getUsedVars cmd) . unCommands
