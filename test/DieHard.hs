@@ -119,8 +119,8 @@ postconditions s c r = bigJug (transitions s c r) ./= 4
 -- The generator of actions is simple, with equal distribution pick an
 -- action.
 
-generator :: Model Symbolic -> Gen (Command Symbolic)
-generator _ = oneof
+generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
+generator _ = Just $ oneof
   [ return FillBig
   , return FillSmall
   , return EmptyBig

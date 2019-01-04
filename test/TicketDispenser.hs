@@ -110,8 +110,8 @@ postconditions _         _          _             = error "postconditions"
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-generator :: Model Symbolic -> Gen (Action Symbolic)
-generator _ = frequency
+generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
+generator _ = Just $ frequency
   [ (1, pure Reset)
   , (4, pure TakeTicket)
   ]

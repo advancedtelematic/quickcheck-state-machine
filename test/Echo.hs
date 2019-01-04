@@ -122,8 +122,8 @@ echoSM env = StateMachine
       mPostconditions (Buf _)   Echo   _         = Bot
 
       -- | Generator for symbolic actions.
-      mGenerator :: Model Symbolic -> Gen (Action Symbolic)
-      mGenerator _ =  oneof
+      mGenerator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
+      mGenerator _ =  Just $ oneof
           [ In <$> arbitrary
           , return Echo
           ]

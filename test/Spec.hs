@@ -24,6 +24,7 @@ import           CircularBuffer
 import qualified CrudWebserverDb       as WS
 import           DieHard
 import           Echo
+import           ErrorEncountered
 import           MemoryReference
 import           TicketDispenser
 
@@ -40,6 +41,10 @@ tests docker0 = testGroup "Tests"
       , testProperty "Race bug sequential"                (prop_sequential Race)
       , testProperty "Race bug parallel"   (expectFailure (prop_parallel   Race))
       , testProperty "Precondition failed" prop_precondition
+      ]
+  , testGroup "ErrorEncountered"
+      [ testProperty "sequential" prop_error_sequential
+      , testProperty "parallel"   prop_error_parallel
       ]
   , testGroup "Crud webserver"
       [ webServer docker0 WS.None  8800 "No bug"                       WS.prop_crudWebserverDb
