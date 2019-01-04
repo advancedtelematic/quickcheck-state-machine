@@ -242,9 +242,9 @@ genNew = do
   Positive n <- arbitrary
   return (New n)
 
-generator :: Version -> Model Symbolic -> Gen (Action Symbolic)
-generator _       (Model m) | null m = genNew
-generator version (Model m)          = frequency $
+generator :: Version -> Model Symbolic -> Maybe (Gen (Action Symbolic))
+generator _       (Model m) | null m = Just $ genNew
+generator version (Model m)          = Just $ frequency $
   [ (1, genNew)
   , (4, Put <$> arbitrary <*> (fst <$> elements m))
   , (4, Get <$> (fst <$> elements m))

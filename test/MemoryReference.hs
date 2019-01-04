@@ -142,8 +142,8 @@ mock (Model m) cmd = case cmd of
   Write _ _   -> pure Written
   Increment _ -> pure Incremented
 
-generator :: Model Symbolic -> Gen (Command Symbolic)
-generator (Model model) = frequency
+generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
+generator (Model model) = Just $ frequency
   [ (1, pure Create)
   , (4, Read  <$> elements (domain model))
   , (4, Write <$> elements (domain model) <*> arbitrary)

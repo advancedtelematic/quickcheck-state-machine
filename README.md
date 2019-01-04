@@ -143,8 +143,8 @@ postcondition (Model m) cmd resp = case (cmd, resp) of
 Next we have to explain how to generate and shrink actions.
 
 ```haskell
-generator :: Model Symbolic -> Gen (Command Symbolic)
-generator (Model model) = frequency
+generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
+generator (Model model) = Just $ frequency
   [ (1, pure Create)
   , (4, Read  <$> elements (domain model))
   , (4, Write <$> elements (domain model) <*> arbitrary)
@@ -155,6 +155,9 @@ shrinker :: Command Symbolic -> [Command Symbolic]
 shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
 shrinker _             = []
 ```
+
+To stop the generation of new commands, e.g., when the model has reached a
+terminal or error state, let `generator` return `Nothing`.
 
 Finally, we show how to mock responses given a model.
 
