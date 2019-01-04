@@ -1,6 +1,13 @@
-#### 0.4.4 (???)
+#### 0.5.0 (2019-1-4)
 
-  * Check if the pre-condition holds before executing an action.
+  The first and third item in the below list might break things, have a look at
+  the diffs of the PRs on how to fix your code (feel free to open an issue if it
+  isn't clear).
+
+  * Allow the user to explicitly stop the generation of commands (PR #256);
+  * Fix shrinking bug (PR #255);
+  * Replace MonadBaseControl IO with MonadUnliftIO (PR #252);
+  * Check if the pre-condition holds before executing an action (PR #251).
 
 #### 0.4.3 (2018-12-7)
 
