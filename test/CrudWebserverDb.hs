@@ -243,6 +243,7 @@ data Action (r :: * -> *)
 instance Rank2.Functor     Action where
 instance Rank2.Foldable    Action where
 instance Rank2.Traversable Action where
+instance GConName1         Action where
 
 data Response (r :: * -> *)
   = PostedUser (Reference (Key User) r)

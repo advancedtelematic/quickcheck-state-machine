@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures    #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE PolyKinds            #-}
@@ -7,12 +8,8 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Test.StateMachine.ConstructorName
-  ( GConName
-  , gconName
-  , gconNames
-  , GConName1
-  , gconName1
-  , gconNames1
+  ( GConName(..)
+  , GConName1(..)
   )
   where
 
@@ -36,6 +33,12 @@ class GConName a where
 class GConName1 f where
   gconName1  :: f a -> String
   gconNames1 :: Proxy (f a) -> [String]
+
+  default gconName1 :: (Generic1 f, GConName1 (Rep1 f)) => f a -> String
+  gconName1 = gconName1 . from1
+
+  default gconNames1 :: forall a. GConName1 (Rep1 f) => Proxy (f a) -> [String]
+  gconNames1 _ = gconNames1 (Proxy @(Rep1 f a))
 
 instance GConName1 U1 where
   gconName1  _ = ""
@@ -83,6 +86,6 @@ instance GConName1 (Reference a) where
   gconName1  _ = ""
   gconNames1 _ = []
 
-instance (Generic1 cmd, GConName1 (Rep1 cmd)) => GConName (Command cmd) where
-  gconName  (Command cmd _) = gconName1  (from1 cmd)
-  gconNames _               = gconNames1 (Proxy :: Proxy (Rep1 cmd Symbolic))
+instance GConName1 cmd => GConName (Command cmd) where
+  gconName  (Command cmd _) = gconName1  cmd
+  gconNames _               = gconNames1 (Proxy :: Proxy (cmd Symbolic))

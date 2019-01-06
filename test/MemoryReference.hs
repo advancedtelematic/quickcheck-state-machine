@@ -53,7 +53,7 @@ data Command r
   | Read  (Reference (Opaque (IORef Int)) r)
   | Write (Reference (Opaque (IORef Int)) r) Int
   | Increment (Reference (Opaque (IORef Int)) r)
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, GConName1)
 
 deriving instance Show (Command Symbolic)
 deriving instance Show (Command Concrete)

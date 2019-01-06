@@ -49,7 +49,7 @@ data Command r
   = Create
   | Read  (Reference (Opaque (IORef Int)) r)
   | Write (Reference (Opaque (IORef Int)) r) Int
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, GConName1)
 
 deriving instance Show (Command Symbolic)
 deriving instance Show (Command Concrete)
