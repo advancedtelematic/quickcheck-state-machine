@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleInstances  #-}
@@ -30,6 +31,8 @@ module DieHard
   , prop_dieHard
   ) where
 
+import           Data.Kind
+                   (Type)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -50,7 +53,7 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 -- We start of defining the different actions that are allowed:
 
-data Command (r :: * -> *)
+data Command (r :: Type -> Type)
   = FillBig      -- Fill the 5-liter jug.
   | FillSmall    -- Fill the 3-liter jug.
   | EmptyBig     -- Empty the 5-liter jug.
@@ -60,7 +63,7 @@ data Command (r :: * -> *)
   | BigIntoSmall
   deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-data Response (r :: * -> *) = Done
+data Response (r :: Type -> Type) = Done
   deriving (Show, Generic1, Rank2.Foldable)
 
 ------------------------------------------------------------------------
@@ -68,7 +71,7 @@ data Response (r :: * -> *) = Done
 -- The model (or state) keeps track of what amount of water is in the
 -- two jugs.
 
-data Model (r :: * -> *) = Model
+data Model (r :: Type -> Type) = Model
   { bigJug   :: Int
   , smallJug :: Int
   } deriving (Show, Eq, Generic)
