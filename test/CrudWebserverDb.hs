@@ -71,7 +71,7 @@ import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Resource
                    (ResourceT)
-import qualified Data.ByteString.Char8           as BS
+import qualified Data.ByteString.Char8         as BS
 import           Data.Char
                    (isPrint)
 import           Data.Functor.Classes
@@ -86,7 +86,7 @@ import           Data.String.Conversions
                    (cs)
 import           Data.Text
                    (Text)
-import qualified Data.Text                       as T
+import qualified Data.Text                     as T
 import           Data.TreeDiff
                    (Expr(App), ToExpr, toExpr)
 import           Database.Persist.Postgresql
@@ -103,8 +103,8 @@ import           Network
                    (PortID(PortNumber), connectTo)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp        as Warp
-import           Prelude                         hiding
+import qualified Network.Wai.Handler.Warp      as Warp
+import           Prelude                       hiding
                    (elem)
 import qualified Prelude
 import           Servant
@@ -128,10 +128,10 @@ import           Test.QuickCheck.Instances
 import           Test.QuickCheck.Monadic
                    (monadic)
 import           UnliftIO
-                   (MonadIO, Async, liftIO, async, cancel, waitEither)
+                   (Async, MonadIO, async, cancel, liftIO, waitEither)
 
 import           Test.StateMachine
-import qualified Test.StateMachine.Types.Rank2   as Rank2
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 -- * User datatype
@@ -243,6 +243,7 @@ data Action (r :: * -> *)
 instance Rank2.Functor     Action where
 instance Rank2.Foldable    Action where
 instance Rank2.Traversable Action where
+instance CommandNames      Action where
 
 data Response (r :: * -> *)
   = PostedUser (Reference (Key User) r)

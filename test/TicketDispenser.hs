@@ -68,7 +68,7 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 data Action (r :: * -> *)
   = TakeTicket
   | Reset
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response (r :: * -> *)
   = GotTicket Int

@@ -150,7 +150,7 @@ data Action (r :: * -> *)
 
     -- | Get the number of elements in the buffer.
   | Len (Reference (Opaque Buffer) r)
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response (r :: * -> *)
   = NewR (Reference (Opaque Buffer) r)

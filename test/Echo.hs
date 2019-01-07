@@ -34,7 +34,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 import           UnliftIO
-                   (TVar, newTVarIO, readTVar, writeTVar, atomically)
+                   (TVar, atomically, newTVarIO, readTVar, writeTVar)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -165,7 +165,7 @@ data Action (r :: * -> *)
       In String
       -- | Request a string output.
     | Echo
-  deriving (Show, Generic1, Rank2.Foldable, Rank2.Traversable, Rank2.Functor)
+  deriving (Show, Generic1, Rank2.Foldable, Rank2.Traversable, Rank2.Functor, CommandNames)
 
 -- | The system gives a single type of output response, containing a string
 -- with the input previously received.
