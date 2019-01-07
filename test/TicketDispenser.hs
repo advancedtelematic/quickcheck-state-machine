@@ -116,8 +116,8 @@ generator _ = Just $ frequency
   , (4, pure TakeTicket)
   ]
 
-shrinker :: Action Symbolic -> [Action Symbolic]
-shrinker _ = []
+shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+shrinker _ _ = []
 
 ------------------------------------------------------------------------
 

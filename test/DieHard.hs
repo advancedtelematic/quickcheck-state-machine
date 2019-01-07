@@ -131,8 +131,8 @@ generator _ = Just $ oneof
 
 -- There's nothing to shrink.
 
-shrinker :: Command r -> [Command r]
-shrinker _ = []
+shrinker :: Model r -> Command r -> [Command r]
+shrinker _ _ = []
 
 ------------------------------------------------------------------------
 

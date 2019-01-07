@@ -22,7 +22,7 @@ module Test.StateMachine.Parallel
   ( forAllParallelCommands
   , generateParallelCommands
   , shrinkParallelCommands
-  , validParallelCommands
+  , shrinkAndValidateParallel
   , prop_splitCombine
   , runParallelCommands
   , runParallelCommandsNTimes
@@ -39,16 +39,15 @@ import           Control.Monad
 import           Control.Monad.Catch
                    (MonadCatch)
 import           Control.Monad.State
-                   (State, evalState, put, runStateT)
+                   (runStateT)
 import           Data.Bifunctor
                    (bimap)
 import           Data.List
                    (partition, permutations)
 import           Data.List.Split
-                   (splitPlacesBlanks)
-import           Data.Map
-                   (Map)
-import qualified Data.Map                          as M
+                   (splitPlaces, splitPlacesBlanks)
+import           Data.Maybe
+                   (mapMaybe)
 import           Data.Monoid
                    ((<>))
 import           Data.Set
@@ -58,8 +57,7 @@ import           Data.Tree
                    (Tree(Node))
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, property,
-                   shrinkList, sized)
+                   (Gen, Property, Testable, choose, property, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -166,25 +164,30 @@ shrinkParallelCommands
   => Rank2.Foldable resp
   => StateMachine model cmd m resp
   -> (ParallelCommands cmd -> [ParallelCommands cmd])
-shrinkParallelCommands sm@StateMachine { shrinker, initModel }
+shrinkParallelCommands sm@StateMachine { initModel }
                        (ParallelCommands prefix suffixes)
-  = filterMaybe (flip evalState (initModel, M.empty, newCounter) . validParallelCommands sm)
-      [ ParallelCommands prefix' (map toPair suffixes')
-      | (prefix', suffixes') <- shrinkPair' shrinkCommands' shrinkSuffixes
-                                            (prefix, map fromPair suffixes)
+  = concatMap go
+      [ Shrunk s (ParallelCommands prefix' (map toPair suffixes'))
+      | Shrunk s (prefix', suffixes') <- shrinkPairS shrinkCommands' shrinkSuffixes
+                                                     (prefix, map fromPair suffixes)
       ]
       ++
       shrinkMoveSuffixToPrefix
   where
-    shrinkCommands' :: Commands cmd -> [Commands cmd]
-    shrinkCommands'
-      = map Commands
-      . shrinkList (liftShrinkCommand shrinker)
-      . unCommands
+    go :: Shrunk (ParallelCommands cmd) -> [ParallelCommands cmd]
+    go (Shrunk shrunk cmds) =
+        shrinkAndValidateParallel sm
+                                  (if shrunk then DontShrink else MustShrink)
+                                  (initValidateEnv initModel)
+                                  cmds
 
-    shrinkSuffixes :: [(Commands cmd, Commands cmd)] -> [[(Commands cmd, Commands cmd)]]
-    shrinkSuffixes = shrinkList (shrinkPair shrinkCommands')
+    shrinkCommands' :: Commands cmd -> [Shrunk (Commands cmd)]
+    shrinkCommands' = map (fmap Commands) . shrinkListS' . unCommands
 
+    shrinkSuffixes :: [(Commands cmd, Commands cmd)] -> [Shrunk [(Commands cmd, Commands cmd)]]
+    shrinkSuffixes = shrinkListS (shrinkPairS' shrinkCommands')
+
+    -- Moving a command from a suffix to the prefix preserves validity
     shrinkMoveSuffixToPrefix :: [ParallelCommands cmd]
     shrinkMoveSuffixToPrefix = case suffixes of
       []                   -> []
@@ -195,47 +198,112 @@ shrinkParallelCommands sm@StateMachine { shrinker, initModel }
                                                     unCommands (proj2 suffix))
         ]
 
+    -- >    pickOneReturnRest []     == []
+    -- >    pickOneReturnRest [1]    == [ (1,[]) ]
+    -- >    pickOneReturnRest [1..3] == [ (1,[2,3]), (2,[1,3]), (3,[1,2]) ]
     pickOneReturnRest :: [a] -> [(a, [a])]
     pickOneReturnRest []       = []
     pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
 
+    -- >    pickOneReturnRest2 ([], []) == []
+    -- >    pickOneReturnRest2 ([1,2], [3,4])
+    -- > == [ (1,([2],[3,4])), (2,([1],[3,4])), (3,([1,2],[4])), (4,([1,2],[3])) ]
     pickOneReturnRest2 :: ([a], [a]) -> [(a, ([a],[a]))]
     pickOneReturnRest2 (xs, ys) =
       map (id *** flip (,) ys) (pickOneReturnRest xs) ++
       map (id ***      (,) xs) (pickOneReturnRest ys)
 
-validParallelCommands :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
-                      => StateMachine model cmd m resp -> ParallelCommands cmd
-                      -> State (model Symbolic, Map Var Var, Counter) (Maybe (ParallelCommands cmd))
-validParallelCommands sm@StateMachine { initModel } (ParallelCommands prefix suffixes) = do
-  let prefixLength       = lengthCommands prefix
-      leftSuffixes       = map (\(Pair l _r) -> l) suffixes
-      rightSuffixes      = map (\(Pair _l r) -> r) suffixes
-      leftSuffixLengths  = map lengthCommands leftSuffixes
-      rightSuffixLengths = map lengthCommands rightSuffixes
-      leftSuffix         = mconcat leftSuffixes
-      rightSuffix        = mconcat rightSuffixes
-  mleft  <- validCommands sm (prefix <> leftSuffix)
-  put (initModel, M.empty, newCounter)
-  mright <- validCommands sm (prefix <> rightSuffix)
-  case (mleft, mright) of
-    (Nothing, Nothing)      -> return Nothing
-    (Just _,  Nothing)      -> return Nothing
-    (Nothing, Just _)       -> return Nothing
-    (Just left, Just right) ->
-      case (splitPlacesBlanks (prefixLength : leftSuffixLengths)  (unCommands left),
-            splitPlacesBlanks (prefixLength : rightSuffixLengths) (unCommands right)) of
-        ([]                     , [])                 -> error "validParallelCommands: impossible"
-        ([]                     , _ : _)              -> error "validParallelCommands: impossible"
-        (_ : _                  , [])                 -> error "validParallelCommands: impossible"
-        (prefix' : leftSuffixes', _ : rightSuffixes') -> do
-          let suffixes' = zipWith Pair (map Commands leftSuffixes')
-                                       (map Commands rightSuffixes')
-              (model', counter') = advanceModel sm initModel newCounter (Commands prefix')
+-- | Wrapper around 'shrinkAndValidate' for chunks of commands
+--
+-- This is used internally in 'shrinkAndValidateParallel'.
+--
+-- Continuing the example discussed in 'shrinkAndValidate', suppose we are given
+-- a list of 'Commands' (i.e., a list of lists)
+--
+-- > [ [A, B, C], [D, E], [F, G, H] ]
+--
+-- we concenate them together and pass
+--
+-- > [A, B, C, D, E, F, G, H]
+--
+-- to 'shrinkAndValidate'. We then rechunk all results of the form
+--
+-- > [A', B1', C', D', E' , F', G', H']
+--
+-- to
+--
+-- > [ [A', B1', C'], [D', E'], [F', G', H'] ]
+--
+-- I.e., the result now is a list of list of 'Commands'. We can always do this
+-- because 'shrinkAndValidate' has the property that it does not change the
+-- number of commands in any single result.
+shrinkAndValidateChunks :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
+                        => StateMachine model cmd m resp
+                        -> ShouldShrink
+                        -> ValidateEnv model
+                        -> [Commands cmd]
+                        -> [[Commands cmd]]
+shrinkAndValidateChunks sm shouldShrink env chunks =
+    map (rechunk . snd) $ shrinkAndValidate sm shouldShrink env (mconcat chunks)
+  where
+    chunkLengths :: [Int]
+    chunkLengths = map lengthCommands chunks
 
-          if parallelSafeMany sm model' counter' suffixes'
-          then return (Just (ParallelCommands (Commands prefix') suffixes'))
-          else return Nothing
+    rechunk :: Commands cmd -> [Commands cmd]
+    rechunk = map Commands . splitPlaces chunkLengths . unCommands
+
+shrinkAndValidateParallel :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
+                          => StateMachine model cmd m resp
+                          -> ShouldShrink
+                          -> ValidateEnv model
+                          -> ParallelCommands cmd
+                          -> [ParallelCommands cmd]
+shrinkAndValidateParallel sm shouldShrink env (ParallelCommands prefix suffixes) =
+    case shouldShrink of
+      DontShrink -> concatMap (uncurry (goWithPrefix DontShrink)) (shrinkAndValidate sm DontShrink env prefix)
+      MustShrink -> concatMap (uncurry (goWithPrefix DontShrink)) (shrinkAndValidate sm MustShrink env prefix)
+                 ++ concatMap (uncurry (goWithPrefix MustShrink)) (shrinkAndValidate sm DontShrink env prefix)
+  where
+    (lftSuffixes, rgtSuffixes) = unzip (map fromPair suffixes)
+
+    goWithPrefix :: ShouldShrink       -- should we /still/ shrink something?
+                 -> ValidateEnv model  -- environment after the prefix
+                 -> Commands cmd       -- validated prefix
+                 -> [ParallelCommands cmd]
+    goWithPrefix shouldShrink' env' prefix' =
+      case shouldShrink' of
+        DontShrink ->
+          mapMaybe (postProcess env' prefix') $
+            cartesian (shrinkAndValidateChunks sm DontShrink env' lftSuffixes)
+                      (shrinkAndValidateChunks sm DontShrink env' rgtSuffixes)
+        MustShrink -> concat [
+             mapMaybe (postProcess env' prefix') $
+               cartesian (shrinkAndValidateChunks sm MustShrink env' lftSuffixes)
+                         (shrinkAndValidateChunks sm DontShrink env' rgtSuffixes)
+          , mapMaybe (postProcess env' prefix') $
+               cartesian (shrinkAndValidateChunks sm DontShrink env' lftSuffixes)
+                         (shrinkAndValidateChunks sm MustShrink env' rgtSuffixes)
+          ]
+
+    postProcess :: ValidateEnv model -- environment after the prefix
+                -> Commands cmd      -- validated prefix
+                -> ([Commands cmd], [Commands cmd])
+                -> Maybe (ParallelCommands cmd)
+    postProcess (ValidateEnv model _ counter) prefix' (lftSuffixes', rgtSuffixes') =
+        if parallelSafeMany sm model counter suffixes'
+          then Just $ ParallelCommands prefix' suffixes'
+          else Nothing
+      where
+        suffixes' = zipWith Pair lftSuffixes' rgtSuffixes'
+
+    -- Cartesian product
+    --
+    -- NOTE: When we call 'cartesian', only /one/ of the lists will possibly
+    -- have more than 1 element; the other lists are either empty (meaning
+    -- validation failed and this shrink candidate is invalid) or singleton lists
+    -- (validation successful).
+    cartesian :: [a] -> [b] -> [(a,b)]
+    cartesian as bs = [(a, b) | a <- as, b <- bs]
 
 parallelSafeMany :: StateMachine model cmd m resp -> model Symbolic
                  -> Counter -> [Pair (Commands cmd)] -> Bool

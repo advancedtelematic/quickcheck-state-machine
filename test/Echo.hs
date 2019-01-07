@@ -129,8 +129,8 @@ echoSM env = StateMachine
           ]
 
       -- | Trivial shrinker.
-      mShrinker :: Action Symbolic -> [Action Symbolic]
-      mShrinker _ = []
+      mShrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+      mShrinker _ _ = []
 
       -- | Here we'd do the dispatch to the actual SUT.
       mSemantics :: Action Concrete -> IO (Response Concrete)

@@ -26,6 +26,7 @@ import           DieHard
 import           Echo
 import           ErrorEncountered
 import           MemoryReference
+import qualified ShrinkingProps
 import           TicketDispenser
 
 ------------------------------------------------------------------------
@@ -33,6 +34,7 @@ import           TicketDispenser
 tests :: Bool -> TestTree
 tests docker0 = testGroup "Tests"
   [ testCase "Doctest Z module" (doctest ["src/Test/StateMachine/Z.hs"])
+  , ShrinkingProps.tests
   , testProperty "Die Hard"
       (expectFailure (withMaxSuccess 2000 prop_dieHard))
   , testGroup "Memory reference"

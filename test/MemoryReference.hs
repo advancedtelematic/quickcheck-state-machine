@@ -150,9 +150,9 @@ generator (Model model) = Just $ frequency
   , (4, Increment <$> elements (domain model))
   ]
 
-shrinker :: Command Symbolic -> [Command Symbolic]
-shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
-shrinker _             = []
+shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
+shrinker _ (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrinker _ _             = []
 
 sm :: Bug -> StateMachine Model Command IO Response
 sm bug = StateMachine initModel transition precondition postcondition
