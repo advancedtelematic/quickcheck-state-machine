@@ -42,7 +42,7 @@ module Test.StateMachine
   , Reason(..)
   , GenSym
   , genSym
-  , GConName1(..)
+  , CommandNames(..)
 
   , module Test.StateMachine.Logic
 

@@ -1,8 +1,8 @@
-{-# LANGUAGE DeriveAnyClass       #-}
-{-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE PolyKinds          #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module ErrorEncountered
   ( prop_error_sequential
@@ -13,8 +13,7 @@ module ErrorEncountered
 import           Data.Functor.Classes
                    (Eq1)
 import           Data.IORef
-                   (IORef, newIORef, readIORef,
-                   writeIORef)
+                   (IORef, newIORef, readIORef, writeIORef)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -49,7 +48,7 @@ data Command r
   = Create
   | Read  (Reference (Opaque (IORef Int)) r)
   | Write (Reference (Opaque (IORef Int)) r) Int
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, GConName1)
+  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 deriving instance Show (Command Symbolic)
 deriving instance Show (Command Concrete)
@@ -78,11 +77,11 @@ initModel = Model empty
 transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
 transition ErrorEncountered _  _    = ErrorEncountered
 transition m@(Model model) cmd resp = case (cmd, resp) of
-  (Create, Created ref)        -> Model ((ref, 0) : model)
-  (Read _, ReadValue _)        -> m
-  (Write ref x, Written)       -> Model (update ref x model)
-  (Write _   _, WriteFailed)   -> ErrorEncountered
-  _                            -> error "transition: impossible."
+  (Create, Created ref)      -> Model ((ref, 0) : model)
+  (Read _, ReadValue _)      -> m
+  (Write ref x, Written)     -> Model (update ref x model)
+  (Write _   _, WriteFailed) -> ErrorEncountered
+  _                          -> error "transition: impossible."
 
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
 update ref i m = (ref, i) : filter ((/= ref) . fst) m
@@ -90,9 +89,9 @@ update ref i m = (ref, i) : filter ((/= ref) . fst) m
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition ErrorEncountered _ = Bot
 precondition (Model m) cmd = case cmd of
-  Create        -> Top
-  Read  ref     -> ref `elem` domain m
-  Write ref _   -> ref `elem` domain m
+  Create      -> Top
+  Read  ref   -> ref `elem` domain m
+  Write ref _ -> ref `elem` domain m
 
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition (Model m) cmd resp = case (cmd, resp) of

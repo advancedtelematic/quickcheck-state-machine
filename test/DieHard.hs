@@ -58,7 +58,7 @@ data Command (r :: * -> *)
   | SmallIntoBig -- Pour the contents of the 3-liter jug
                  -- into 5-liter jug.
   | BigIntoSmall
-  deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, GConName1)
+  deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response (r :: * -> *) = Done
   deriving (Show, Generic1, Rank2.Foldable)
