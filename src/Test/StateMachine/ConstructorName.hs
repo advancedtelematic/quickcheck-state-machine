@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DefaultSignatures    #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -13,6 +14,8 @@ module Test.StateMachine.ConstructorName
   )
   where
 
+import           Data.Kind
+                   (Type)
 import           Data.Proxy
                    (Proxy(Proxy))
 import           GHC.Generics
@@ -29,7 +32,7 @@ import           Test.StateMachine.Types
 -- | The names of all possible commands
 --
 -- This is used for things like tagging, coverage checking, etc.
-class CommandNames (cmd :: k -> *) where
+class CommandNames (cmd :: k -> Type) where
   -- | Name of this particular command
   cmdName  :: cmd r -> String
 

@@ -76,6 +76,8 @@ import           Data.Char
                    (isPrint)
 import           Data.Functor.Classes
                    (Eq1)
+import           Data.Kind
+                   (Type)
 import           Data.List
                    (dropWhileEnd)
 import           Data.Monoid
@@ -99,10 +101,13 @@ import           Database.Persist.TH
                    sqlSettings)
 import           GHC.Generics
                    (Generic, Generic1)
-import           Network
-                   (PortID(PortNumber), connectTo)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
+import           Network.Socket
+                   (AddrInfoFlag(AI_NUMERICSERV, AI_NUMERICHOST),
+                   Socket, SocketType(Stream), addrAddress, addrFamily,
+                   addrFlags, addrProtocol, addrSocketType, close,
+                   connect, defaultHints, getAddrInfo, socket)
 import qualified Network.Wai.Handler.Warp      as Warp
 import           Prelude                       hiding
                    (elem)
@@ -115,8 +120,6 @@ import           Servant.Client
                    client, mkClientEnv, runClientM)
 import           Servant.Server
                    (Handler)
-import           System.IO
-                   (Handle, hClose)
 import           System.Process
                    (callProcess, readProcess)
 import           Test.QuickCheck
@@ -233,7 +236,7 @@ postUserC :<|> getUserC :<|> incAgeUserC :<|> deleteUserC :<|> healthC
 
 
 
-data Action (r :: * -> *)
+data Action (r :: Type -> Type)
   = PostUser   User
   | GetUser    (Reference (Key User) r)
   | IncAgeUser (Reference (Key User) r)
@@ -245,7 +248,7 @@ instance Rank2.Foldable    Action where
 instance Rank2.Traversable Action where
 instance CommandNames      Action where
 
-data Response (r :: * -> *)
+data Response (r :: Type -> Type)
   = PostedUser (Reference (Key User) r)
   | GotUser    (Maybe User)
   | IncedAgeUser
@@ -495,13 +498,19 @@ setupDb = do
 
     healthyDb :: String -> IO ()
     healthyDb ip = do
-      handle <- go 10
-      hClose handle
+      sock <- go 10
+      close sock
       where
-        go :: Int -> IO Handle
+        go :: Int -> IO Socket
         go 0 = error "healtyDb: db isn't healthy"
         go n = do
-          connectTo ip (PortNumber 5432)
+          let hints = defaultHints
+                { addrFlags      = [AI_NUMERICHOST , AI_NUMERICSERV]
+                , addrSocketType = Stream
+                }
+          addr : _ <- getAddrInfo (Just hints) (Just ip) (Just "5432")
+          sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
+          (connect sock (addrAddress addr) >> return sock)
             `catch` (\(_ :: IOException) -> do
                         threadDelay 1000000
                         go (n - 1))

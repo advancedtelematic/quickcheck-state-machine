@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleInstances  #-}
@@ -44,6 +45,9 @@ import           Data.Function
 import           Data.Functor.Classes
                    (Eq1)
 import           Data.IORef
+                   (IORef, newIORef, readIORef, writeIORef)
+import           Data.Kind
+                   (Type)
 import           Data.Maybe
                    (isJust)
 import           Data.TreeDiff
@@ -138,7 +142,7 @@ lenBuffer bugs Buffer{top, bot, arr} = do
 ------------------------------------------------------------------------
 
 -- | Buffer actions.
-data Action (r :: * -> *)
+data Action (r :: Type -> Type)
     -- | Create a new buffer of bounded capacity.
   = New Int
 
@@ -152,7 +156,7 @@ data Action (r :: * -> *)
   | Len (Reference (Opaque Buffer) r)
   deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-data Response (r :: * -> *)
+data Response (r :: Type -> Type)
   = NewR (Reference (Opaque Buffer) r)
   | PutR
   | GetR Int
