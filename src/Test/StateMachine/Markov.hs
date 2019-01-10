@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module Test.StateMachine.Markov
   ( Markov(..)
@@ -11,15 +12,28 @@ module Test.StateMachine.Markov
   , markovToDot
   , lookupMarkov
   , transitionMatrix
+  , ToState(..)
+  , results
   )
   where
 
+import           Control.Arrow
+                   (first)
+import           Data.Bifunctor
+                   (bimap)
+import           Data.Either
+                   (partitionEithers)
 import           Data.GraphViz
                    (graphElemsToDot, quickParams)
 import           Data.GraphViz.Commands
                    (GraphvizOutput(Pdf), addExtension, runGraphviz)
 import           Data.GraphViz.Exception
                    (GraphvizException, handle)
+import           Data.Map
+                   (Map)
+import qualified Data.Map                           as Map
+import           Data.Maybe
+                   (fromMaybe)
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
                    gfromFiniteEnum, gmaxBound, gminBound)
@@ -169,8 +183,8 @@ lookupFrequency _markov Nothing (Just to)
   | otherwise               = 0   -- The exit state isn't connected to any other state.
 lookupFrequency markov (Just from) to =
   case lookup from (unMarkovTable (markovTable markov)) of
-    Nothing  -> error "lookupFrequency: impossible."
-    Just es  -> go es
+    Nothing -> error "lookupFrequency: impossible."
+    Just es -> go es
   where
     go :: [(Int, Continue model state cmd)] -> Int
     go []                  = 0
@@ -180,3 +194,49 @@ lookupFrequency markov (Just from) to =
     go ((freq, Continue _conName _gen state') : es)
       | to == Just state' = freq
       | otherwise         = go es
+
+------------------------------------------------------------------------
+
+-- | We can transition into a state successful or not, or the it can
+-- actually be the sink/stop state.
+data ToState state
+  = Successful state
+  | Failed state
+  | Sink
+  deriving (Show, Read)
+
+results :: forall state proxy. (Read state, Ord state)
+        => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+        => proxy state -> Map String (Map String Int)
+        -> ((Int, [Double]), (Int, [Double]))
+results _ = bimap toMatrix toMatrix . readTables @state
+
+readTables :: (Read state, Ord state)
+           => Map String (Map String Int)
+           -> (Map (state, Maybe state) Double, Map (state, Maybe state) Double)
+readTables m = bimap Map.fromList Map.fromList $
+  partitionEithers
+    [ case read es' of
+        Successful s' -> Right ((s, Just s'), fromIntegral n)
+        Failed     s' -> Left  ((s, Just s'), fromIntegral n)
+        Sink          -> Right ((s, Nothing), fromIntegral n)
+        -- ^ Transitioning into a sink never fails.
+    | (s, m')  <- map (first read) (Map.toList m)
+    , (es', n) <- Map.toList m'
+    ]
+
+toMatrix :: forall state. Ord state
+         => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+         => Map (state, Maybe state) Double -> (Int, [Double])
+toMatrix m = (dimension, matrix)
+  where
+    dimension = length states
+
+    states :: [state]
+    states = gfiniteEnumFromTo gminBound gmaxBound
+
+    matrix :: [Double]
+    matrix = [ fromMaybe 0.0 (Map.lookup (s, s') m)
+             | s  <- states
+             , s' <- map Just states ++ [Nothing]
+             ]

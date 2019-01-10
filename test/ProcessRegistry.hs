@@ -219,7 +219,7 @@ data Fin2
   = Zero
   | One
   | Two
-  deriving (Enum, Bounded, Show, Eq)
+  deriving (Enum, Bounded, Show, Eq, Read, Ord)
 
 type FiniteModel = (Fin2, Fin2)
 

@@ -54,6 +54,8 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
+import           Data.Function
+                   (on)
 import           Data.List
                    (groupBy, sortBy)
 import qualified Data.Map                          as M
@@ -389,8 +391,8 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
 
 ------------------------------------------------------------------------
 
-tabulateState :: (Generic1 cmd, GConName1 (Rep1 cmd))
-              => (MonadIO m, Show state)
+tabulateState :: forall model state cmd m resp. (MonadIO m, Show state)
+              => (Generic1 cmd, GConName1 (Rep1 cmd))
               => AdvancedStateMachine model state cmd m resp
               -> History cmd resp
               -> PropertyM m ()
@@ -400,7 +402,10 @@ tabulateState StateMachine {..} hist = case distribution of
     let stateTransitions = go markov start initModel [] (makeOperations (unHistory hist))
     mapM_ (monitor . uncurry newTabulate) (groupByState stateTransitions)
   where
-    go _markov _state _model acc []         = reverse acc
+    go :: Markov model state cmd -> state -> model Concrete
+       -> [(state, String, ToState state)] -> [Operation cmd resp]
+       -> [(state, String, ToState state)]
+    go _markov state  _model acc []         = reverse ((state, "Stop", Sink) : acc)
     go markov  state  model  acc (op : ops) =
       let
         cmd     = operationCommand op
@@ -411,16 +416,18 @@ tabulateState StateMachine {..} hist = case distribution of
       in
         case op of
           Operation _cmd resp _pid
+  -- XXX: check invariant
             | boolean (postcondition model cmd resp) ->
                 go markov state' (transition model cmd resp)
-                   ((state, conName, Right state') : acc) ops
-            | otherwise -> reverse ((state, conName, Left state') : acc)
-          Crash _cmd _err _pid -> reverse ((state, conName, Left state') : acc)
+                   ((state, conName, Successful state') : acc) ops
+            | otherwise -> reverse ((state, conName, Failed state') : acc)
+          Crash _cmd _err _pid -> reverse ((state, conName, Failed state') : acc)
 
+    groupByState :: [(state, String, ToState state)] -> [(String, [String])]
     groupByState
-      = map (\xs -> case xs of
-                []         -> error "groupByState: impossible."
-                (s, _) : _ -> (s, map snd xs))
-      . groupBy (\x y -> fst x == fst y)
-      . sortBy (\x y -> fst x `compare` fst y)
-      . map (\(state, _conName, state') -> (show state, show state'))
+      = concatMap (\xs -> case xs of
+          []         -> []
+          (s, _) : _ -> [(s, map snd xs)])
+      . groupBy ((==)    `on` fst)
+      . sortBy  (compare `on` fst)
+      . map (\(state, _conName, estate') -> (show state, show estate'))
