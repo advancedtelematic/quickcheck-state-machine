@@ -41,7 +41,7 @@ import           Control.Monad.Catch
 import           Control.Monad.State
                    (runStateT)
 import           Data.Bifunctor
-                   (bimap)
+                   (bimap, second)
 import           Data.List
                    (partition, permutations)
 import           Data.List.Split
@@ -87,6 +87,46 @@ forAllParallelCommands :: Testable prop
 forAllParallelCommands sm =
   forAllShrinkShow (generateParallelCommands sm) (shrinkParallelCommands sm) ppShow
 
+-- | Generate parallel commands.
+--
+-- Parallel commands are generated as follows. We begin by generating
+-- sequential commands and then splitting this list in two at some index. The
+-- first half will be used as the prefix.
+--
+-- The second half will be used to build suffixes. For example, starting from
+-- the following sequential commands:
+--
+-- > [A, B, C, D, E, F, G, H, I]
+--
+-- We split it in two, giving us the prefix and the rest:
+--
+-- > prefix: [A, B]
+-- > rest:   [C, D, E, F, G, H, I]
+--
+-- We advance the model with the prefix.
+--
+-- __Make a suffix__: we take commands from @rest@ as long as these are
+-- parallel safe (see 'parallelSafe'). This means that the pre-conditions
+-- (using the \'advanced\' model) of each of those commands will hold no
+-- matter in which order they are executed.
+--
+-- Say this is true for @[C, D, E]@, but not anymore for @F@, maybe because
+-- @F@ depends on one of @[C, D, E]@. Then we divide this \'chunk\' in two by
+-- splitting it in the middle, obtaining @[C]@ and @[D, E]@. These two halves
+-- of the chunk (stored as a 'Pair') will later be executed in parallel.
+-- Together they form one suffix.
+--
+-- Then the model is advanced using the whole chunk @[C, D, E]@. Think of it
+-- as a barrier after executing the two halves of the chunk in parallel. Then
+-- this process of building a chunk/suffix repeats itself, starting from
+-- __Make a suffix__ using the \'advanced\' model.
+--
+-- In the end we might end up with something like this:
+--
+-- >         ┌─ [C] ──┐  ┌ [F, G] ┐
+-- > [A, B] ─┤        ├──┤        │
+-- >         └ [D, E] ┘  └ [H, I] ┘
+--
 generateParallelCommands :: forall model cmd m resp
                           . (Rank2.Foldable resp, Show (model Symbolic))
                          => CommandNames cmd
@@ -112,14 +152,19 @@ generateParallelCommands sm@StateMachine { initModel } = do
 
         suffixLength = 5
 
+        -- Split the list of commands in two such that the first half is a
+        -- list of commands for which the preconditions of all commands hold
+        -- for permutation of the list, i.e. it is parallel safe. The other
+        -- half is the remainder of the input list.
         spanSafe :: model Symbolic -> Counter -> [Command cmd] -> [Command cmd]
                  -> ([Command cmd], [Command cmd])
         spanSafe _     _       safe []                         = (reverse safe, [])
         spanSafe model counter safe (cmd@(Command _ _) : cmds)
-          | length safe <= suffixLength &&
-              parallelSafe sm model counter (Commands (cmd : safe)) =
-                spanSafe model counter (cmd : safe) cmds
-          | otherwise = (reverse safe, cmd : cmds)
+          | length safe <= suffixLength
+          , parallelSafe sm model counter (Commands (cmd : safe))
+          = spanSafe model counter (cmd : safe) cmds
+          | otherwise
+          = (reverse safe, cmd : cmds)
 
 -- | A list of commands is parallel safe if the pre-conditions for all commands
 --   hold in all permutations of the list.
@@ -222,7 +267,7 @@ shrinkParallelCommands sm@StateMachine { initModel }
 --
 -- > [ [A, B, C], [D, E], [F, G, H] ]
 --
--- we concenate them together and pass
+-- we concatenate them together and pass
 --
 -- > [A, B, C, D, E, F, G, H]
 --
@@ -242,9 +287,9 @@ shrinkAndValidateChunks :: forall model cmd m resp. (Rank2.Traversable cmd, Rank
                         -> ShouldShrink
                         -> ValidateEnv model
                         -> [Commands cmd]
-                        -> [[Commands cmd]]
+                        -> [(ValidateEnv model, [Commands cmd])]
 shrinkAndValidateChunks sm shouldShrink env chunks =
-    map (rechunk . snd) $ shrinkAndValidate sm shouldShrink env (mconcat chunks)
+    map (second rechunk) $ shrinkAndValidate sm shouldShrink env (mconcat chunks)
   where
     chunkLengths :: [Int]
     chunkLengths = map lengthCommands chunks
@@ -270,19 +315,27 @@ shrinkAndValidateParallel sm shouldShrink env (ParallelCommands prefix suffixes)
                  -> ValidateEnv model  -- environment after the prefix
                  -> Commands cmd       -- validated prefix
                  -> [ParallelCommands cmd]
-    goWithPrefix shouldShrink' env' prefix' =
+    goWithPrefix shouldShrink' env0 prefix' =
       case shouldShrink' of
         DontShrink ->
-          mapMaybe (postProcess env' prefix') $
-            cartesian (shrinkAndValidateChunks sm DontShrink env' lftSuffixes)
-                      (shrinkAndValidateChunks sm DontShrink env' rgtSuffixes)
+          mapMaybe (postProcess env0 {- TODO which env to pass here? -} prefix')
+            [ (lftSuffix, rgtSuffix)
+            | ( env1, lftSuffix) <- shrinkAndValidateChunks sm DontShrink env0 lftSuffixes
+            , (_env2, rgtSuffix) <- shrinkAndValidateChunks sm DontShrink env1 rgtSuffixes
+            ]
+        -- TODO pass env2 to the next left suffix -> zigzag through the left
+        -- and right chuncks
         MustShrink -> concat [
-             mapMaybe (postProcess env' prefix') $
-               cartesian (shrinkAndValidateChunks sm MustShrink env' lftSuffixes)
-                         (shrinkAndValidateChunks sm DontShrink env' rgtSuffixes)
-          , mapMaybe (postProcess env' prefix') $
-               cartesian (shrinkAndValidateChunks sm DontShrink env' lftSuffixes)
-                         (shrinkAndValidateChunks sm MustShrink env' rgtSuffixes)
+            mapMaybe (postProcess env0 prefix')
+              [ (lftSuffix, rgtSuffix)
+              | ( env1, lftSuffix) <- shrinkAndValidateChunks sm MustShrink env0 lftSuffixes
+              , (_env2, rgtSuffix) <- shrinkAndValidateChunks sm DontShrink env1 rgtSuffixes
+              ]
+          , mapMaybe (postProcess env0 prefix')
+              [ (lftSuffix, rgtSuffix)
+              | ( env1, lftSuffix) <- shrinkAndValidateChunks sm DontShrink env0 lftSuffixes
+              , (_env2, rgtSuffix) <- shrinkAndValidateChunks sm MustShrink env1 rgtSuffixes
+              ]
           ]
 
     postProcess :: ValidateEnv model -- environment after the prefix
@@ -296,14 +349,6 @@ shrinkAndValidateParallel sm shouldShrink env (ParallelCommands prefix suffixes)
       where
         suffixes' = zipWith Pair lftSuffixes' rgtSuffixes'
 
-    -- Cartesian product
-    --
-    -- NOTE: When we call 'cartesian', only /one/ of the lists will possibly
-    -- have more than 1 element; the other lists are either empty (meaning
-    -- validation failed and this shrink candidate is invalid) or singleton lists
-    -- (validation successful).
-    cartesian :: [a] -> [b] -> [(a,b)]
-    cartesian as bs = [(a, b) | a <- as, b <- bs]
 
 parallelSafeMany :: StateMachine model cmd m resp -> model Symbolic
                  -> Counter -> [Pair (Commands cmd)] -> Bool

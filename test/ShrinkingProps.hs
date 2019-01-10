@@ -24,7 +24,6 @@ module ShrinkingProps (
 import           Prelude                       hiding
                    (elem)
 
-import           Control.Concurrent.STM
 import           Control.Monad
                    (replicateM)
 import           Control.Monad.State
@@ -38,6 +37,8 @@ import           Data.Functor.Classes
 import           Data.Map.Strict
                    (Map)
 import qualified Data.Map.Strict               as Map
+import           Data.Monoid
+                   ((<>))
 import           Data.Proxy
 import           Data.Set
                    (Set)
@@ -49,17 +50,23 @@ import           GHC.Generics
 import           GHC.Stack
 import           Text.Show.Pretty
                    (ppShow)
+import           UnliftIO.STM
 
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
+                   (Arbitrary(..), Gen, Property, conjoin,
+                   counterexample, elements, getNonNegative, getSmall,
+                   oneof, property, testProperty, (.&&.), (===))
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Parallel    as QSM
 import qualified Test.StateMachine.Sequential  as QSM
 import qualified Test.StateMachine.Types       as QSM
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.Utils
+                   (forAllShrinkShow)
 
 tests :: TestTree
 tests = testGroup "Shrinking properties" [
@@ -375,7 +382,7 @@ isSubGraphOf :: RefGraph -> RefGraph -> Bool
 g `isSubGraphOf` g' = Map.isSubmapOfBy Set.isSubsetOf g g'
 
 refGraph :: HasCallStack => QSM.Commands (At Cmd) -> RefGraph
-refGraph = \(QSM.Commands cmds) -> go Map.empty Map.empty cmds
+refGraph (QSM.Commands cmds) = go Map.empty Map.empty cmds
   where
     go :: Map QSM.Var ExplicitRef
        -> RefGraph
@@ -383,7 +390,7 @@ refGraph = \(QSM.Commands cmds) -> go Map.empty Map.empty cmds
        -> RefGraph
     go _    !acc []                               = acc
     go refs !acc (QSM.Command (At cmd) vars : cs) =
-        go (refs `Map.union` newRefs)
+        go (refs `union` newRefs)
            (Map.insert (cmdID cmd) (Set.fromList $ map deref (toList cmd)) acc)
            cs
       where
@@ -393,9 +400,27 @@ refGraph = \(QSM.Commands cmds) -> go Map.empty Map.empty cmds
               Just r  -> r
               Nothing -> error $ "deref: reference " ++ show x ++ " not found "
                       ++ "in environment " ++ show refs
+                      ++ " with commands " ++ show cmds
 
         newRefs :: Map QSM.Var ExplicitRef
         newRefs = Map.fromList $ zipWith mkRef vars [0..]
+
+        -- When adding new 'QSM.Var's, check that they are not already present
+        -- in the map, as the same 'QSM.Var' may never be created by two
+        -- different commands.
+        union :: Map QSM.Var ExplicitRef -- ^ Known references
+              -> Map QSM.Var ExplicitRef -- ^ New references
+              -> Map QSM.Var ExplicitRef
+        union known new = foldr insertUnlessKnown known (Map.toList new)
+          where
+            insertUnlessKnown (var, newRef) =
+                Map.insertWith (\_ oldRef -> error $ mkMsg var oldRef newRef)
+                var newRef
+            mkMsg var oldRef newRef =   show var    ++
+              " created by "         ++ show oldRef ++
+              " already created by " ++ show newRef ++
+              " with commands\n"     ++ ppShow cmds
+
 
         mkRef :: QSM.Var -> Int -> (QSM.Var, ExplicitRef)
         mkRef x i = (x, ExplicitRef (cmdID cmd) i)
@@ -445,29 +470,63 @@ data ShrinkParFailure = SPF {
 --   reorder commands: this can happen when moving commands /back from one of
 --   the parallel suffixes to the sequential prefix.
 refGraph' :: HasCallStack => QSM.ParallelCommands (At Cmd) -> RefGraph
-refGraph' (QSM.ParallelCommands prefix suffixes) =
-    Map.unionsWith unionRefs [
-        refGraph $ prefix `mappend` mconcat lftSuffixes
-      , refGraph $ prefix `mappend` mconcat rgtSuffixes
-      ]
+refGraph' (QSM.ParallelCommands prefix suffixes) = go prefix suffixes
   where
-    (lftSuffixes, rgtSuffixes) = unzip (map QSM.fromPair suffixes)
+    -- We must be able to build a 'RefGraph' for each suffix, using all the
+    -- past commands (including the prefix and previous suffixes) and the pair
+    -- of commands from the prefix.
+    --
+    -- Alternatively, we could construct the 'RefGraph' in one go using /all/
+    -- the commands, for example:
+    -- refGraph (prefix <> foldMap fold suffixes)
+    --
+    -- However, the current approach does more validation (see 'sanityCheck'),
+    -- as the 'RefGraph' is built after each suffix (using the prefix and past
+    -- suffixes) using 'refGraph', which checks for invalid references.
+    go pastCmds [] = refGraph pastCmds
+    go pastCmds (QSM.Pair left right:suffixes') =
+      let sanityCheck = Map.unionWith unionRefs (refGraph (pastCmds <> left))
+                                                (refGraph (pastCmds <> right))
+      in sanityCheck `seq` go (pastCmds <> left <> right) suffixes'
 
-    -- The only commands that appear in both the left and the right are the
-    -- prefix, which is the /same/ for the left and right
+    -- The only commands that appear in both the left and the right are in the
+    -- prefix or in past suffixes, in other words: @pastCmds@. This will be the
+    -- /same/ for the left and right commands of the suffix.
     unionRefs :: Set ExplicitRef -> Set ExplicitRef -> Set ExplicitRef
-    unionRefs rs rs' = if rs == rs' then rs
-                                    else error "unionRefs: impossible"
+    unionRefs rs rs' = if rs == rs' then rs else error "unionRefs: impossible"
 
 prop_parallel_subprog :: Property
 prop_parallel_subprog =
-    forAllShrinkShow (QSM.generateParallelCommands sm) (const []) ppShow $ \cmds ->
+    forAllShrinkShow genCmds (const []) ppShow $ \cmds ->
       let cmds' = refGraph' cmds in
       conjoin [ let shrunk' = refGraph' shrunk in
                 counterexample (ppShow (SPF cmds shrunk cmds' shrunk')) $
                   shrunk' `isSubGraphOf` cmds'
               | shrunk <- QSM.shrinkParallelCommands sm cmds
               ]
+  where
+    genCmds = QSM.generateParallelCommands sm
+    -- TODO add as a test (?)
+    -- genCmds = return buggyShrinkCmds
+
+-- A set of valid commands to resulted in an invalid shrink
+buggyShrinkCmds :: QSM.ParallelCommands (At Cmd)
+buggyShrinkCmds = QSM.ParallelCommands (QSM.Commands [])
+    [ QSM.Pair (QSM.Commands [mkCreateRef 0 [0]])
+               (QSM.Commands [mkCreateRef 1 [1]])
+               -- This Var 1 was shrunk to Var 0
+    , QSM.Pair (QSM.Commands [mkRead 2 [0]])
+               (QSM.Commands [mkRead 3 [1]])
+    ]
+  where
+    mkCreateRef cid vars =
+      QSM.Command (At (CreateRef (CmdID cid) Nothing (length vars)))
+                  (map QSM.Var vars)
+    mkRead cid vars =
+      QSM.Command (At (Read (CmdID cid) Nothing
+                       (map (QSM.Reference . QSM.Symbolic . QSM.Var) vars)))
+                  []
+
 
 {-------------------------------------------------------------------------------
   Check that the shrinker gets presented with the right model

@@ -54,7 +54,7 @@ import           Control.Monad.Catch
 import           Control.Monad.State
                    (StateT, evalStateT, get, lift, put, runStateT)
 import           Data.Bifunctor
-                   (first, second)
+                   (second)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either

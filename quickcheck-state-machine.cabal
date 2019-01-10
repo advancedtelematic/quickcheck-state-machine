@@ -89,7 +89,6 @@ test-suite quickcheck-state-machine-test
                        servant,
                        servant-client,
                        servant-server,
-                       stm,
                        strict,
                        string-conversions,
                        tasty,
