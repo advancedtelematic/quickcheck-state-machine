@@ -10,6 +10,15 @@ extra-deps:
 nix:
   enable: false
   pure: false
-  packages: [zlib]
+  packages: [
+    blas
+    gfortran.cc
+    glpk
+    gsl
+    haskellPackages.tasty-discover
+    liblapack
+    sundials
+    zlib
+    ]
 
 allow-newer: true
