@@ -85,5 +85,5 @@ instance CommandNames f => CommandNames (Rec1 f) where
 ------------------------------------------------------------------------
 
 -- | Convenience wrapper for 'Command'
-commandName :: CommandNames cmd => Command cmd -> String
-commandName (Command cmd _) = cmdName cmd
+commandName :: CommandNames cmd => Command cmd resp -> String
+commandName (Command cmd _ _) = cmdName cmd

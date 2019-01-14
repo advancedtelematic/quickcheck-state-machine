@@ -179,4 +179,4 @@ prop_precondition = once $ monadicIO $ do
     where
       sm'  = sm None
       cmds = Commands
-        [ Types.Command (Read (Reference (Symbolic (Var 0)))) [] ]
+        [ Types.Command (Read (Reference (Symbolic (Var 0)))) (ReadValue 0) [] ]
