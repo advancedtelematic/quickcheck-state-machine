@@ -42,6 +42,7 @@ library
                      , Test.StateMachine.Types.History
                      , Test.StateMachine.Types.Rank2
                      , Test.StateMachine.Types.References
+                     , Test.Tasty.QuickCheckSM
                      , Test.StateMachine.Utils
                      , Test.StateMachine.Z
   other-modules:
@@ -59,6 +60,8 @@ library
         QuickCheck >=2.9.2,
         random,
         split >=0.2.3.3,
+        tasty,
+        tasty-quickcheck,
         tree-diff >=0.0.2,
         vector >=0.12.0.1,
         unliftio >=0.2.7.0
