@@ -1,6 +1,10 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE ExplicitNamespaces  #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE GADTs               #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 
 module Test.StateMachine.Markov
   ( Markov(..)
@@ -13,12 +17,22 @@ module Test.StateMachine.Markov
   , lookupMarkov
   , transitionMatrix
   , ToState(..)
+  , SomeMatrix(..)
+  , ppSomeMatrix
   , results
+  , CompatibleMatrices(..)
+  , compatibleMatrices
   )
   where
 
+import           Control.Applicative
+                   (liftA2)
 import           Control.Arrow
                    (first)
+import           Control.Monad
+                   (liftM2)
+import           Control.Monad
+                   (join)
 import           Data.Bifunctor
                    (bimap)
 import           Data.Either
@@ -34,16 +48,30 @@ import           Data.Map
 import qualified Data.Map                           as Map
 import           Data.Maybe
                    (fromMaybe)
+import           Data.Proxy
+                   (Proxy(Proxy))
+import           Data.Tuple
+                   (swap)
+import           Data.Type.Equality
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
                    gfromFiniteEnum, gmaxBound, gminBound)
 import           GHC.Generics
                    (Generic, Rep)
+import           GHC.TypeLits
+                   (type (-), KnownNat, SomeNat(SomeNat), natVal,
+                   sameNat, someNatVal)
+import           Numeric.LinearAlgebra
+                   (loadMatrix', saveMatrix)
+import           Numeric.LinearAlgebra.Static
+                   (L, Sq, create, matrix, unwrap)
 import           Prelude
 import           System.Random
                    (RandomGen, mkStdGen, randomR)
 import           Test.QuickCheck.Gen
                    (Gen, chooseAny)
+import           Unsafe.Coerce
+                   (unsafeCoerce)
 
 import           Test.StateMachine.Types.References
                    (Symbolic)
@@ -160,10 +188,12 @@ markovToGraphElems markov _start = (nodes, edges)
 
 transitionMatrix :: forall model state cmd. (Eq state, Generic state)
                  => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
-                 => Markov model state cmd -> (Int, [Double])
-transitionMatrix markov = (size, values)
+                 => Markov model state cmd -> SomeMatrix
+transitionMatrix markov = fromMaybe (error "results: impossible") $ do
+  SomeNat pn@(Proxy :: Proxy n) <- someNatVal dimension
+  return (SomeMatrix pn pn (matrix values :: Sq n))
   where
-    size = length states + 1 -- + 1 for the stop/exit/sink state.
+    dimension = toInteger (length states + 1) -- + 1 for the stop/exit/sink state.
 
     states :: [state]
     states = gfiniteEnumFromTo gminBound gmaxBound
@@ -205,16 +235,25 @@ data ToState state
   | Sink
   deriving (Show, Read)
 
+data SomeMatrix where
+  SomeMatrix :: forall m n. (KnownNat m, KnownNat n) =>
+    Proxy m -> Proxy n -> L m n -> SomeMatrix
+
+ppSomeMatrix :: SomeMatrix -> String
+ppSomeMatrix (SomeMatrix _ _ mat) = show mat
+
 results :: forall state proxy. (Read state, Ord state)
         => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
         => proxy state -> Map String (Map String Int)
-        -> ((Int, [Double]), (Int, [Double]))
-results _ = bimap toMatrix toMatrix . readTables @state
+        -> (SomeMatrix, SomeMatrix)
+results _ = bimap go go . readTables @state
+  where
+    go = fromMaybe (error "results: impossible") . toMatrix
 
 readTables :: (Read state, Ord state)
            => Map String (Map String Int)
            -> (Map (state, Maybe state) Double, Map (state, Maybe state) Double)
-readTables m = bimap Map.fromList Map.fromList $
+readTables m = bimap Map.fromList Map.fromList $ swap $
   partitionEithers
     [ case read es' of
         Successful s' -> Right ((s, Just s'), fromIntegral n)
@@ -227,16 +266,43 @@ readTables m = bimap Map.fromList Map.fromList $
 
 toMatrix :: forall state. Ord state
          => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-         => Map (state, Maybe state) Double -> (Int, [Double])
-toMatrix m = (dimension, matrix)
+         => Map (state, Maybe state) Double -> Maybe SomeMatrix
+toMatrix m = do
+  SomeNat pm@(Proxy :: Proxy m) <- someNatVal (dimension - 1)
+  SomeNat pn@(Proxy :: Proxy n) <- someNatVal dimension
+  return (SomeMatrix pm pn (matrix values :: L m n))
   where
-    dimension = length states
+    dimension = toInteger (length states) + 1 -- We add one for the stop/sink state.
 
     states :: [state]
     states = gfiniteEnumFromTo gminBound gmaxBound
 
-    matrix :: [Double]
-    matrix = [ fromMaybe 0.0 (Map.lookup (s, s') m)
+    values :: [Double]
+    values = [ fromMaybe 0.0 (Map.lookup (s, s') m)
              | s  <- states
              , s' <- map Just states ++ [Nothing]
              ]
+
+------------------------------------------------------------------------
+
+data CompatibleMatrices n where
+  CompatibleMatrices ::
+    Proxy n -> Sq n -> L (n - 1) n -> L (n - 1) n -> CompatibleMatrices n
+
+compatibleMatrices :: KnownNat m => Proxy m -> SomeMatrix -> (SomeMatrix, SomeMatrix)
+                   -> Maybe (CompatibleMatrices m)
+compatibleMatrices pm (SomeMatrix pn po p) (SomeMatrix pp pq s, SomeMatrix pr ps f) = do
+  Refl <- sameNat pm pn
+  Refl <- sameNat pm po
+  Refl <- samePredNat pm pp
+  Refl <- sameNat pm pq
+  Refl <- samePredNat pm pr
+  Refl <- sameNat pm ps
+  return (CompatibleMatrices pm p s f)
+
+  where
+    samePredNat :: (KnownNat m, KnownNat n)
+                => Proxy m -> Proxy n -> Maybe ((m - 1) :~: n)
+    samePredNat m n
+      | pred (natVal m) == natVal n = Just (unsafeCoerce Refl)
+      | otherwise                   = Nothing

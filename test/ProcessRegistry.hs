@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DerivingStrategies         #-}
@@ -5,6 +6,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -32,6 +36,7 @@ module ProcessRegistry
   , markovNotStochastic3
   , sm
   , initFiniteModel
+  , printStats
   )
   where
 
@@ -45,25 +50,37 @@ import qualified Data.HashTable.IO             as HashTable
 import           Data.IORef
                    (IORef)
 import qualified Data.IORef                    as IORef
+import           Data.Kind
+                   (Type)
 import           Data.Map
                    (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
                    (isJust, isNothing)
+import           Data.Proxy
+                   (Proxy(Proxy))
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
+import           Numeric.LinearAlgebra.Static
+                   (L)
 import           Prelude                       hiding
                    (elem, notElem)
+import           System.FilePath
+                   ((<.>), (</>))
 import           System.IO.Unsafe
                    (unsafePerformIO)
+import           System.Random
+                   (randomRIO)
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, arbitrary, elements,
-                   (===))
+                   maxFailPercent, maxSuccess, quickCheckWithResult,
+                   stdArgs, tables, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
+import           MarkovChain
 import           Test.StateMachine
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
@@ -109,7 +126,11 @@ ioSpawn :: IO Pid
 ioSpawn = do
   pid <- IORef.readIORef pidRef
   IORef.writeIORef pidRef (pid + 1)
-  pure pid
+
+  die <- randomRIO (1, 6) :: IO Int
+  if die == -1
+  then error "ioSpawn"
+  else pure pid
 
 ioRegister :: Name -> Pid -> IO ()
 ioRegister (Name name) (Pid pid) = do
@@ -142,7 +163,7 @@ ioWhereIs (Name name) = do
 ------------------------------------------------------------------------
 -- Specification
 
-data Action (r :: * -> *)
+data Action (r :: Type -> Type)
   = Spawn
   | Kill (Reference Pid r)
   | Register Name (Reference Pid r)
@@ -150,7 +171,7 @@ data Action (r :: * -> *)
   | WhereIs Name
   deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
 
-data Response (r :: * -> *)
+data Response (r :: Type -> Type)
   = Spawned (Reference Pid r)
   | Killed
   | Registered
@@ -158,7 +179,7 @@ data Response (r :: * -> *)
   | HereIs (Reference Pid r)
   deriving (Show, Generic1, Rank2.Foldable)
 
-data Model (r :: * -> *) = Model
+data Model (r :: Type -> Type) = Model
   { pids     :: [Reference Pid r]
   , registry :: Map Name (Reference Pid r)
   , killed   :: [Reference Pid r]
@@ -328,3 +349,26 @@ prop_processRegistry chain = forAllCommands sm' Nothing $ \cmds -> monadicIO $ d
   prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
     where
       sm' = sm chain
+
+printStats :: Int -> Maybe FilePath -> IO ()
+printStats runs mdir = do
+  let args = stdArgs { maxFailPercent = 10, maxSuccess = runs }
+  res <- quickCheckWithResult args (prop_processRegistry markovGood)
+  case compatibleMatrices (Proxy @10) (transitionMatrix markovGood)
+                          (results (Proxy @FiniteModel) (tables res)) of
+    Nothing                           -> error "printStats"
+    Just (CompatibleMatrices _ p s f) -> do
+      print p
+      putStrLn ""
+      print s
+      putStrLn ""
+      print f
+      putStrLn ""
+      case mdir of
+        Nothing  -> print (singleUseReliability (reduced p) Nothing (s, f))
+        Just dir -> do
+          r <- singleUseReliabilityIO (reduced p :: L 9 10)
+                                      (dir </> "successes" <.> "hmatrix")
+                                      (dir </> "failures" <.> "hmatrix")
+                                      (s, f)
+          print r

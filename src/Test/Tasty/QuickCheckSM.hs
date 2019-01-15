@@ -9,6 +9,8 @@ module Test.Tasty.QuickCheckSM
   , successful
   ) where
 
+import           Data.Bifunctor
+                   (bimap)
 import           Data.Proxy
                    (Proxy(..))
 import           Generic.Data
@@ -22,7 +24,7 @@ import qualified Test.Tasty.Providers     as Tasty
 import qualified Test.Tasty.QuickCheck    as QC
 
 import           Test.StateMachine.Markov
-                   (Markov, results)
+                   (Markov, ppSomeMatrix, results)
 
 ---------------------------------------------------------------------------------
 
@@ -68,7 +70,7 @@ instance Tasty.IsTest QCSM where
 
     r <- testRunner args prop
 
-    let qcOutput = show (results proxy (QC.tables r))
+    let qcOutput = show (bimap ppSomeMatrix ppSomeMatrix (results proxy (QC.tables r)))
         testSuccessful = successful r
     return $
       (if testSuccessful then Tasty.testPassed else Tasty.testFailed)
