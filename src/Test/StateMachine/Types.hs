@@ -63,22 +63,25 @@ data StateMachine model cmd m resp = StateMachine
   , invariant      :: Maybe (model Concrete -> Logic)
   , generator      :: model Symbolic -> Maybe (Gen (cmd Symbolic))
   , distribution   :: Maybe (Matrix Int)
-  , shrinker       :: cmd Symbolic -> [cmd Symbolic]
+  , shrinker       :: model Symbolic -> cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
   }
 
-data Command cmd = Command !(cmd Symbolic) ![Var]
+-- | Previously symbolically executed command
+--
+-- Invariant: the variables must be the variables in the response.
+data Command cmd resp = Command !(cmd Symbolic) !(resp Symbolic) ![Var]
 
-deriving instance Show (cmd Symbolic) => Show (Command cmd)
+deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Command cmd resp)
 
-newtype Commands cmd = Commands
-  { unCommands :: [Command cmd] }
+newtype Commands cmd resp = Commands
+  { unCommands :: [Command cmd resp] }
   deriving (Semigroup, Monoid)
 
-deriving instance Show (cmd Symbolic) => Show (Commands cmd)
+deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Commands cmd resp)
 
-lengthCommands :: Commands cmd -> Int
+lengthCommands :: Commands cmd resp -> Int
 lengthCommands = length . unCommands
 
 data Reason
@@ -89,13 +92,13 @@ data Reason
   | ExceptionThrown
   deriving (Eq, Show)
 
-data ParallelCommandsF t cmd = ParallelCommands
-  { prefix   :: !(Commands cmd)
-  , suffixes :: [t (Commands cmd)]
+data ParallelCommandsF t cmd resp = ParallelCommands
+  { prefix   :: !(Commands cmd resp)
+  , suffixes :: [t (Commands cmd resp)]
   }
 
-deriving instance (Show (cmd Symbolic), Show (t (Commands cmd))) =>
-  Show (ParallelCommandsF t cmd)
+deriving instance (Show (cmd Symbolic), Show (resp Symbolic), Show (t (Commands cmd resp))) =>
+  Show (ParallelCommandsF t cmd resp)
 
 data Pair a = Pair
   { proj1 :: !a

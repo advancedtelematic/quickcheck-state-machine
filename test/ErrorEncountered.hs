@@ -134,9 +134,9 @@ generator (Model model) = Just $ frequency
   ]
 generator ErrorEncountered = Nothing
 
-shrinker :: Command Symbolic -> [Command Symbolic]
-shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
-shrinker _             = []
+shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
+shrinker _ (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrinker _ _             = []
 
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition

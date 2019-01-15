@@ -255,10 +255,10 @@ generator version (Model m)          = Just $ frequency $
   ] ++
   [ (4, Len <$> (fst <$> elements m)) | version == YesLen ]
 
-shrinker :: Action Symbolic -> [Action Symbolic]
-shrinker (New n)        = [ New n'        | n' <- shrink n ]
-shrinker (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
-shrinker _              = []
+shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+shrinker _ (New n)        = [ New n'        | n' <- shrink n ]
+shrinker _ (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
+shrinker _ _              = []
 
 ------------------------------------------------------------------------
 

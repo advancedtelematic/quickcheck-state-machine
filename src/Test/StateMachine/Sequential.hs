@@ -6,6 +6,7 @@
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TupleSections         #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -30,9 +31,10 @@ module Test.StateMachine.Sequential
   , calculateFrequency
   , getUsedVars
   , shrinkCommands
-  , liftShrinkCommand
-  , validCommands
-  , filterMaybe
+  , shrinkAndValidate
+  , ValidateEnv(..)
+  , ShouldShrink(..)
+  , initValidateEnv
   , runCommands
   , getChanContents
   , executeCommands
@@ -50,8 +52,9 @@ import           Control.Exception
 import           Control.Monad.Catch
                    (MonadCatch, catch)
 import           Control.Monad.State
-                   (State, StateT, evalState, evalStateT, get, lift,
-                   put, runStateT)
+                   (StateT, evalStateT, get, lift, put, runStateT)
+import           Data.Bifunctor
+                   (second)
 import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
@@ -76,7 +79,7 @@ import qualified Data.Vector                       as V
 import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, generate,
-                   resize, shrinkList, sized, suchThat)
+                   resize, sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -97,12 +100,12 @@ import           Test.StateMachine.Utils
 ------------------------------------------------------------------------
 
 forAllCommands :: Testable prop
-               => (Show (cmd Symbolic), Show (model Symbolic))
+               => (Show (cmd Symbolic), Show (resp Symbolic), Show (model Symbolic))
                => CommandNames cmd
                => (Rank2.Traversable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp
                -> Maybe Int -- ^ Minimum number of commands.
-               -> (Commands cmd -> prop)     -- ^ Predicate.
+               -> (Commands cmd resp -> prop)     -- ^ Predicate.
                -> Property
 forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
@@ -111,7 +114,7 @@ generateCommands :: (Rank2.Foldable resp, Show (model Symbolic))
                  => CommandNames cmd
                  => StateMachine model cmd m resp
                  -> Maybe Int -- ^ Minimum number of commands.
-                 -> Gen (Commands cmd)
+                 -> Gen (Commands cmd resp)
 generateCommands sm@StateMachine { initModel } mnum =
   evalStateT (generateCommandsState sm newCounter mnum) (initModel, Nothing)
 
@@ -121,14 +124,14 @@ generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
                       => StateMachine model cmd m resp
                       -> Counter
                       -> Maybe Int -- ^ Minimum number of commands.
-                      -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen (Commands cmd)
+                      -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen (Commands cmd resp)
 generateCommandsState StateMachine { precondition, generator, transition
                                    , mock, distribution } counter0 mnum = do
   size0 <- lift (sized (\k -> choose (fromMaybe 0 mnum, k)))
   Commands <$> go size0 counter0 []
   where
-    go :: Int -> Counter -> [Command cmd]
-       -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen [Command cmd]
+    go :: Int -> Counter -> [Command cmd resp]
+       -> StateT (model Symbolic, Maybe (cmd Symbolic)) Gen [Command cmd resp]
     go 0    _       cmds = return (reverse cmds)
     go size counter cmds = do
       (model, mprevious) <- get
@@ -147,7 +150,7 @@ generateCommandsState StateMachine { precondition, generator, transition
               Just next -> do
                 let (resp, counter') = runGenSym (mock model next) counter
                 put (transition model next resp, Just next)
-                go (size - 1) counter' (Command next (getUsedVars resp) : cmds)
+                go (size - 1) counter' (Command next resp (getUsedVars resp) : cmds)
 
 commandFrequency :: forall cmd. CommandNames cmd
                  => Gen (cmd Symbolic) -> Maybe (Matrix Int) -> Maybe (cmd Symbolic)
@@ -179,7 +182,7 @@ measureFrequency sm min0 size = do
   return (M.unions (map calculateFrequency cmds))
 
 calculateFrequency :: CommandNames cmd
-                   => Commands cmd -> Map (String, Maybe String) Int
+                   => Commands cmd resp -> Map (String, Maybe String) Int
 calculateFrequency = go M.empty . unCommands
   where
     go m [] = m
@@ -193,61 +196,118 @@ getUsedVars :: Rank2.Foldable f => f Symbolic -> [Var]
 getUsedVars = Rank2.foldMap (\(Symbolic v) -> [v])
 
 -- | Shrink commands in a pre-condition and scope respecting way.
-shrinkCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
-               => StateMachine model cmd m resp -> Commands cmd
-               -> [Commands cmd]
-shrinkCommands sm@StateMachine { initModel, shrinker }
-  = filterMaybe ( flip evalState (initModel, M.empty, newCounter)
-                . validCommands sm
-                . Commands)
-  . shrinkList (liftShrinkCommand shrinker)
-  . unCommands
-
-liftShrinkCommand :: (cmd Symbolic -> [cmd Symbolic])
-                  -> (Command cmd -> [Command cmd])
-liftShrinkCommand shrinker (Command cmd resp) =
-  [ Command cmd' resp | cmd' <- shrinker cmd ]
-
-filterMaybe :: (a -> Maybe b) -> [a] -> [b]
-filterMaybe _ []       = []
-filterMaybe f (x : xs) = case f x of
-  Nothing ->     filterMaybe f xs
-  Just y  -> y : filterMaybe f xs
-
-validCommands :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
-              => StateMachine model cmd m resp -> Commands cmd
-              -> State (model Symbolic, Map Var Var, Counter) (Maybe (Commands cmd))
-validCommands StateMachine { precondition, transition, mock } =
-  fmap (fmap Commands) . go . unCommands
+shrinkCommands ::  forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
+               => StateMachine model cmd m resp -> Commands cmd resp
+               -> [Commands cmd resp]
+shrinkCommands sm@StateMachine { initModel } =
+    concatMap go . shrinkListS' . unCommands
   where
-    -- As we validate we keep track of the variables that are in scope, in terms
-    -- of a mapping from old variables to new variables. For example, if a
-    -- command previously returned variables @[x',y']@, and in the new model
-    -- returns @[x,y]@, we extend our scope mapping with @[(x',x),(y',y)]@.
-    -- Later commands will then be translated accordingly, replacing references
-    -- to @x'@ by references to @y'@; references for which we have no updated
-    -- variable in scope are considered invalid: this may happen if those later
-    -- commands refer to a command which shrinking deleted altogether, /or/ it
-    -- may happen when the command was not deleted but in the new model returned
-    -- fewer references.
-    go :: [Command cmd] -> State (model Symbolic, Map Var Var, Counter) (Maybe [Command cmd])
-    go []                          = return (Just [])
-    go (Command cmd' vars' : cmds) = do
-      (model, scope, counter) <- get
-      case Rank2.traverse (remapVars scope) cmd' of
-        Just cmd | boolean (precondition model cmd) -> do
-          let (resp, counter') = runGenSym (mock model cmd) counter
-              vars             = getUsedVars resp
+    go :: Shrunk [Command cmd resp] -> [Commands cmd resp]
+    go (Shrunk shrunk cmds) = map snd $
+        shrinkAndValidate sm
+                          (if shrunk then DontShrink else MustShrink)
+                          (initValidateEnv initModel)
+                          (Commands cmds)
 
-          put ( transition model cmd resp
-              , M.fromList (zip vars' vars) `M.union` scope
-              , counter')
-          mih <- go cmds
-          case mih of
-            Nothing -> return Nothing
-            Just ih -> return (Just (Command cmd vars : ih))
-        _otherwise ->
-          return Nothing
+-- | Environment required during 'shrinkAndValidate'
+data ValidateEnv model = ValidateEnv {
+      -- | The model we're starting validation from
+      veModel   :: model Symbolic
+
+      -- | Reference renumbering
+      --
+      -- When a command
+      --
+      -- > Command .. [Var i, ..]
+      --
+      -- is changed during validation to
+      --
+      -- > Command .. [Var j, ..]
+      --
+      -- then any subsequent uses of @Var i@ should be replaced by @Var j@. This
+      -- is recorded in 'veScope'. When we /remove/ the first command
+      -- altogether (during shrinking), then @Var i@ won't appear in the
+      -- 'veScope' and shrank candidates that contain commands referring to @Var
+      -- i@ should be considered as invalid.
+    , veScope   :: Map Var Var
+
+      -- | Counter (for generating new references)
+    , veCounter :: Counter
+    }
+
+initValidateEnv :: model Symbolic -> ValidateEnv model
+initValidateEnv initModel = ValidateEnv {
+      veModel   = initModel
+    , veScope   = M.empty
+    , veCounter = newCounter
+    }
+
+data ShouldShrink = MustShrink | DontShrink
+
+-- | Validate list of commands, optionally shrinking one of the commands
+--
+-- The input to this function is a list of commands ('Commands'), for example
+--
+-- > [A, B, C, D, E, F, G, H]
+--
+-- The /result/ is a /list/ of 'Commands', i.e. a list of lists. The
+-- outermost list is used for all the shrinking possibilities. For example,
+-- let's assume we haven't shrunk something yet, and therefore need to shrink
+-- one of the commands. Let's further assume that only commands B and E can be
+-- shrunk, to B1, B2 and E1, E2, E3 respectively. Then the result will look
+-- something like
+--
+-- > [    -- outermost list recording all the shrink possibilities
+-- >     [A', B1', C', D', E' , F', G', H']   -- B shrunk to B1
+-- >   , [A', B1', C', D', E' , F', G', H']   -- B shrunk to B2
+-- >   , [A', B' , C', D', E1', F', G', H']   -- E shrunk to E1
+-- >   , [A', B' , C', D', E2', F', G', H']   -- E shrunk to E2
+-- >   , [A', B' , C', D', E3', F', G', H']   -- E shrunk to E3
+-- > ]
+--
+-- where one of the commands has been shrunk and all commands have been
+-- validated and renumbered (references updated). So, in this example, the
+-- result will contain at most 5 lists; it may contain fewer, since some of
+-- these lists may not be valid.
+--
+-- If we _did_ already shrink something, then no commands will be shrunk, and
+-- the resulting list will either be empty (if the list of commands was invalid)
+-- or contain a /single/ element with the validated and renumbered commands.
+shrinkAndValidate :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
+                  => StateMachine model cmd m resp
+                  -> ShouldShrink
+                  -> ValidateEnv model
+                  -> Commands cmd resp
+                  -> [(ValidateEnv model, Commands cmd resp)]
+shrinkAndValidate StateMachine { precondition, transition, mock, shrinker } =
+    \env shouldShrink cmds -> map (second Commands) $ go env shouldShrink (unCommands cmds)
+  where
+    go :: ShouldShrink -> ValidateEnv model -> [Command cmd resp] -> [(ValidateEnv model, [Command cmd resp])]
+    go MustShrink   _   [] = []          -- we failed to shrink anything
+    go DontShrink   env [] = [(env, [])] -- successful termination
+    go shouldShrink (ValidateEnv model scope counter) (Command cmd' _resp vars' : cmds) =
+      case Rank2.traverse (remapVars scope) cmd' of
+        Just remapped ->
+          -- shrink at most one command
+          let candidates :: [(ShouldShrink, cmd Symbolic)]
+              candidates =
+                case shouldShrink of
+                  DontShrink -> [(DontShrink, remapped)]
+                  MustShrink -> map (DontShrink,) (shrinker model remapped)
+                             ++ [(MustShrink, remapped)]
+          in flip concatMap candidates $ \(shouldShrink', cmd) ->
+               if boolean (precondition model cmd)
+                 then let (resp, counter') = runGenSym (mock model cmd) counter
+                          vars = getUsedVars resp
+                          env' = ValidateEnv {
+                                     veModel   = transition model cmd resp
+                                   , veScope   = M.fromList (zip vars' vars) `M.union` scope
+                                   , veCounter = counter'
+                                   }
+                      in map (second (Command cmd resp vars:)) $ go shouldShrink' env' cmds
+                 else []
+        Nothing ->
+          []
 
     remapVars :: Map Var Var -> Symbolic a -> Maybe (Symbolic a)
     remapVars scope (Symbolic v) = Symbolic <$> M.lookup v scope
@@ -255,7 +315,7 @@ validCommands StateMachine { precondition, transition, mock } =
 runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
             => (MonadCatch m, MonadIO m)
             => StateMachine model cmd m resp
-            -> Commands cmd
+            -> Commands cmd resp
             -> PropertyM m (History cmd resp, model Concrete, Reason)
 runCommands sm@StateMachine { initModel } = run . go
   where
@@ -282,13 +342,13 @@ executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
                 -> TChan (Pid, HistoryEvent cmd resp)
                 -> Pid
                 -> Bool -- ^ Check invariant and post-condition?
-                -> Commands cmd
+                -> Commands cmd resp
                 -> StateT (Environment, model Symbolic, Counter, model Concrete) m Reason
 executeCommands StateMachine {..} hchan pid check =
   go . unCommands
   where
-    go []                         = return Ok
-    go (Command scmd vars : cmds) = do
+    go []                           = return Ok
+    go (Command scmd _ vars : cmds) = do
       (env, smodel, counter, cmodel) <- get
       case (check, logic (precondition smodel scmd)) of
         (True, VFalse ce) -> return (PreconditionFailed (show ce))
@@ -383,8 +443,8 @@ prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 
 -- | Print distribution of commands and fail if some commands have not
 --   been executed.
-checkCommandNames :: forall cmd. CommandNames cmd
-                  => Commands cmd -> Property -> Property
+checkCommandNames :: forall cmd resp. CommandNames cmd
+                  => Commands cmd resp -> Property -> Property
 checkCommandNames cmds
   = collect names
   . oldCover (length names == numOfConstructors) 1 "coverage"
@@ -392,18 +452,18 @@ checkCommandNames cmds
     names             = commandNames cmds
     numOfConstructors = length (cmdNames (Proxy :: Proxy (cmd Symbolic)))
 
-commandNames :: forall cmd. CommandNames cmd
-             => Commands cmd -> [(String, Int)]
+commandNames :: forall cmd resp. CommandNames cmd
+             => Commands cmd resp -> [(String, Int)]
 commandNames = M.toList . foldl go M.empty . unCommands
   where
-    go :: Map String Int -> Command cmd -> Map String Int
+    go :: Map String Int -> Command cmd resp -> Map String Int
     go ih cmd = M.insertWith (+) (commandName cmd) 1 ih
 
-commandNamesInOrder :: forall cmd. CommandNames cmd
-                    => Commands cmd -> [String]
+commandNamesInOrder :: forall cmd resp. CommandNames cmd
+                    => Commands cmd resp -> [String]
 commandNamesInOrder = reverse . foldl go [] . unCommands
   where
-    go :: [String] -> Command cmd -> [String]
+    go :: [String] -> Command cmd resp -> [String]
     go ih cmd = commandName cmd : ih
 
 

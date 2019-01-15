@@ -1,6 +1,8 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -26,19 +28,27 @@ module Test.StateMachine.Utils
   , shrinkPair'
   , suchThatOneOf
   , oldCover
+  , Shrunk(..)
+  , shrinkS
+  , shrinkListS
+  , shrinkListS'
+  , shrinkPairS
+  , shrinkPairS'
   )
   where
 
 import           Prelude
+
 import           Test.QuickCheck
-                   (Gen, Property, Testable, again, counterexample,
-                   frequency, resize, shrinking, sized, suchThatMaybe,
+                   (Arbitrary, Gen, Property, Testable, again,
+                   counterexample, frequency, resize, shrink,
+                   shrinkList, shrinking, sized, suchThatMaybe,
                    whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
-                   (Property(MkProperty), property, unProperty, (.&&.),
-                   (.||.), cover)
+                   (Property(MkProperty), cover, property, unProperty,
+                   (.&&.), (.||.))
 #if !MIN_VERSION_QuickCheck(2,10,0)
 import           Test.QuickCheck.Property
                    (succeeded)
@@ -121,3 +131,63 @@ oldCover x n s p =
 #else
   cover (fromIntegral n) x s p
 #endif
+
+-----------------------------------------------------------------------------
+
+-- | More permissive notion of shrinking where a value can shrink to itself
+--
+-- For example
+--
+-- > shrink  3 == [0, 2] -- standard QuickCheck shrink
+-- > shrinkS 3 == [Shrunk True 0, Shrunk True 2, Shrunk False 3]
+--
+-- This is primarily useful when shrinking composite structures: the combinators
+-- here keep track of whether something was shrunk /somewhere/ in the structure.
+-- For example, we have
+--
+-- >    shrinkListS (shrinkPairS shrinkS shrinkS) [(1,3),(2,4)]
+-- > == [ Shrunk True  []             -- removed all elements of the list
+-- >    , Shrunk True  [(2,4)]        -- removed the first
+-- >    , Shrunk True  [(1,3)]        -- removed the second
+-- >    , Shrunk True  [(0,3),(2,4)]  -- shrinking the '1'
+-- >    , Shrunk True  [(1,0),(2,4)]  -- shrinking the '3'
+-- >    , Shrunk True  [(1,2),(2,4)]  -- ..
+-- >    , Shrunk True  [(1,3),(0,4)]  -- shrinking the '2'
+-- >    , Shrunk True  [(1,3),(1,4)]  -- ..
+-- >    , Shrunk True  [(1,3),(2,0)]  -- shrinking the '4'
+-- >    , Shrunk True  [(1,3),(2,2)]  -- ..
+-- >    , Shrunk True  [(1,3),(2,3)]  -- ..
+-- >    , Shrunk False [(1,3),(2,4)]  -- the original unchanged list
+-- >    ]
+data Shrunk a = Shrunk { wasShrunk :: Bool, shrunk :: a }
+  deriving (Show, Functor)
+
+shrinkS :: Arbitrary a => a -> [Shrunk a]
+shrinkS a = map (Shrunk True) (shrink a) ++ [Shrunk False a]
+
+shrinkListS :: forall a. (a -> [Shrunk a]) -> [a] -> [Shrunk [a]]
+shrinkListS f = \xs -> concat [
+      map (Shrunk True) (shrinkList (const []) xs)
+    , shrinkOne xs
+    , [Shrunk False xs]
+    ]
+  where
+    shrinkOne :: [a] -> [Shrunk [a]]
+    shrinkOne []     = []
+    shrinkOne (x:xs) = [Shrunk True (x' : xs) | Shrunk True x'  <- f x]
+                    ++ [Shrunk True (x : xs') | Shrunk True xs' <- shrinkOne xs]
+
+-- | Shrink list without shrinking elements
+shrinkListS' :: [a] -> [Shrunk [a]]
+shrinkListS' = shrinkListS (\a -> [Shrunk False a])
+
+shrinkPairS :: (a -> [Shrunk a])
+            -> (b -> [Shrunk b])
+            -> (a, b) -> [Shrunk (a, b)]
+shrinkPairS f g (a, b) =
+       [Shrunk True (a', b) | Shrunk True a' <- f a ]
+    ++ [Shrunk True (a, b') | Shrunk True b' <- g b ]
+    ++ [Shrunk False (a, b)]
+
+shrinkPairS' :: (a -> [Shrunk a]) -> (a, a) -> [Shrunk (a, a)]
+shrinkPairS' f = shrinkPairS f f

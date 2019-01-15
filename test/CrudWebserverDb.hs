@@ -319,10 +319,10 @@ generator (Model m) = Just $ frequency
   , (2, DeleteUser <$> elements (map fst m))
   ]
 
-shrinker :: Action Symbolic -> [Action Symbolic]
-shrinker (PostUser (User user age)) =
+shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+shrinker _ (PostUser (User user age)) =
   [ PostUser (User user' age') | (user', age') <- shrink (user, age) ]
-shrinker _                          = []
+shrinker _ _                          = []
 
 ------------------------------------------------------------------------
 -- * The semantics.
