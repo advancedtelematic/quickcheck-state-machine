@@ -64,6 +64,7 @@ library
         tasty,
         tasty-quickcheck,
         tree-diff >=0.0.2,
+        typelits-witnesses,
         vector >=0.12.0.1,
         unliftio >=0.2.7.0
   default-language:    Haskell2010

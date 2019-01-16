@@ -1,16 +1,15 @@
+{-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeOperators             #-}
 
 module Test.Tasty.QuickCheckSM
   ( testProperty
   , successful
   ) where
 
-import           Data.Bifunctor
-                   (bimap)
 import           Data.Proxy
                    (Proxy(..))
 import           Generic.Data
@@ -18,13 +17,29 @@ import           Generic.Data
 import           GHC.Generics
                    (Generic, Rep)
 import           Prelude
-import qualified Test.QuickCheck          as QC
-import qualified Test.Tasty.Options       as Tasty
-import qualified Test.Tasty.Providers     as Tasty
-import qualified Test.Tasty.QuickCheck    as QC
+import qualified Test.QuickCheck              as QC
+import qualified Test.Tasty.Options           as Tasty
+import qualified Test.Tasty.Providers         as Tasty
+import qualified Test.Tasty.QuickCheck        as QC
+import           Test.Tasty.Runners
+                   (formatMessage)
+import           Text.Printf
+                   (printf)
 
+import           Data.Maybe
+                   (fromMaybe)
+import           Generic.Data
+                   (gfiniteEnumFromTo, gmaxBound, gminBound)
+import           GHC.TypeLits
+                   (SomeNat (..), type (-), someNatVal)
+import           Numeric.LinearAlgebra.Static
+                   (L)
+
+import           MarkovChain
+                   (reduceRow, singleUseReliability)
 import           Test.StateMachine.Markov
-                   (Markov, ppSomeMatrix, results)
+                   (CompatibleMatrices(..), Markov, compatibleMatrices,
+                   results, transitionMatrix)
 
 ---------------------------------------------------------------------------------
 
@@ -59,23 +74,59 @@ instance Tasty.IsTest QCSM where
     -- XXX import prior reliabilities
     ]
 
-  run opts (QCSM proxy _markov prop) _yieldProgress = do
-    (_, args) <- QC.optionSetToArgs opts
+  run opts (QCSM proxy markov prop) _yieldProgress = do
+    (replaySeed, args) <- QC.optionSetToArgs opts
 
     let
-      QC.QuickCheckVerbose verbose = Tasty.lookupOption opts
+      QC.QuickCheckShowReplay showReplay = Tasty.lookupOption opts
+      QC.QuickCheckVerbose verbose       = Tasty.lookupOption opts
       testRunner = if verbose
                      then QC.verboseCheckWithResult
                      else QC.quickCheckWithResult
+      replayMsg = makeReplayMsg replaySeed (QC.maxSize args)
 
-    r <- testRunner args prop
+    res <- testRunner args prop
 
-    let qcOutput = show (bimap ppSomeMatrix ppSomeMatrix (results proxy (QC.tables r)))
-        testSuccessful = successful r
+    qcOutput <- formatMessage $ QC.output res
+    let qcRel = fromMaybe "error: dimensions mismatch" (formatRel proxy markov res)
+        testSuccessful = successful res
+        putReplayInDesc = (not testSuccessful) || showReplay
+
     return $
       (if testSuccessful then Tasty.testPassed else Tasty.testFailed)
-      qcOutput
+      (qcOutput ++ "\n" ++ qcRel ++ "\n" ++
+        if putReplayInDesc then replayMsg else "")
+
+formatRel
+  :: forall proxy state model cmd
+   . (Read state, Ord state)
+  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+  => proxy state -> Markov model state cmd -> QC.Result -> Maybe String
+formatRel proxy markov res = do
+  SomeNat pn@(Proxy :: Proxy n) <- someNatVal dim'
+  SomeNat (Proxy :: Proxy m) <- someNatVal (pred dim')
+  let mobs  = results proxy (QC.tables res)
+      usage = transitionMatrix markov
+
+  CompatibleMatrices (Proxy :: Proxy n) p s f <- compatibleMatrices pn usage mobs
+  let q   :: L (n - 1) n
+      q   = reduceRow p
+      rel = singleUseReliability q Nothing (s, f) -- XXX prior
+  return $ "Single use reliability: " ++ show rel
+  where
+    dim' :: Integer
+    dim' = toInteger $ length states
+
+    states :: [state]
+    states = gfiniteEnumFromTo gminBound gmaxBound
 
 successful :: QC.Result -> Bool
 successful QC.Success {} = True
 successful _             = False
+
+makeReplayMsg :: Int -> Int -> String
+makeReplayMsg seed size' = let
+    sizeStr = if (size' /= QC.maxSize QC.stdArgs)
+                 then printf " --quickcheck-max-size=%d" size'
+                 else ""
+  in printf "Use --quickcheck-replay=%d%s to reproduce." seed sizeStr

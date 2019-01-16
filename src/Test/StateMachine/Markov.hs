@@ -25,14 +25,8 @@ module Test.StateMachine.Markov
   )
   where
 
-import           Control.Applicative
-                   (liftA2)
 import           Control.Arrow
                    (first)
-import           Control.Monad
-                   (liftM2)
-import           Control.Monad
-                   (join)
 import           Data.Bifunctor
                    (bimap)
 import           Data.Either
@@ -61,10 +55,8 @@ import           GHC.Generics
 import           GHC.TypeLits
                    (type (-), KnownNat, SomeNat(SomeNat), natVal,
                    sameNat, someNatVal)
-import           Numeric.LinearAlgebra
-                   (loadMatrix', saveMatrix)
 import           Numeric.LinearAlgebra.Static
-                   (L, Sq, create, matrix, unwrap)
+                   (L, Sq, matrix)
 import           Prelude
 import           System.Random
                    (RandomGen, mkStdGen, randomR)
@@ -75,6 +67,12 @@ import           Unsafe.Coerce
 
 import           Test.StateMachine.Types.References
                    (Symbolic)
+
+import GHC.TypeLits.Compare ((%<=?), (:<=?)(..))
+import GHC.TypeLits (type (<=))
+import Data.Type.Equality ()
+-- import Unsafe.Coerce
+-- import Data.Maybe
 
 ------------------------------------------------------------------------
 
@@ -287,22 +285,45 @@ toMatrix m = do
 
 data CompatibleMatrices n where
   CompatibleMatrices ::
-    Proxy n -> Sq n -> L (n - 1) n -> L (n - 1) n -> CompatibleMatrices n
+    ( KnownNat n, KnownNat (n - 1)
+    , KnownNat (n - (n - 1))
+    , KnownNat ((n - 1) - (n - 1))
+    , 1 <= (n - 1)
+    , (n - 1) <= n
+    , (n - (n - 1)) ~ 1
+    ) => Proxy n -> Sq n -> L (n - 1) n -> L (n - 1) n -> CompatibleMatrices n
 
-compatibleMatrices :: KnownNat m => Proxy m -> SomeMatrix -> (SomeMatrix, SomeMatrix)
-                   -> Maybe (CompatibleMatrices m)
-compatibleMatrices pm (SomeMatrix pn po p) (SomeMatrix pp pq s, SomeMatrix pr ps f) = do
-  Refl <- sameNat pm pn
-  Refl <- sameNat pm po
-  Refl <- samePredNat pm pp
-  Refl <- sameNat pm pq
-  Refl <- samePredNat pm pr
-  Refl <- sameNat pm ps
-  return (CompatibleMatrices pm p s f)
+compatibleMatrices :: KnownNat n => Proxy n -> SomeMatrix -> (SomeMatrix, SomeMatrix)
+                   -> Maybe (CompatibleMatrices n)
+compatibleMatrices pn (SomeMatrix po pp p) (SomeMatrix pm pq s, SomeMatrix pr ps f) = do
+  Refl <- sameNat pn po
+  Refl <- sameNat pn pp
+  Refl <- sameNat pn pq
+  Refl <- sameNat pn ps
+
+  Refl <- lemma0 pm pn
+  Refl <- lemma0 pr pn
+  LE Refl <- lemma1 pn
+  Refl <- lemma2 pn
+  LE Refl <- lemma3 pn
+  Refl <- lemma4 pm
+
+  return (CompatibleMatrices pn p s f)
 
   where
-    samePredNat :: (KnownNat m, KnownNat n)
-                => Proxy m -> Proxy n -> Maybe ((m - 1) :~: n)
-    samePredNat m n
+    lemma0 :: (KnownNat m, KnownNat n) => Proxy m -> Proxy n -> Maybe (m :~: (n - 1))
+    lemma0 m n
       | pred (natVal m) == natVal n = Just (unsafeCoerce Refl)
       | otherwise                   = Nothing
+
+    lemma1 :: forall n. KnownNat (n - 1) => Proxy n -> Maybe (1 :<=? (n - 1))
+    lemma1 _ = pure $ (Proxy @1) %<=? (Proxy @(n - 1))
+
+    lemma2 :: Proxy n -> Maybe ((n - (n - 1)) :~: 1)
+    lemma2 _ = pure $ unsafeCoerce Refl
+
+    lemma3 :: forall n. (KnownNat n, KnownNat (n - 1)) => Proxy n -> Maybe ((n - 1) :<=? n)
+    lemma3 p' = pure $ (Proxy @(n - 1)) %<=? p'
+
+    lemma4 :: Proxy n -> Maybe ((n - n) :~: 0)
+    lemma4 _ = pure $ unsafeCoerce Refl
