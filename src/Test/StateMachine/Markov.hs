@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE ExplicitNamespaces  #-}
 {-# LANGUAGE FlexibleContexts    #-}
@@ -20,6 +22,7 @@ module Test.StateMachine.Markov
   , SomeMatrix(..)
   , ppSomeMatrix
   , results
+  , handle
   , CompatibleMatrices(..)
   , compatibleMatrices
   )
@@ -27,6 +30,8 @@ module Test.StateMachine.Markov
 
 import           Control.Arrow
                    (first)
+import           Control.Monad.Fail
+                   (MonadFail(..))
 import           Data.Bifunctor
                    (bimap)
 import           Data.Either
@@ -36,7 +41,8 @@ import           Data.GraphViz
 import           Data.GraphViz.Commands
                    (GraphvizOutput(Pdf), addExtension, runGraphviz)
 import           Data.GraphViz.Exception
-                   (GraphvizException, handle)
+                   (GraphvizException)
+import qualified Data.GraphViz.Exception            as GraphViz
 import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
@@ -44,17 +50,22 @@ import           Data.Maybe
                    (fromMaybe)
 import           Data.Proxy
                    (Proxy(Proxy))
+import           Data.String
+                   (IsString, fromString)
 import           Data.Tuple
                    (swap)
 import           Data.Type.Equality
+                   ((:~:)(..))
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
                    gfromFiniteEnum, gmaxBound, gminBound)
 import           GHC.Generics
                    (Generic, Rep)
 import           GHC.TypeLits
-                   (type (-), KnownNat, SomeNat(SomeNat), natVal,
-                   sameNat, someNatVal)
+                   (type (-), type (<=), KnownNat, SomeNat(SomeNat),
+                   natVal, sameNat, someNatVal)
+import           GHC.TypeLits.Compare
+                   ((:<=?)(..), (%<=?))
 import           Numeric.LinearAlgebra.Static
                    (L, Sq, matrix)
 import           Prelude
@@ -67,12 +78,6 @@ import           Unsafe.Coerce
 
 import           Test.StateMachine.Types.References
                    (Symbolic)
-
-import GHC.TypeLits.Compare ((%<=?), (:<=?)(..))
-import GHC.TypeLits (type (<=))
-import Data.Type.Equality ()
--- import Unsafe.Coerce
--- import Data.Maybe
 
 ------------------------------------------------------------------------
 
@@ -159,7 +164,7 @@ markovToDot :: (Show state, Generic state)
             => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
             => Markov model state cmd -> state -> FilePath -> IO (Either String FilePath)
 markovToDot markov start fp =
-  handle (\(e :: GraphvizException) -> return (Left (show e))) $ do
+  GraphViz.handle (\(e :: GraphvizException) -> return (Left (show e))) $ do
     let gr :: ([(Node, String)], [(Node, Node, ConstructorName)])
         gr = markovToGraphElems markov start
     Right <$> addExtension (runGraphviz (uncurry (graphElemsToDot quickParams) gr)) Pdf fp
@@ -283,6 +288,13 @@ toMatrix m = do
 
 ------------------------------------------------------------------------
 
+instance IsString str => MonadFail (Either str) where
+  fail = Left . fromString
+
+handle :: Maybe a -> String -> Either String a
+handle Nothing msg = Left $ "validation error: " ++ msg
+handle (Just x) _  = Right x
+
 data CompatibleMatrices n where
   CompatibleMatrices ::
     ( KnownNat n, KnownNat (n - 1)
@@ -294,26 +306,26 @@ data CompatibleMatrices n where
     ) => Proxy n -> Sq n -> L (n - 1) n -> L (n - 1) n -> CompatibleMatrices n
 
 compatibleMatrices :: KnownNat n => Proxy n -> SomeMatrix -> (SomeMatrix, SomeMatrix)
-                   -> Maybe (CompatibleMatrices n)
+                   -> Either String (CompatibleMatrices n)
 compatibleMatrices pn (SomeMatrix po pp p) (SomeMatrix pm pq s, SomeMatrix pr ps f) = do
-  Refl <- sameNat pn po
-  Refl <- sameNat pn pp
-  Refl <- sameNat pn pq
-  Refl <- sameNat pn ps
+  Refl <- handle (sameNat pn po) "sameNat pn po"
+  Refl <- handle (sameNat pn pp) "sameNat pn pp"
+  Refl <- handle (sameNat pn pq) "sameNat pn pq"
+  Refl <- handle (sameNat pn ps) "sameNat pn ps"
 
-  Refl <- lemma0 pm pn
-  Refl <- lemma0 pr pn
-  LE Refl <- lemma1 pn
-  Refl <- lemma2 pn
-  LE Refl <- lemma3 pn
-  Refl <- lemma4 pm
+  Refl <- handle (lemma0 pm pn)  "lemma0 pm pn"
+  Refl <- handle (lemma0 pr pn)  "lemma0 pr pn"
+  LE Refl <- handle (lemma1 pn)  "lemma1 pn"
+  Refl <- handle (lemma2 pn)     "lemma2 pn"
+  LE Refl <- handle (lemma3 pn)  "lemma3 pn"
+  Refl <- handle (lemma4 pm)     "lemma4 pm"
 
   return (CompatibleMatrices pn p s f)
 
   where
     lemma0 :: (KnownNat m, KnownNat n) => Proxy m -> Proxy n -> Maybe (m :~: (n - 1))
     lemma0 m n
-      | pred (natVal m) == natVal n = Just (unsafeCoerce Refl)
+      | succ (natVal m) == natVal n = Just (unsafeCoerce Refl)
       | otherwise                   = Nothing
 
     lemma1 :: forall n. KnownNat (n - 1) => Proxy n -> Maybe (1 :<=? (n - 1))

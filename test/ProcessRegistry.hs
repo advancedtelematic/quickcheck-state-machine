@@ -356,8 +356,8 @@ printStats runs mdir = do
   res <- quickCheckWithResult args (prop_processRegistry markovGood)
   case compatibleMatrices (Proxy @10) (transitionMatrix markovGood)
                           (results (Proxy @FiniteModel) (tables res)) of
-    Nothing                           -> error "printStats"
-    Just (CompatibleMatrices _ p s f) -> do
+    Left err -> error err
+    Right (CompatibleMatrices _ p s f) -> do
       print p
       putStrLn ""
       print s

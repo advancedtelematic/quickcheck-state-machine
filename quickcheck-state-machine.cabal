@@ -57,6 +57,7 @@ library
         hmatrix,
         markov-chain-usage-model,
         mtl >=2.2.1,
+        optparse-applicative,
         pretty-show,
         QuickCheck >=2.9.2,
         random,

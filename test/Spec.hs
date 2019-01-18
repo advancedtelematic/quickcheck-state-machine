@@ -23,6 +23,7 @@ import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
                    (expectFailure, ioProperty, testProperty,
                    withMaxSuccess)
+import qualified Test.Tasty.QuickCheckSM      as QCSM
 
 import           CircularBuffer
 import qualified CrudWebserverDb              as WS
@@ -80,7 +81,7 @@ tests docker0 = testGroup "Tests"
           (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
       ]
   , testGroup "ProcessRegistry"
-      [ testProperty "sequential" (prop_processRegistry markovGood)
+      [ QCSM.testProperty markovGood "sequential" prop_processRegistry
       , testCase "markovDeadlock"
           (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
             (sample (generateCommands (sm markovDeadlock) Nothing)))

@@ -6,7 +6,7 @@ extra-deps:
   - generic-data-0.3.0.0
   - tree-diff-0.0.2
   - git: https://github.com/stevana/quickcheck.git
-    commit: 238af2d190765e77b0944361c9dc58432ae26ecb
+    commit: 6a09f77fcffcc3c22e28504e4a1ab5ff2cd0737f
   - git: https://github.com/advancedtelematic/markov-chain-usage-model.git
     commit: 5193b83d5cf7fe984a3d881b97ebc701d73f1729
   # - ../markov-chain-usage-model

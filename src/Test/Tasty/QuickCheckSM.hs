@@ -1,9 +1,10 @@
-{-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE TypeApplications          #-}
-{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
 
 module Test.Tasty.QuickCheckSM
   ( testProperty
@@ -16,6 +17,8 @@ import           Generic.Data
                    (FiniteEnum, GBounded, GEnum)
 import           GHC.Generics
                    (Generic, Rep)
+import           Options.Applicative
+                   (metavar)
 import           Prelude
 import qualified Test.QuickCheck              as QC
 import qualified Test.Tasty.Options           as Tasty
@@ -26,20 +29,18 @@ import           Test.Tasty.Runners
 import           Text.Printf
                    (printf)
 
-import           Data.Maybe
-                   (fromMaybe)
 import           Generic.Data
                    (gfiniteEnumFromTo, gmaxBound, gminBound)
 import           GHC.TypeLits
                    (SomeNat (..), type (-), someNatVal)
+import           MarkovChain
+                   (reduceRow, singleUseReliability)
 import           Numeric.LinearAlgebra.Static
                    (L)
 
-import           MarkovChain
-                   (reduceRow, singleUseReliability)
 import           Test.StateMachine.Markov
                    (CompatibleMatrices(..), Markov, compatibleMatrices,
-                   results, transitionMatrix)
+                   handle, results, transitionMatrix)
 
 ---------------------------------------------------------------------------------
 
@@ -63,19 +64,39 @@ testProperty
 testProperty markov name prop
   = Tasty.singleTest name $ QCSM (Proxy @state) markov (QC.property (prop markov))
 
+-- | Maximum ratio of failed tests before giving up
+newtype QuickCheckMaxFailPercent = QuickCheckMaxFailPercent Int
+  deriving (Num, Ord, Eq, Real, Enum, Integral)
+
+instance Tasty.IsOption QuickCheckMaxFailPercent where
+  defaultValue = 0
+  parseValue = fmap QuickCheckMaxFailPercent . Tasty.safeRead
+  optionName = return "quickcheck-max-fail-percent"
+  optionHelp = return "Maximum ratio of failed tests before giving up"
+  optionCLParser = Tasty.mkOptionCLParser $ metavar "NUMBER"
+
+optionSetToArgs :: Tasty.OptionSet -> IO (Int, QC.Args)
+optionSetToArgs opts = do
+  (seed, args) <- QC.optionSetToArgs opts
+  let args' = args { QC.maxFailPercent = maxFail }
+  return (seed, args')
+  where
+    QuickCheckMaxFailPercent maxFail = Tasty.lookupOption opts
+
 instance Tasty.IsTest QCSM where
-  testOptions = return
+  testOptions = pure
     [ Tasty.Option (Proxy :: Proxy QC.QuickCheckTests)
     , Tasty.Option (Proxy :: Proxy QC.QuickCheckReplay)
     , Tasty.Option (Proxy :: Proxy QC.QuickCheckShowReplay)
     , Tasty.Option (Proxy :: Proxy QC.QuickCheckMaxSize)
     , Tasty.Option (Proxy :: Proxy QC.QuickCheckMaxRatio)
     , Tasty.Option (Proxy :: Proxy QC.QuickCheckVerbose)
+    , Tasty.Option (Proxy :: Proxy QuickCheckMaxFailPercent)
     -- XXX import prior reliabilities
     ]
 
   run opts (QCSM proxy markov prop) _yieldProgress = do
-    (replaySeed, args) <- QC.optionSetToArgs opts
+    (replaySeed, args) <- optionSetToArgs opts
 
     let
       QC.QuickCheckShowReplay showReplay = Tasty.lookupOption opts
@@ -88,7 +109,7 @@ instance Tasty.IsTest QCSM where
     res <- testRunner args prop
 
     qcOutput <- formatMessage $ QC.output res
-    let qcRel = fromMaybe "error: dimensions mismatch" (formatRel proxy markov res)
+    let qcRel = either id id (formatRel proxy markov res)
         testSuccessful = successful res
         putReplayInDesc = (not testSuccessful) || showReplay
 
@@ -101,10 +122,10 @@ formatRel
   :: forall proxy state model cmd
    . (Read state, Ord state)
   => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-  => proxy state -> Markov model state cmd -> QC.Result -> Maybe String
+  => proxy state -> Markov model state cmd -> QC.Result -> Either String String
 formatRel proxy markov res = do
-  SomeNat pn@(Proxy :: Proxy n) <- someNatVal dim'
-  SomeNat (Proxy :: Proxy m) <- someNatVal (pred dim')
+  SomeNat (Proxy :: Proxy m) <- handle (someNatVal (pred dim')) "validation error: dim m"
+  SomeNat pn@(Proxy :: Proxy n) <- handle (someNatVal dim')     "validation error: dim m"
   let mobs  = results proxy (QC.tables res)
       usage = transitionMatrix markov
 
@@ -115,7 +136,7 @@ formatRel proxy markov res = do
   return $ "Single use reliability: " ++ show rel
   where
     dim' :: Integer
-    dim' = toInteger $ length states
+    dim' = succ $ toInteger $ length states
 
     states :: [state]
     states = gfiniteEnumFromTo gminBound gmaxBound
