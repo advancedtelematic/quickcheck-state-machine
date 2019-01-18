@@ -128,7 +128,7 @@ ioSpawn = do
   IORef.writeIORef pidRef (pid + 1)
 
   die <- randomRIO (1, 6) :: IO Int
-  if die == -1
+  if die == 1
   then error "ioSpawn"
   else pure pid
 
@@ -365,9 +365,9 @@ printStats runs mdir = do
       print f
       putStrLn ""
       case mdir of
-        Nothing  -> print (singleUseReliability (reduced p) Nothing (s, f))
+        Nothing  -> print (singleUseReliability (reduceRow p) Nothing (s, f))
         Just dir -> do
-          r <- singleUseReliabilityIO (reduced p :: L 9 10)
+          r <- singleUseReliabilityIO (reduceRow p :: L 9 10)
                                       (dir </> "successes" <.> "hmatrix")
                                       (dir </> "failures" <.> "hmatrix")
                                       (s, f)

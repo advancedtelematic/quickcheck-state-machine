@@ -82,6 +82,7 @@ test-suite quickcheck-state-machine-test
                        hashtables >=1.2,
                        hmatrix,
                        http-client,
+                       markov-chain-usage-model,
                        monad-logger,
                        mtl,
                        network,
