@@ -44,7 +44,7 @@ import           Numeric.LinearAlgebra.Static
 
 import           Test.StateMachine.Markov
                    (CompatibleMatrices(..), Markov, compatibleMatrices,
-                   handle, results, transitionMatrix)
+                   maybeToRight, results, transitionMatrix)
 
 ---------------------------------------------------------------------------------
 
@@ -61,11 +61,11 @@ testProperty
   => Generic state
   => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
   => QC.Testable a
-  => Markov model state cmd
-  -> Tasty.TestName
+  => Tasty.TestName
   -> (Markov model state cmd -> a)
+  -> Markov model state cmd
   -> Tasty.TestTree
-testProperty markov name prop
+testProperty name prop markov
   = Tasty.singleTest name $ QCSM name (Proxy @state) markov (QC.property (prop markov))
 
 
@@ -176,7 +176,7 @@ reliability
   => proxy state -> Markov model state cmd -> QC.Result
   -> Either String Double
 reliability proxy markov res = do
-  SomeNat pn@(Proxy :: Proxy n) <- handle (someNatVal dim') "validation error: dim n"
+  SomeNat pn@(Proxy :: Proxy n) <- maybeToRight (someNatVal dim') "validation error: dim n"
   let obs   = results proxy (QC.tables res)
       usage = transitionMatrix markov
   CompatibleMatrices (Proxy :: Proxy n) p s f <- compatibleMatrices pn usage obs

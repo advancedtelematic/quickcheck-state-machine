@@ -81,7 +81,7 @@ tests docker0 = testGroup "Tests"
           (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
       ]
   , testGroup "ProcessRegistry"
-      [ QCSM.testProperty markovGood "sequential" prop_processRegistry
+      [ QCSM.testProperty "sequential" prop_processRegistry markovGood
       , testCase "markovDeadlock"
           (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
             (sample (generateCommands (sm markovDeadlock) Nothing)))

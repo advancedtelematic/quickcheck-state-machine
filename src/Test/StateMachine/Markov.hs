@@ -22,7 +22,7 @@ module Test.StateMachine.Markov
   , SomeMatrix(..)
   , ppSomeMatrix
   , results
-  , handle
+  , maybeToRight
   , CompatibleMatrices(..)
   , compatibleMatrices
   )
@@ -41,8 +41,7 @@ import           Data.GraphViz
 import           Data.GraphViz.Commands
                    (GraphvizOutput(Pdf), addExtension, runGraphviz)
 import           Data.GraphViz.Exception
-                   (GraphvizException)
-import qualified Data.GraphViz.Exception            as GraphViz
+                   (GraphvizException, handle)
 import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
@@ -164,7 +163,7 @@ markovToDot :: (Show state, Generic state)
             => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
             => Markov model state cmd -> state -> FilePath -> IO (Either String FilePath)
 markovToDot markov start fp =
-  GraphViz.handle (\(e :: GraphvizException) -> return (Left (show e))) $ do
+  handle (\(e :: GraphvizException) -> return (Left (show e))) $ do
     let gr :: ([(Node, String)], [(Node, Node, ConstructorName)])
         gr = markovToGraphElems markov start
     Right <$> addExtension (runGraphviz (uncurry (graphElemsToDot quickParams) gr)) Pdf fp
@@ -291,9 +290,9 @@ toMatrix m = do
 instance IsString str => MonadFail (Either str) where
   fail = Left . fromString
 
-handle :: Maybe a -> String -> Either String a
-handle Nothing msg = Left $ "validation error: " ++ msg
-handle (Just x) _  = Right x
+maybeToRight :: Maybe a -> String -> Either String a
+maybeToRight Nothing msg = Left $ "validation error: " ++ msg
+maybeToRight (Just x) _  = Right x
 
 data CompatibleMatrices n where
   CompatibleMatrices ::
@@ -308,24 +307,24 @@ data CompatibleMatrices n where
 compatibleMatrices :: KnownNat n => Proxy n -> SomeMatrix -> (SomeMatrix, SomeMatrix)
                    -> Either String (CompatibleMatrices n)
 compatibleMatrices pn (SomeMatrix po pp p) (SomeMatrix pm pq s, SomeMatrix pr ps f) = do
-  Refl <- handle (sameNat pn po) "sameNat pn po"
-  Refl <- handle (sameNat pn pp) "sameNat pn pp"
-  Refl <- handle (sameNat pn pq) "sameNat pn pq"
-  Refl <- handle (sameNat pn ps) "sameNat pn ps"
+  Refl <- maybeToRight (sameNat pn po) "sameNat pn po"
+  Refl <- maybeToRight (sameNat pn pp) "sameNat pn pp"
+  Refl <- maybeToRight (sameNat pn pq) "sameNat pn pq"
+  Refl <- maybeToRight (sameNat pn ps) "sameNat pn ps"
 
-  Refl <- handle (lemma0 pm pn)  "lemma0 pm pn"
-  Refl <- handle (lemma0 pr pn)  "lemma0 pr pn"
-  LE Refl <- handle (lemma1 pn)  "lemma1 pn"
-  Refl <- handle (lemma2 pn)     "lemma2 pn"
-  LE Refl <- handle (lemma3 pn)  "lemma3 pn"
-  Refl <- handle (lemma4 pm)     "lemma4 pm"
+  Refl <- maybeToRight (lemma0 pm pn)  "lemma0 pm pn"
+  Refl <- maybeToRight (lemma0 pr pn)  "lemma0 pr pn"
+  LE Refl <- maybeToRight (lemma1 pn)  "lemma1 pn"
+  Refl <- maybeToRight (lemma2 pn)     "lemma2 pn"
+  LE Refl <- maybeToRight (lemma3 pn)  "lemma3 pn"
+  Refl <- maybeToRight (lemma4 pm)     "lemma4 pm"
 
   return (CompatibleMatrices pn p s f)
 
   where
     lemma0 :: (KnownNat m, KnownNat n) => Proxy m -> Proxy n -> Maybe (m :~: (n - 1))
     lemma0 m n
-      | succ (natVal m) == natVal n = Just (unsafeCoerce Refl)
+      | natVal m == pred (natVal n) = Just (unsafeCoerce Refl)
       | otherwise                   = Nothing
 
     lemma1 :: forall n. KnownNat (n - 1) => Proxy n -> Maybe (1 :<=? (n - 1))
