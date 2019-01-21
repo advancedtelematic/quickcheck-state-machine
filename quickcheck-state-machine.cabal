@@ -52,11 +52,13 @@ library
         base >=4.9 && <5,
         containers >=0.5.7.1,
         exceptions >=0.8.3,
+        filepath,
         generic-data >=0.3.0.0,
         graphviz,
         hmatrix,
         markov-chain-usage-model,
         mtl >=2.2.1,
+        optparse-applicative,
         pretty-show,
         QuickCheck >=2.9.2,
         random,
@@ -64,6 +66,7 @@ library
         tasty,
         tasty-quickcheck,
         tree-diff >=0.0.2,
+        typelits-witnesses,
         vector >=0.12.0.1,
         unliftio >=0.2.7.0
   default-language:    Haskell2010

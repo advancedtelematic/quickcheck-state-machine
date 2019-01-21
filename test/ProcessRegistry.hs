@@ -356,8 +356,8 @@ printStats runs mdir = do
   res <- quickCheckWithResult args (prop_processRegistry markovGood)
   case compatibleMatrices (Proxy @10) (transitionMatrix markovGood)
                           (results (Proxy @FiniteModel) (tables res)) of
-    Nothing                           -> error "printStats"
-    Just (CompatibleMatrices _ p s f) -> do
+    Left err -> error err
+    Right (CompatibleMatrices pn p s f) -> do
       print p
       putStrLn ""
       print s
@@ -365,9 +365,9 @@ printStats runs mdir = do
       print f
       putStrLn ""
       case mdir of
-        Nothing  -> print (singleUseReliability (reduceRow p) Nothing (s, f))
+        Nothing  -> print (singleUseReliability pn (reduceRow p) Nothing (s, f))
         Just dir -> do
-          r <- singleUseReliabilityIO (reduceRow p :: L 9 10)
+          r <- singleUseReliabilityIO pn (reduceRow p :: L 9 10)
                                       (dir </> "successes" <.> "hmatrix")
                                       (dir </> "failures" <.> "hmatrix")
                                       (s, f)

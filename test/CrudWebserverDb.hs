@@ -494,8 +494,8 @@ setupDb = do
 
     healthyDb :: String -> IO ()
     healthyDb ip = do
-      handle <- go 10
-      hClose handle
+      h <- go 10
+      hClose h
       where
         go :: Int -> IO Handle
         go 0 = error "healtyDb: db isn't healthy"
