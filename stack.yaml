@@ -8,7 +8,7 @@ extra-deps:
   - git: https://github.com/stevana/quickcheck.git
     commit: 6a09f77fcffcc3c22e28504e4a1ab5ff2cd0737f
   - git: https://github.com/advancedtelematic/markov-chain-usage-model.git
-    commit: 5193b83d5cf7fe984a3d881b97ebc701d73f1729
+    commit: 8cb2c50d4837f51dd94fe8949c535a557a0b0e3a
   # - ../markov-chain-usage-model
 nix:
   enable: false
