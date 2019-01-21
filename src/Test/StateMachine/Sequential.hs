@@ -393,6 +393,7 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
 
 tabulateState :: forall model state cmd m resp. (MonadIO m, Show state)
               => (Generic1 cmd, GConName1 (Rep1 cmd))
+              => (Eq state, Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
               => AdvancedStateMachine model state cmd m resp
               -> History cmd resp
               -> PropertyM m ()

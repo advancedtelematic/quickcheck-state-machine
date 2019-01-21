@@ -200,6 +200,6 @@ successful _             = False
 makeReplayMsg :: Int -> Int -> String
 makeReplayMsg seed size' = let
     sizeStr = if (size' /= QC.maxSize QC.stdArgs)
-                 then printf " --quickcheck-max-size=%d" size'
+                 then " --quickcheck-max-size=" ++ show size'
                  else ""
   in printf "Use --quickcheck-replay=%d%s to reproduce." seed sizeStr

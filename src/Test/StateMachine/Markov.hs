@@ -145,15 +145,19 @@ runMarkov markov m s
               | low <= needle && needle <= high = x
               | otherwise                       = go xs
 
-lookupMarkov :: Markov model state cmd -> state -> ConstructorName
+lookupMarkov :: (Eq state, Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+             => Markov model state cmd -> state -> ConstructorName
              -> Maybe state
-lookupMarkov (Markov markov) state conName = go (map snd (markov state))
+lookupMarkov markov state conName =
+  go (map snd (fromMaybe err (lookup state (unMarkovTable (markovTable markov)))))
   where
     go [] = Nothing
     go (Continue conName' _gen state' : cs)
       | conName == conName' = Just state'
       | otherwise           = go cs
     go (Stop : cs) = go cs
+
+    err = error "lookupMarkov: impossible."
 
 ------------------------------------------------------------------------
 
