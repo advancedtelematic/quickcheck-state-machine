@@ -228,7 +228,7 @@ lookupFrequency markov (Just from) to =
       Nothing -> freq
       Just _  -> go es
     go ((freq, Continue _conName _gen state') : es)
-      | to == Just state' = freq
+      | to == Just state' = freq + go es
       | otherwise         = go es
 
 ------------------------------------------------------------------------
