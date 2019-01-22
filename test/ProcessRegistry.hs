@@ -36,6 +36,7 @@ module ProcessRegistry
   , markovNotStochastic3
   , sm
   , initFiniteModel
+  , printStaticStats
   , printStats
   )
   where
@@ -61,10 +62,14 @@ import           Data.Proxy
                    (Proxy(Proxy))
 import           Data.TreeDiff
                    (ToExpr)
+import           Generic.Data
+                   (gfiniteEnumFromTo, gmaxBound, gminBound)
 import           GHC.Generics
                    (Generic, Generic1)
+import           Numeric.LinearAlgebra
+                   (toList, toLists)
 import           Numeric.LinearAlgebra.Static
-                   (L)
+                   (L, Sq, matrix, unwrap)
 import           Prelude                       hiding
                    (elem, notElem)
 import           System.FilePath
@@ -79,6 +84,8 @@ import           Test.QuickCheck
                    stdArgs, tables, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
+import           Text.Printf
+                   (printf)
 
 import           MarkovChain
 import           Test.StateMachine
@@ -128,7 +135,7 @@ ioSpawn = do
   IORef.writeIORef pidRef (pid + 1)
 
   die <- randomRIO (1, 6) :: IO Int
-  if die == 1
+  if die == -1
   then error "ioSpawn"
   else pure pid
 
@@ -350,6 +357,25 @@ prop_processRegistry chain = forAllCommands sm' Nothing $ \cmds -> monadicIO $ d
     where
       sm' = sm chain
 
+printStaticStats :: IO ()
+printStaticStats = do
+  case transitionMatrix markovGood of
+    SomeMatrix _ _ mat -> do
+      let mat' :: Sq 10
+          mat' = matrix (concat (toLists (unwrap mat)))
+      putStrLn ""
+      putStrLn "Transition matrix:"
+      print mat'
+      putStrLn ""
+      putStrLn "Long-run state occupancy:"
+      let states :: [FiniteModel]
+          states = gfiniteEnumFromTo gminBound gmaxBound
+      mapM_ (\(s, p) -> printf "%-15s %-15.2f\n" (show s) p)
+        (zip states (toList (unwrap (MarkovChain.pi mat'))))
+      putStrLn ""
+      putStrLn "Expected test case length:"
+      print (expectedLength (fundamental (reduceCol (reduceRow mat'))))
+
 printStats :: Int -> Maybe FilePath -> IO ()
 printStats runs mdir = do
   let args = stdArgs { maxFailPercent = 10, maxSuccess = runs }
@@ -358,15 +384,18 @@ printStats runs mdir = do
                           (results (Proxy @FiniteModel) (tables res)) of
     Left err -> error err
     Right (CompatibleMatrices pn p s f) -> do
-      print p
       putStrLn ""
+      putStrLn "Succcessful transitions from state i to state j:"
       print s
       putStrLn ""
+      putStrLn "Failed transitions from state i to state j:"
       print f
       putStrLn ""
+      putStrLn "Single use reliability:"
       case mdir of
         Nothing  -> print (singleUseReliability pn (reduceRow p) Nothing (s, f))
         Just dir -> do
+          -- Load and print priors?
           r <- singleUseReliabilityIO pn (reduceRow p :: L 9 10)
                                       (dir </> "successes" <.> "hmatrix")
                                       (dir </> "failures" <.> "hmatrix")
