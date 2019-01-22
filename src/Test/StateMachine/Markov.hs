@@ -224,12 +224,13 @@ lookupFrequency markov (Just from) to =
   where
     go :: [(Int, Continue model state cmd)] -> Int
     go []                  = 0
-    go ((freq, Stop) : es) = case to of
-      Nothing -> freq
-      Just _  -> go es
-    go ((freq, Continue _conName _gen state') : es)
-      | to == Just state' = freq
-      | otherwise         = go es
+    go ((freq, cont) : es)
+      | to `eqv` cont = freq + go es
+      | otherwise     = go es
+      where
+        Nothing `eqv` Stop             = True
+        Just st `eqv` Continue _ _ st' = st == st'
+        _       `eqv` _                = False
 
 ------------------------------------------------------------------------
 
