@@ -110,13 +110,14 @@ gens0 `suchThatOneOf` p = go gens0 (length gens0 - 1)
              Just x  -> return (Just x)
              Nothing -> go (gens' ++ gens'') (n - 1)
 
--- QuickCheck-2.12.0 introduced a breaking change in the cover combinator, see
--- issue #248 for details.
+-- | Pre-QuickCheck-2.12 version of cover.
 oldCover :: Testable prop => Bool -> Int -> String -> prop -> Property
 oldCover x n s p =
 #if !MIN_VERSION_QuickCheck(2,12,0)
   cover x n s p
 #else
+  -- QuickCheck-2.12 introduced a breaking change in the cover
+  -- combinator, see issue #248 for details.
   cover (fromIntegral n) x s p
 #endif
 
