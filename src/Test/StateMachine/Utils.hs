@@ -24,8 +24,6 @@ module Test.StateMachine.Utils
   , whenFailM
   , forAllShrinkShow
   , anyP
-  , shrinkPair
-  , shrinkPair'
   , suchThatOneOf
   , oldCover
   , Shrunk(..)
@@ -64,8 +62,8 @@ liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
 whenFailM :: Monad m => IO () -> Property -> PropertyM m ()
 whenFailM m prop = liftProperty (m `whenFail` prop)
 
--- | A variant of 'Test.QuickCheck.Monadic.forAllShrink' with an
---   explicit show function.
+-- | A variant of 'Test.QuickCheck.Monadic.forAllShrink' with an explicit show
+--   function. This function was upstreamed and is part of QuickCheck >= 2.12.
 forAllShrinkShow
   :: Testable prop
   => Gen a -> (a -> [a]) -> (a -> String) -> (a -> prop) -> Property
@@ -80,16 +78,6 @@ forAllShrinkShow gen shrinker shower pf =
 -- | Lifts 'Prelude.any' to properties.
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)
-
--- | Given shrinkers for the components of a pair we can shrink the pair.
-shrinkPair' :: (a -> [a]) -> (b -> [b]) -> ((a, b) -> [(a, b)])
-shrinkPair' shrinkerA shrinkerB (x, y) =
-  [ (x', y) | x' <- shrinkerA x ] ++
-  [ (x, y') | y' <- shrinkerB y ]
-
--- | Same above, but for homogeneous pairs.
-shrinkPair :: (a -> [a]) -> ((a, a) -> [(a, a)])
-shrinkPair shrinker = shrinkPair' shrinker shrinker
 
 #if !MIN_VERSION_QuickCheck(2,10,0)
 instance Testable () where
