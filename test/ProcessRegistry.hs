@@ -1,14 +1,17 @@
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
+
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -41,47 +44,56 @@ module ProcessRegistry
   )
   where
 
+import           Control.Exception
+                   (Exception(..), catch, throwIO)
 import           Control.Monad
                    (when)
 import           Control.Monad.IO.Class
                    (MonadIO(..))
+import           Data.Bifunctor
+                   (first)
+import           Data.Foldable
+                   (toList)
 import           Data.Foldable
                    (traverse_)
+import           Data.Functor.Classes
+                   (Eq1, Show1)
+import           Data.Hashable
+                   (Hashable(..))
 import qualified Data.HashTable.IO             as HashTable
-import           Data.IORef
-                   (IORef)
-import qualified Data.IORef                    as IORef
-import           Data.Kind
-                   (Type)
+import qualified Data.List                     as List
 import           Data.Map
                    (Map)
-import qualified Data.Map.Strict               as Map
+import qualified Data.Map                      as Map
 import           Data.Maybe
-                   (isJust, isNothing)
+                   (fromJust, isJust, isNothing)
 import           Data.Proxy
                    (Proxy(Proxy))
 import           Data.TreeDiff
-                   (ToExpr)
+                   (ToExpr(..), defaultExprViaShow)
 import           Generic.Data
                    (gfiniteEnumFromTo, gmaxBound, gminBound)
 import           GHC.Generics
-                   (Generic, Generic1)
-import           Numeric.LinearAlgebra
-                   (toList, toLists)
+                   (Generic)
+import qualified Numeric.LinearAlgebra         as LinAlg
 import           Numeric.LinearAlgebra.Static
                    (L, Sq, matrix, unwrap)
 import           Prelude                       hiding
                    (elem, notElem)
+import qualified Prelude                       as P
 import           System.FilePath
                    ((<.>), (</>))
 import           System.IO.Unsafe
                    (unsafePerformIO)
+import           System.Posix.Types
+                   (CPid(..))
+import qualified System.Process                as Proc
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Arbitrary, Gen, Property, arbitrary, elements,
-                   maxFailPercent, maxSuccess, quickCheckWithResult,
-                   stdArgs, tables, (===))
+                   (Gen, Property, elements, maxFailPercent,
+                   maxSuccess, noShrinking, oneof,
+                   quickCheckWithResult, stdArgs, tables, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 import           Text.Printf
@@ -89,7 +101,82 @@ import           Text.Printf
 
 import           MarkovChain
 import           Test.StateMachine
+import           Test.StateMachine.Types
+                   (Reference(..))
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+
+------------------------------------------------------------------------
+-- Domain
+
+data Mock = Mock
+  { registry :: Map Pname Pid
+  , pids     :: [Pid]
+  , next     :: Pid
+  } deriving (Show, Generic)
+
+newtype Pname = Pname String
+  deriving stock (Eq, Ord, Show, Generic)
+
+newtype Pid = Pid Int
+  deriving newtype (Num, Enum)
+  deriving stock (Eq, Generic, Show)
+
+emptyMock :: Mock
+emptyMock = Mock mempty mempty 0
+
+data Err = PidNotFound | AlreadyRegistered | NotRegistered | UnknownError
+  deriving (Eq, Show)
+
+instance Exception Err
+
+data Success r = Unit () | Got r
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+newtype Resp r = Resp (Either Err (Success r))
+  deriving (Eq, Show, Functor, Foldable, Traversable)
+
+type MockOp a = Mock -> (Either Err a, Mock)
+
+mSpawn :: MockOp Pid
+mSpawn Mock{..} =
+  let pid = next
+  in (Right pid, Mock{ pids = pid:pids, next = succ next, .. })
+
+mKill :: Pid -> MockOp ()
+mKill pid Mock{..}
+  | pid `P.notElem` pids = (Left PidNotFound, Mock{..})
+  | otherwise = (Right (), Mock{ pids = List.delete pid pids, ..})
+
+mRegister :: Pname -> Pid -> MockOp ()
+mRegister pname pid Mock{..}
+  | pid `P.notElem` pids = (Left PidNotFound, Mock{..})
+  | Just _ <- Map.lookup pname registry = (Left AlreadyRegistered, Mock{..})
+  | otherwise = (Right (), Mock{ registry = Map.insert pname pid registry, .. })
+
+mUnregister :: Pname -> MockOp ()
+mUnregister pname Mock{..}
+  | Nothing <- Map.lookup pname registry = (Left NotRegistered, Mock{..})
+  | otherwise = (Right (), Mock{ registry = Map.delete pname registry, ..})
+
+mWhereIs :: Pname -> MockOp Pid
+mWhereIs pname Mock{..}
+  | Just pid <- Map.lookup pname registry = (Right pid, Mock{..})
+  | otherwise = (Left NotRegistered, Mock{..})
+
+data Cmd r
+  = Spawn
+  | Kill r
+  | Register Pname r
+  | Unregister Pname
+  | WhereIs Pname
+  deriving (Show, Functor, Foldable, Traversable)
+
+runMock :: Cmd Pid -> Mock -> (Resp Pid, Mock)
+runMock Spawn = first (Resp . fmap Got) . mSpawn
+runMock (Register pname pid) = first (Resp . fmap Unit) . mRegister pname pid
+runMock (Unregister pname) = first (Resp . fmap Unit) . mUnregister pname
+runMock (Kill pid) = first (Resp . fmap Unit) . mKill pid
+runMock (WhereIs pname) = first (Resp . fmap Got) . mWhereIs pname
 
 ------------------------------------------------------------------------
 -- Implementation
@@ -102,21 +189,19 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 -- testing./
 --
 
-newtype Name = Name String
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving anyclass (ToExpr)
+instance Hashable Pname
 
-newtype Pid = Pid Int
-  deriving newtype (Num)
-  deriving stock (Eq, Generic, Show)
-  deriving anyclass (ToExpr)
+instance Hashable Proc.Pid where
+  hashWithSalt salt (CPid pid) = hashWithSalt salt pid
 
-type ProcessTable = HashTable.CuckooHashTable String Int
+type PidTable = HashTable.CuckooHashTable Proc.Pid Proc.ProcessHandle
 
-pidRef :: IORef Pid
-pidRef =
-  unsafePerformIO $ IORef.newIORef 0
-{-# NOINLINE pidRef #-}
+pidTable :: PidTable
+pidTable =
+  unsafePerformIO $ HashTable.new
+{-# NOINLINE pidTable #-}
+
+type ProcessTable = HashTable.CuckooHashTable Pname Proc.Pid
 
 procTable :: ProcessTable
 procTable =
@@ -125,124 +210,250 @@ procTable =
 
 ioReset :: IO ()
 ioReset = do
-  IORef.writeIORef pidRef 0
   ks <- fmap fst <$> HashTable.toList procTable
   traverse_ (HashTable.delete procTable) ks
 
-ioSpawn :: IO Pid
+ioSpawn :: IO Proc.Pid
 ioSpawn = do
-  pid <- IORef.readIORef pidRef
-  IORef.writeIORef pidRef (pid + 1)
-
   die <- randomRIO (1, 6) :: IO Int
-  if die == -1
-  then error "ioSpawn"
-  else pure pid
+  when (die == -1) $
+    throwIO UnknownError
+  ph <- Proc.spawnCommand "true"
+  mpid <- Proc.getPid ph
+  case mpid of
+    Nothing  -> throwIO PidNotFound
+    Just pid -> do
+      HashTable.insert pidTable pid ph
+      return pid
 
-ioRegister :: Name -> Pid -> IO ()
-ioRegister (Name name) (Pid pid) = do
-  m <- HashTable.lookup procTable name
-
-  when (isJust m) $
-    fail "ioRegister: already registered"
-
+ioRegister :: Pname -> Proc.Pid -> IO ()
+ioRegister name pid = do
+  mpid <- HashTable.lookup pidTable pid
+  when (isNothing mpid) $
+    throwIO PidNotFound
+  mp <- HashTable.lookup procTable name
+  when (isJust mp) $
+    throwIO AlreadyRegistered
   HashTable.insert procTable name pid
 
-ioUnregister :: Name -> IO ()
-ioUnregister (Name name) = do
-  m <- HashTable.lookup procTable name
+ioUnregister :: Pname -> IO ()
+ioUnregister pname = do
+  mp <- HashTable.lookup procTable pname
+  when (isNothing mp) $
+    throwIO NotRegistered
+  HashTable.delete procTable pname
 
+ioKill :: Proc.Pid -> IO ()
+ioKill pid = do
+  m <- HashTable.lookup pidTable pid
   when (isNothing m) $
-    fail "ioUnregister: not registered"
+    throwIO PidNotFound
+  HashTable.delete pidTable pid
 
-  HashTable.delete procTable name
-
--- Here we extend the Hedgehog example with a looking up names in the
--- registry.
-ioWhereIs :: Name -> IO Pid
-ioWhereIs (Name name) = do
+ioWhereIs :: Pname -> IO Proc.Pid
+ioWhereIs name = do
   mpid <- HashTable.lookup procTable name
-
   case mpid of
-    Nothing  -> fail "ioWhereIs: not registered"
-    Just pid -> return (Pid pid)
+    Nothing  -> throwIO NotRegistered
+    Just pid -> pure pid
+
+catchErr :: IO (Success h) -> IO (Resp h)
+catchErr act = catch (Resp . Right <$> act) handler
+  where
+    handler :: Err -> IO (Resp h)
+    handler e = pure $ Resp (Left e)
+
+runIO :: Cmd Proc.Pid -> IO (Resp Proc.Pid)
+runIO = catchErr . go
+  where
+    go :: Cmd Proc.Pid -> IO (Success Proc.Pid)
+    go Spawn                = Got  <$> ioSpawn
+    go (Register pname pid) = Unit <$> ioRegister pname pid
+    go (Unregister pname)   = Unit <$> ioUnregister pname
+    go (Kill pid)           = Unit <$> ioKill pid
+    go (WhereIs pname)      = Got  <$> ioWhereIs pname
 
 ------------------------------------------------------------------------
--- Specification
+-- Model
 
-data Action (r :: Type -> Type)
-  = Spawn
-  | Kill (Reference Pid r)
-  | Register Name (Reference Pid r)
-  | Unregister Name
-  | WhereIs Name
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable,
-            CommandNames)
+newtype At f r = At (f (Reference Proc.Pid r))
+type    f :@ r = At f r
 
-data Response (r :: Type -> Type)
-  = Spawned (Reference Pid r)
-  | Killed
-  | Registered
-  | Unregistered
-  | HereIs (Reference Pid r)
-  deriving (Show, Generic1, Rank2.Foldable)
+deriving stock instance Show (f (Reference Proc.Pid r)) => Show (At f r)
 
-data Model (r :: Type -> Type) = Model
-  { pids     :: [Reference Pid r]
-  , registry :: Map Name (Reference Pid r)
-  , killed   :: [Reference Pid r]
-  }
-  deriving (Show, Generic)
+semantics :: Cmd :@ Concrete -> IO (Resp :@ Concrete)
+semantics (At c) = (At . fmap reference) <$> runIO (concrete <$> c)
 
-instance ToExpr (Model Concrete)
+type PidRefs r = [(Reference Proc.Pid r, Pid)]
+
+(!) :: Eq k => [(k, a)] -> k -> a
+env ! r = fromJust (lookup r env)
+
+data Model r = Model Mock (PidRefs r)
+  deriving Generic
+
+deriving instance Show1 r => Show (Model r)
 
 initModel :: Model r
-initModel = Model [] Map.empty []
+initModel = Model emptyMock []
 
-transition :: Model r -> Action r -> Response r -> Model r
-transition Model {..} act resp = case (act, resp) of
+toMock :: (Functor f, Eq1 r) => Model r -> f :@ r -> f Pid
+toMock (Model _ pids) (At fr) = (pids !) <$> fr
 
-  (Spawn, Spawned pid) ->
-    Model { pids = pids ++ [pid], .. }
+step :: Eq1 r => Model r -> Cmd :@ r -> (Resp Pid, Mock)
+step m@(Model mock _) c = runMock (toMock m c) mock
 
-  (Kill pid, Killed) ->
-    Model { killed = killed ++ [pid], .. }
+data Event r = Event
+  { before   :: Model  r
+  , cmd      :: Cmd :@ r
+  , after    :: Model  r
+  , mockResp :: Resp Pid
+  }
 
-  (Register name pid, Registered) ->
-    Model { registry = Map.insert name pid registry, .. }
+lockstep :: Eq1 r
+         => Model   r
+         -> Cmd  :@ r
+         -> Resp :@ r
+         -> Event   r
+lockstep m@(Model _ hs) c (At resp) = Event
+  { before   = m
+  , cmd      = c
+  , after    = Model mock' (hs <> hs')
+  , mockResp = resp'
+  }
+  where
+    (resp', mock') = step m c
+    hs' = zip (toList resp) (toList resp')
 
-  (Unregister name, Unregistered) ->
-    Model { registry = Map.delete name registry, .. }
+transition :: Eq1 r => Model r -> Cmd :@ r -> Resp :@ r -> Model r
+transition m c = after . lockstep m c
 
-  (WhereIs _name, HereIs _pid) ->
-    Model {..}
+precondition :: Model Symbolic -> Cmd :@ Symbolic -> Logic
+precondition (Model _ refs) (At c) =
+  forall (toList c) (`elem` map fst refs)
 
-  (_, _) -> error "transition"
+postcondition
+  :: Model   Concrete
+  -> Cmd  :@ Concrete
+  -> Resp :@ Concrete
+  -> Logic
+postcondition m c r = toMock (after e) r .== mockResp e
+  where
+    e = lockstep m c r
 
-precondition :: Model Symbolic -> Action Symbolic -> Logic
-precondition Model {..} act = case act of
-  Spawn             -> Top
-  Kill pid          -> pid `elem` pids
-  Register name pid -> pid `elem` pids
-                   .&& name `notElem` Map.keys registry
-  Unregister name   -> name `elem` Map.keys registry
-  WhereIs name      -> name `elem` Map.keys registry
+symbolicResp
+  :: Model Symbolic
+  -> Cmd :@ Symbolic
+  -> GenSym (Resp :@ Symbolic)
+symbolicResp m c = At <$> traverse (const genSym) resp
+  where
+    (resp, _mock') = step m c
 
-postcondition :: Model Concrete -> Action Concrete -> Response Concrete -> Logic
-postcondition Model {..} act resp = case (act, resp) of
-  (Spawn, Spawned _pid)             -> Top
-  (Kill _pid, Killed)               -> Top
-  (Register _name _pid, Registered) -> Top
-  (Unregister _name, Unregistered)  -> Top
-  (WhereIs name, HereIs pid)        -> registry Map.! name .== pid
-  (_, _)                            -> Bot
+generator :: Model Symbolic -> Gen (Cmd :@ Symbolic)
+generator m@(Model _ refs) = oneof $ concat
+    [ withoutPids
+    , if null refs then [] else withPids
+    ]
+  where
+    withoutPids :: [Gen (Cmd :@ Symbolic)]
+    withoutPids =
+      [ genSpawn m ]
 
-semantics :: Action Concrete -> IO (Response Concrete)
-semantics Spawn               = Spawned . reference <$> ioSpawn
-semantics (Kill _pid)         = pure Killed
-semantics (Register name pid) = Registered <$ ioRegister name (concrete pid)
-semantics (Unregister name)   = Unregistered <$ ioUnregister name
-semantics (WhereIs name)      = HereIs . reference <$> ioWhereIs name
+    withPids :: [Gen (Cmd :@ Symbolic)]
+    withPids =
+      [ genRegister m
+      , genUnregister m
+      , genKill m
+      , genWhereIs m
+      ]
+
+genName :: Gen Pname
+genName = elements (map Pname ["A", "B", "C"])
+
+genSpawn, genRegister, genUnregister, genKill, genWhereIs ::
+  Model Symbolic -> Gen (Cmd :@ Symbolic)
+genSpawn _      = At <$> pure Spawn
+genRegister m   = At <$> (Register <$> genName <*> genRef m)
+genUnregister _ = At . Unregister <$> genName
+genKill m       = At . Kill <$> genRef m
+genWhereIs _    = At . WhereIs <$> genName
+
+genRef :: Model Symbolic -> Gen (Reference Proc.Pid Symbolic)
+genRef (Model _ refs) = elements (map fst refs)
+
+shrinker :: Model Symbolic -> Cmd :@ Symbolic -> [Cmd :@ Symbolic]
+shrinker _ _ = []
+
+sm :: Markov Model FiniteModel (At Cmd)
+   -> AdvancedStateMachine Model FiniteModel (At Cmd) IO (At Resp)
+sm chain =
+  StateMachine
+    initModel
+    transition
+    precondition
+    postcondition
+    Nothing
+    (Just . generator)
+    (Just (chain, (Zero, Zero)))
+    shrinker
+    semantics
+    symbolicResp
+
+------------------------------------------------------------------------
+-- additional class instances
+
+instance CommandNames (At Cmd) where
+  cmdName (At Spawn{})      = "Spawn"
+  cmdName (At Register{})   = "Register"
+  cmdName (At Unregister{}) = "Unregister"
+  cmdName (At Kill{})       = "Kill"
+  cmdName (At WhereIs{})    = "WhereIs"
+  cmdNames _ = ["Spawn", "Register", "Unregister", "Kill", "WhereIs"]
+
+instance Functor f => Rank2.Functor (At f) where
+  fmap = \f (At x) -> At $ fmap (lift f) x
+    where
+      lift :: (r x -> r' x) -> Reference x r -> Reference x r'
+      lift f (Reference x) = Reference (f x)
+
+instance Foldable f => Rank2.Foldable (At f) where
+  foldMap = \f (At x) -> foldMap (lift f) x
+    where
+      lift :: (r x -> m) -> Reference x r -> m
+      lift f (Reference x) = f x
+
+instance Traversable t => Rank2.Traversable (At t) where
+  traverse = \f (At x) -> At <$> traverse (lift f) x
+    where
+      lift :: Functor f
+           => (r x -> f (r' x)) -> Reference x r -> f (Reference x r')
+      lift f (Reference x) = Reference <$> f x
+
+deriving instance ToExpr (Model Concrete)
+deriving instance ToExpr Mock
+deriving newtype instance ToExpr Pid
+deriving newtype instance ToExpr Pname
+
+instance ToExpr Proc.Pid where
+  toExpr = defaultExprViaShow
+
+------------------------------------------------------------------------
+
+prop_processRegistry :: Markov Model FiniteModel (At Cmd) -> Property
+prop_processRegistry chain = noShrinking $
+  forAllCommands sm' Nothing $ \cmds ->
+    monadicIO $ do
+      liftIO ioReset
+      (hist, _model, res) <- runCommands sm' cmds
+      tabulateState sm' hist
+      prettyCommands sm' hist
+        $ checkCommandNames cmds
+        $ res === Ok
+ where
+   sm' = sm chain
+
+------------------------------------------------------------------------
+-- Usage specification
 
 data Fin2
   = Zero
@@ -255,115 +466,85 @@ type FiniteModel = (Fin2, Fin2)
 initFiniteModel :: FiniteModel
 initFiniteModel = (Zero, Zero)
 
-instance Arbitrary Name where
-  arbitrary = elements (map Name ["A", "B", "C"])
-
-markovGood :: Markov Model FiniteModel Action
+markovGood :: Markov Model FiniteModel (At Cmd)
 markovGood = Markov f
   where
-    f :: FiniteModel -> [(Int, Continue Model FiniteModel Action)]
-    f (Zero, Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
+    f :: FiniteModel -> [(Int, Continue Model FiniteModel (At Cmd))]
+    f (Zero, Zero) = [ (100, Continue "Spawn" genSpawn (One, Zero)) ]
 
-    f (One,  Zero) = [ (40,  Continue "Spawn" (const (pure Spawn)) (Two, Zero))
-                     , (40,  Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (One, One))
-                     , (20,  Continue "Kill" (\m -> Kill <$> elements (pids m)) (Zero, Zero))
+    f (One,  Zero) = [ (40,  Continue "Spawn" genSpawn (Two, Zero))
+                     , (40,  Continue "Register" genRegister (One, One))
+                     , (20,  Continue "Kill" genKill (Zero, Zero))
                      ]
-    f (One,  One)  = [ (50,  Continue "Spawn" (const (pure Spawn)) (Two, One))
-                     , (20,  Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (One, Zero))
-                     , (30,  Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (One, One))
+    f (One,  One)  = [ (50,  Continue "Spawn" genSpawn (Two, One))
+                     , (20,  Continue "Unregister" genUnregister (One, Zero))
+                     , (30,  Continue "WhereIs" genWhereIs (One, One))
                      ]
-    f (Two, Zero)  = [ (80, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, One))
-                     , (20, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, Zero))
+    f (Two, Zero)  = [ (80, Continue "Register" genRegister (Two, One))
+                     , (20, Continue "Kill" genKill (One, Zero))
                      ]
 
-    f (Two, One)   = [ (40, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, Two))
-                     , (10, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, One))
-                     , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, Zero))
-                     , (20, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, One))
+    f (Two, One)   = [ (40, Continue "Register" genRegister (Two, Two))
+                     , (10, Continue "Kill" genKill (One, One))
+                     , (20, Continue "Unregister" genUnregister (Two, Zero))
+                     , (20, Continue "WhereIs" genWhereIs (Two, One))
                      , (10, Stop)
                      ]
     f (Two, Two)   = [ (30, Stop)
-                     , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, One))
-                     , (50, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, Two))
+                     , (20, Continue "Unregister" genUnregister (Two, One))
+                     , (50, Continue "WhereIs" genWhereIs (Two, Two))
                      ]
     f _            = []
 
-markovDeadlock :: Markov Model FiniteModel Action
+markovDeadlock :: Markov Model FiniteModel (At Cmd)
 markovDeadlock = Markov f
   where
-    nameGen :: Gen Name
-    nameGen = return (Name "A")
+    genName' :: Gen Pname
+    genName' = return (Pname "A")
 
-    f :: FiniteModel -> [(Int, Continue Model FiniteModel Action)]
-    f (Zero, Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
-    f (One,  Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (Two, Zero)) ]
-    f (Two, Zero)  = [ (100, Continue "Register"
-                               (\m -> Register <$> nameGen
-                                               <*> elements (pids m)) (Two, One)) ]
-    f (Two, One)   = [ (100, Continue "Register"
-                               (\m -> Register <$> nameGen
-                                               <*> elements (pids m)) (Two, Two)) ]
+    genRegister' :: Model Symbolic -> Gen (Cmd :@ Symbolic)
+    genRegister' m   = At <$> (Register <$> genName' <*> genRef m)
+
+    f :: FiniteModel -> [(Int, Continue Model FiniteModel (At Cmd))]
+    f (Zero, Zero) = [ (100, Continue "Spawn"    genSpawn (One, Zero)) ]
+    f (One,  Zero) = [ (100, Continue "Spawn"    genSpawn (Two, Zero)) ]
+    f (Two, Zero)  = [ (100, Continue "Register" genRegister' (Two, One)) ]
+    f (Two, One)   = [ (100, Continue "Register" genRegister' (Two, Two)) ]
     f (Two, Two)   = [ (100, Stop) ]
     f _            = []
 
-markovNotStochastic1 :: Markov Model FiniteModel Action
+markovNotStochastic1 :: Markov Model FiniteModel (At Cmd)
 markovNotStochastic1 = Markov f
   where
-    f (Zero, Zero) = [ (90, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
+    f (Zero, Zero) = [ ( 90, Continue "Spawn" genSpawn (One, Zero)) ]
     f (One, Zero)  = [ (100, Stop) ]
     f _            = []
 
-markovNotStochastic2 :: Markov Model FiniteModel Action
+markovNotStochastic2 :: Markov Model FiniteModel (At Cmd)
 markovNotStochastic2 = Markov f
   where
-    f (Zero, Zero) = [ (110, Continue "Spawn" (const (pure Spawn)) (One, Zero))
+    f (Zero, Zero) = [ (110, Continue "Spawn" genSpawn (One, Zero))
                      , (-10, Stop)
                      ]
     f (One, Zero)  = [ (100, Stop) ]
     f _            = []
 
-markovNotStochastic3 :: Markov Model FiniteModel Action
+markovNotStochastic3 :: Markov Model FiniteModel (At Cmd)
 markovNotStochastic3 = Markov f
   where
-    f (Zero, Zero) = [ (90, Continue "Spawn" (const (pure Spawn)) (One, Zero))
+    f (Zero, Zero) = [ (90, Continue "Spawn" genSpawn (One, Zero))
                      , (10, Stop)
                      ]
     f (One, Zero)  = [ (100, Stop) ]
     f (Two, Two)   = [ (90, Stop) ]
     f _            = []
 
-shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
-shrinker _model _act = []
-
-mock :: Model Symbolic -> Action Symbolic -> GenSym (Response Symbolic)
-mock _m act = case act of
-  Spawn               -> Spawned <$> genSym
-  Kill _pid           -> pure Killed
-  Register _name _pid -> pure Registered
-  Unregister _name    -> pure Unregistered
-  WhereIs _name       -> HereIs <$> genSym
-
-sm :: Markov Model FiniteModel Action
-   -> AdvancedStateMachine Model FiniteModel Action IO Response
-sm chain = StateMachine initModel transition precondition postcondition
-       Nothing undefined (Just (chain, (Zero, Zero))) shrinker semantics mock
-               -- ^ XXX: Either Generator Markov? Would be a breaking change...
-
-prop_processRegistry :: Markov Model FiniteModel Action -> Property
-prop_processRegistry chain = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
-  liftIO ioReset
-  (hist, _model, res) <- runCommands sm' cmds
-  tabulateState sm' hist
-  prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
-    where
-      sm' = sm chain
-
 printStaticStats :: IO ()
 printStaticStats = do
   case transitionMatrix markovGood of
     SomeMatrix _ _ mat -> do
       let mat' :: Sq 10
-          mat' = matrix (concat (toLists (unwrap mat)))
+          mat' = matrix (concat (LinAlg.toLists (unwrap mat)))
       putStrLn ""
       putStrLn "Transition matrix:"
       print mat'
@@ -372,7 +553,7 @@ printStaticStats = do
       let states :: [FiniteModel]
           states = gfiniteEnumFromTo gminBound gmaxBound
       mapM_ (\(s, p) -> printf "%-15s %-15.2f\n" (show s) p)
-        (zip states (toList (unwrap (MarkovChain.pi mat'))))
+        (zip states (LinAlg.toList (unwrap (MarkovChain.pi mat'))))
       putStrLn ""
       putStrLn "Expected test case length:"
       print (expectedLength (fundamental (reduceCol (reduceRow mat'))))

@@ -88,10 +88,11 @@ tests docker0 = testGroup "Tests"
           (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
       ]
   , testGroup "ProcessRegistry"
-      [ QCSM.testProperty "sequential" prop_processRegistry markovGood
-      , testCase "markovDeadlock"
-          (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
-            (sample (generateCommands (sm markovDeadlock) Nothing)))
+     [  QCSM.testProperty "sequential" prop_processRegistry markovGood
+      -- XXX needs rework for new style props
+      -- , testCase "markovDeadlock"
+      --     (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
+      --       (sample (generateCommands (sm markovDeadlock) Nothing)))
       , testCase "markovNotStochastic1"
           (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
             (sample (generateCommands (sm markovNotStochastic1) Nothing)))
@@ -101,7 +102,7 @@ tests docker0 = testGroup "Tests"
       , testCase "markovNotStochastic3"
           (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
             (sample (generateCommands (sm markovNotStochastic3) Nothing)))
-      ]
+     ]
   ]
   where
     webServer docker bug port test prop
@@ -132,7 +133,7 @@ main = do
                  ExitFailure _ -> False
   defaultMain (tests docker)
     where
-      rawSystemNoStdout cmd args =
+      rawSystemNoStdout cmd' args =
         withCreateProcess
-          (proc cmd args) { std_out = CreatePipe }
+          (proc cmd' args) { std_out = CreatePipe }
           (\_ _ _ -> waitForProcess)
