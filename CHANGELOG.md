@@ -1,11 +1,34 @@
-#### 0.5.0 (201?-?-?)
+#### 0.7.0 (201?-?-?)
 
   * Add possibility to generate commands using a Markov chain, similar to how
-    they do it in the Cleanroom software engineering literature;
+    they do it in the Cleanroom software engineering literature.
 
-#### 0.4.4 (???)
+#### 0.6.0 (2019-1-15)
 
-  * Check if the pre-condition holds before executing an action.
+  This is a breaking release. See mentioned PRs for how to upgrade your code,
+  and feel free to open an issue if anything isn't clear.
+
+  * Generalise shrinking so that it might depend on the model (PR #263);
+
+  * Drop support for GHC 8.0.* or older, by requiring base >= 4.10 (PR #267). If
+    you need support for older GHC versions, open a ticket;
+
+  * Use Stack resolver lts-13 as default (PR #261);
+
+  * Generalise the `GConName` type class to make it possible to use it for
+    commands that cannot have `Generic1` instances. Also rename the type class
+    to `CommandNames` (PR #259).
+
+#### 0.5.0 (2019-1-4)
+
+  The first and third item in the below list might break things, have a look at
+  the diffs of the PRs on how to fix your code (feel free to open an issue if it
+  isn't clear).
+
+  * Allow the user to explicitly stop the generation of commands (PR #256);
+  * Fix shrinking bug (PR #255);
+  * Replace MonadBaseControl IO with MonadUnliftIO (PR #252);
+  * Check if the pre-condition holds before executing an action (PR #251).
 
 #### 0.4.3 (2018-12-7)
 

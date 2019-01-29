@@ -1,5 +1,5 @@
 name:                quickcheck-state-machine
-version:             0.4.3
+version:             0.6.0
 synopsis:            Test monadic programs using state machine based models
 description:         See README at <https://github.com/advancedtelematic/quickcheck-state-machine#readme>
 homepage:            https://github.com/advancedtelematic/quickcheck-state-machine#readme
@@ -8,14 +8,14 @@ license-file:        LICENSE
 author:              Stevan Andjelkovic
 maintainer:          Stevan Andjelkovic <stevan.andjelkovic@here.com>
 copyright:           Copyright (C) 2017-2018, ATS Advanced Telematic Systems GmbH;
-                                   2018, HERE Europe B.V.
+                                   2018-2019, HERE Europe B.V.
 category:            Testing
 build-type:          Simple
 extra-source-files:  README.md
                    , CHANGELOG.md
                    , CONTRIBUTING.md
 cabal-version:       >=1.10
-tested-with:         GHC == 8.2.2, GHC == 8.4.3
+tested-with:         GHC == 8.2.2, GHC == 8.4.3, GHC == 8.6.3
 
 library
   hs-source-dirs:      src
@@ -49,7 +49,7 @@ library
       Paths_quickcheck_state_machine
   build-depends:
         ansi-wl-pprint >=0.6.7.3,
-        base >=4.9 && <5,
+        base >=4.10 && <5,
         containers >=0.5.7.1,
         exceptions >=0.8.3,
         filepath,
@@ -59,16 +59,15 @@ library
         markov-chain-usage-model,
         mtl >=2.2.1,
         optparse-applicative,
-        pretty-show,
+        pretty-show >=1.6.16,
         QuickCheck >=2.9.2,
         random,
-        split >=0.2.3.3,
         tasty,
         tasty-quickcheck,
         tree-diff >=0.0.2,
         typelits-witnesses,
-        vector >=0.12.0.1,
-        unliftio >=0.2.7.0
+        unliftio >=0.2.7.0,
+        vector >=0.12.0.1
   default-language:    Haskell2010
 
 test-suite quickcheck-state-machine-test
@@ -82,6 +81,7 @@ test-suite quickcheck-state-machine-test
                        doctest,
                        filelock,
                        filepath,
+                       generic-data,
                        hashtables >=1.2,
                        hmatrix,
                        http-client,
@@ -92,6 +92,7 @@ test-suite quickcheck-state-machine-test
                        persistent,
                        persistent-postgresql,
                        persistent-template,
+                       pretty-show,
                        process,
                        QuickCheck >=2.9.2,
                        quickcheck-instances,
@@ -117,12 +118,15 @@ test-suite quickcheck-state-machine-test
                        CrudWebserverDb,
                        DieHard,
                        Echo,
+                       ErrorEncountered,
                        MemoryReference,
-                       TicketDispenser,
-                       ProcessRegistry
+                       ProcessRegistry,
+                       ShrinkingProps,
+                       TicketDispenser
 
   ghc-options:
               -threaded -rtsopts -with-rtsopts=-N
+              -fno-ignore-asserts
               -Weverything
               -Wno-missing-exported-signatures
               -Wno-missing-import-lists

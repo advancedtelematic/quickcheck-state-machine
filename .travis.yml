@@ -63,6 +63,9 @@ matrix:
   - env: BUILD=cabal GHCVER=8.4.3 CABALVER=2.2 HAPPYVER=1.19.5 ALEXVER=3.1.7
     compiler: ": #GHC 8.4.3"
     addons: {apt: {packages: [cabal-install-2.2,ghc-8.4.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=8.6.3 CABALVER=2.4 HAPPYVER=1.19.5 ALEXVER=3.1.7
+    compiler: ": #GHC 8.6.3"
+    addons: {apt: {packages: [cabal-install-2.4,ghc-8.6.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
 
   # Build with the newest GHC and cabal-install. This is an accepted failure,
   # see below.
@@ -103,6 +106,10 @@ matrix:
   - env: BUILD=stack ARGS="--resolver lts-12"
     compiler: ": #stack 8.4.3"
     addons: {apt: {packages: [libgmp-dev]}}
+
+  # - env: BUILD=stack ARGS="--resolver lts-13"
+  #   compiler: ": #stack 8.6.3"
+  #   addons: {apt: {packages: [libgmp-dev]}}
 
   # Nightly builds are allowed to fail
   - env: BUILD=stack ARGS="--resolver nightly"
@@ -194,7 +201,7 @@ install:
       #  stack --no-terminal $ARGS solver --update-config)
 
       # Build the dependencies
-      stack -j1 --no-terminal --install-ghc $ARGS test --bench --only-dependencies
+      stack -j1 --no-terminal --install-ghc $ARGS test --fast --bench --only-dependencies
       ;;
     cabal)
       cabal --version
@@ -215,7 +222,7 @@ script:
   set -ex
   case "$BUILD" in
     stack)
-      stack -j1 --no-terminal $ARGS test --bench --no-run-benchmarks --haddock --no-haddock-deps
+      stack -j1 --no-terminal $ARGS test --fast --pedantic --bench --no-run-benchmarks --haddock --no-haddock-deps
       ;;
     cabal)
       cabal -j1 install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES

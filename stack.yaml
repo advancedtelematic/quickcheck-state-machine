@@ -1,15 +1,14 @@
-resolver: lts-12.2
+resolver: lts-13.1
 packages:
   - '.'
 extra-deps:
-  - base-orphans-0.8
-  - generic-data-0.3.0.0
-  - tree-diff-0.0.2
   - git: https://github.com/stevana/quickcheck.git
     commit: 6a09f77fcffcc3c22e28504e4a1ab5ff2cd0737f
   - git: https://github.com/advancedtelematic/markov-chain-usage-model.git
     commit: 8cb2c50d4837f51dd94fe8949c535a557a0b0e3a
-  # - ../markov-chain-usage-model
+  - tree-diff-0.0.2@sha256:99d84e4639d8ebbd727f4223ab39b589eedeff7ed659db2f9b5b572fa33cd410
+  - graphviz-2999.20.0.3@sha256:cde383c356bc41136ed53cd27e0800f46dbd2185600dd0de18d66d5c49739d94
+
 nix:
   enable: false
   pure: false

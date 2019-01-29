@@ -143,18 +143,21 @@ postcondition (Model m) cmd resp = case (cmd, resp) of
 Next we have to explain how to generate and shrink actions.
 
 ```haskell
-generator :: Model Symbolic -> Gen (Command Symbolic)
-generator (Model model) = frequency
+generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
+generator (Model model) = Just $ frequency
   [ (1, pure Create)
   , (4, Read  <$> elements (domain model))
   , (4, Write <$> elements (domain model) <*> arbitrary)
   , (4, Increment <$> elements (domain model))
   ]
 
-shrinker :: Command Symbolic -> [Command Symbolic]
-shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
-shrinker _             = []
+shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
+shrinker _ (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrinker _ _             = []
 ```
+
+To stop the generation of new commands, e.g., when the model has reached a
+terminal or error state, let `generator` return `Nothing`.
 
 Finally, we show how to mock responses given a model.
 
@@ -427,6 +430,22 @@ repo, `cd` into it, fire up `stack ghci --test`, load the different examples,
 e.g. `:l test/CrudWebserverDb.hs`, and run the different properties
 interactively.
 
+### Real world examples
+
+More examples from the "real world":
+
+  * Adjoint's implementation of the Raft consensus algorithm, contains state
+    machine
+    [tests](https://github.com/adjoint-io/raft/blob/master/test/QuickCheckStateMachine.hs)
+    combined with fault injection (node and network failures);
+
+  * IOHK are using a state machine model to
+    [test](https://github.com/input-output-hk/ouroboros-network/blob/master/ouroboros-consensus/test-storage/Test/Ouroboros/Storage/FS/StateMachine.hs)
+    a mock file system that they in turn use to simulate file system errors when
+    testing a blockchain database. The following blog
+    [post](http://www.well-typed.com/blog/2019/01/qsm-in-depth/) describes their
+    tests in more detail.
+
 ### How to contribute
 
 The `quickcheck-state-machine` library is still very experimental.
@@ -436,9 +455,9 @@ we can improve it on the issue tracker!
 
 ### See also
 
-  * The QuickCheck
-    bugtrack [issue](https://github.com/nick8325/quickcheck/issues/139) -- where
-    the initial discussion about how how to add state machine based testing to
+  * The QuickCheck bugtrack
+    [issue](https://github.com/nick8325/quickcheck/issues/139) -- where the
+    initial discussion about how to add state machine based testing to
     QuickCheck started;
 
   * *Finding Race Conditions in Erlang with QuickCheck and

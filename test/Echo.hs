@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleInstances  #-}
@@ -24,6 +25,8 @@ module Echo
   )
   where
 
+import           Data.Kind
+                   (Type)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -34,7 +37,7 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 import           UnliftIO
-                   (TVar, newTVarIO, readTVar, writeTVar, atomically)
+                   (TVar, atomically, newTVarIO, readTVar, writeTVar)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -122,15 +125,15 @@ echoSM env = StateMachine
       mPostconditions (Buf _)   Echo   _         = Bot
 
       -- | Generator for symbolic actions.
-      mGenerator :: Model Symbolic -> Gen (Action Symbolic)
-      mGenerator _ =  oneof
+      mGenerator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
+      mGenerator _ =  Just $ oneof
           [ In <$> arbitrary
           , return Echo
           ]
 
       -- | Trivial shrinker.
-      mShrinker :: Action Symbolic -> [Action Symbolic]
-      mShrinker _ = []
+      mShrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+      mShrinker _ _ = []
 
       -- | Here we'd do the dispatch to the actual SUT.
       mSemantics :: Action Concrete -> IO (Response Concrete)
@@ -152,7 +155,7 @@ deriving instance ToExpr (Model Concrete)
 
 -- | The model contains the last string that was communicated in an input
 -- action.
-data Model (r :: * -> *)
+data Model (r :: Type -> Type)
     = -- | The model hasn't been initialized.
       Empty
     | -- | Last input string (a buffer with size one).
@@ -160,16 +163,16 @@ data Model (r :: * -> *)
   deriving (Eq, Show, Generic)
 
 -- | Actions supported by the system.
-data Action (r :: * -> *)
+data Action (r :: Type -> Type)
     = -- | Input a string, which should be echoed later.
       In String
       -- | Request a string output.
     | Echo
-  deriving (Show, Generic1, Rank2.Foldable, Rank2.Traversable, Rank2.Functor)
+  deriving (Show, Generic1, Rank2.Foldable, Rank2.Traversable, Rank2.Functor, CommandNames)
 
 -- | The system gives a single type of output response, containing a string
 -- with the input previously received.
-data Response (r :: * -> *)
+data Response (r :: Type -> Type)
     = -- | Input acknowledgment.
       InAck
       -- | The previous action wasn't an input, so there is no input to echo.

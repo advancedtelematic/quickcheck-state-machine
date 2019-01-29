@@ -24,7 +24,6 @@ import           Data.Functor.Classes
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
-import qualified Data.Set                      as Set
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -54,7 +53,7 @@ data Command r
   | Read  (Reference (Opaque (IORef Int)) r)
   | Write (Reference (Opaque (IORef Int)) r) Int
   | Increment (Reference (Opaque (IORef Int)) r)
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 deriving instance Show (Command Symbolic)
 deriving instance Show (Command Concrete)
@@ -143,17 +142,17 @@ mock (Model m) cmd = case cmd of
   Write _ _   -> pure Written
   Increment _ -> pure Incremented
 
-generator :: Model Symbolic -> Gen (Command Symbolic)
-generator (Model model) = frequency
+generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
+generator (Model model) = Just $ frequency
   [ (1, pure Create)
   , (4, Read  <$> elements (domain model))
   , (4, Write <$> elements (domain model) <*> arbitrary)
   , (4, Increment <$> elements (domain model))
   ]
 
-shrinker :: Command Symbolic -> [Command Symbolic]
-shrinker (Write ref i) = [ Write ref i' | i' <- shrink i ]
-shrinker _             = []
+shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
+shrinker _ (Write ref i) = [ Write ref i' | i' <- shrink i ]
+shrinker _ _             = []
 
 sm :: Bug -> StateMachine Model Command IO Response
 sm bug = StateMachine initModel transition precondition postcondition
@@ -180,4 +179,4 @@ prop_precondition = once $ monadicIO $ do
     where
       sm'  = sm None
       cmds = Commands
-        [ Types.Command (Read (Reference (Symbolic (Var 0)))) Set.empty ]
+        [ Types.Command (Read (Reference (Symbolic (Var 0)))) (ReadValue 0) [] ]

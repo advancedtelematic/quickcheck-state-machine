@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleInstances  #-}
@@ -44,6 +45,9 @@ import           Data.Function
 import           Data.Functor.Classes
                    (Eq1)
 import           Data.IORef
+                   (IORef, newIORef, readIORef, writeIORef)
+import           Data.Kind
+                   (Type)
 import           Data.Maybe
                    (isJust)
 import           Data.TreeDiff
@@ -138,7 +142,7 @@ lenBuffer bugs Buffer{top, bot, arr} = do
 ------------------------------------------------------------------------
 
 -- | Buffer actions.
-data Action (r :: * -> *)
+data Action (r :: Type -> Type)
     -- | Create a new buffer of bounded capacity.
   = New Int
 
@@ -150,9 +154,9 @@ data Action (r :: * -> *)
 
     -- | Get the number of elements in the buffer.
   | Len (Reference (Opaque Buffer) r)
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-data Response (r :: * -> *)
+data Response (r :: Type -> Type)
   = NewR (Reference (Opaque Buffer) r)
   | PutR
   | GetR Int
@@ -242,19 +246,19 @@ genNew = do
   Positive n <- arbitrary
   return (New n)
 
-generator :: Version -> Model Symbolic -> Gen (Action Symbolic)
-generator _       (Model m) | null m = genNew
-generator version (Model m)          = frequency $
+generator :: Version -> Model Symbolic -> Maybe (Gen (Action Symbolic))
+generator _       (Model m) | null m = Just $ genNew
+generator version (Model m)          = Just $ frequency $
   [ (1, genNew)
   , (4, Put <$> arbitrary <*> (fst <$> elements m))
   , (4, Get <$> (fst <$> elements m))
   ] ++
   [ (4, Len <$> (fst <$> elements m)) | version == YesLen ]
 
-shrinker :: Action Symbolic -> [Action Symbolic]
-shrinker (New n)        = [ New n'        | n' <- shrink n ]
-shrinker (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
-shrinker _              = []
+shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+shrinker _ (New n)        = [ New n'        | n' <- shrink n ]
+shrinker _ (Put x buffer) = [ Put x' buffer | x' <- shrink x ]
+shrinker _ _              = []
 
 ------------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleInstances   #-}
@@ -36,6 +37,8 @@ module TicketDispenser
 
 import           Control.Exception
                    (IOException, catch)
+import           Data.Kind
+                   (Type)
 import           Data.TreeDiff
                    (ToExpr)
 import           GHC.Generics
@@ -65,12 +68,12 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 -- The actions of the ticket dispenser are:
 
-data Action (r :: * -> *)
+data Action (r :: Type -> Type)
   = TakeTicket
   | Reset
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-data Response (r :: * -> *)
+data Response (r :: Type -> Type)
   = GotTicket Int
   | ResetOk
   deriving (Show, Generic1, Rank2.Foldable)
@@ -82,7 +85,7 @@ data Response (r :: * -> *)
 
 -- The dispenser has to be reset before use, hence the maybe integer.
 
-newtype Model (r :: * -> *) = Model (Maybe Int)
+newtype Model (r :: Type -> Type) = Model (Maybe Int)
   deriving (Eq, Show, Generic)
 
 deriving instance ToExpr (Model Concrete)
@@ -110,14 +113,14 @@ postconditions _         _          _             = error "postconditions"
 -- With stateful generation we ensure that the dispenser is reset before
 -- use.
 
-generator :: Model Symbolic -> Gen (Action Symbolic)
-generator _ = frequency
+generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
+generator _ = Just $ frequency
   [ (1, pure Reset)
   , (4, pure TakeTicket)
   ]
 
-shrinker :: Action Symbolic -> [Action Symbolic]
-shrinker _ = []
+shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+shrinker _ _ = []
 
 ------------------------------------------------------------------------
 

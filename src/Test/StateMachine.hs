@@ -43,6 +43,7 @@ module Test.StateMachine
   , Reason(..)
   , GenSym
   , genSym
+  , CommandNames(..)
 
   , module Test.StateMachine.Logic
 
@@ -63,6 +64,7 @@ import           Generic.Data
 import           Prelude
                    ()
 
+import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Markov
 import           Test.StateMachine.Parallel

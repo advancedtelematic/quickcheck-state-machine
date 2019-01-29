@@ -71,11 +71,13 @@ import           Control.Monad.Reader
                    (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Resource
                    (ResourceT)
-import qualified Data.ByteString.Char8           as BS
+import qualified Data.ByteString.Char8         as BS
 import           Data.Char
                    (isPrint)
 import           Data.Functor.Classes
                    (Eq1)
+import           Data.Kind
+                   (Type)
 import           Data.List
                    (dropWhileEnd)
 import           Data.Monoid
@@ -86,7 +88,7 @@ import           Data.String.Conversions
                    (cs)
 import           Data.Text
                    (Text)
-import qualified Data.Text                       as T
+import qualified Data.Text                     as T
 import           Data.TreeDiff
                    (Expr(App), ToExpr, toExpr)
 import           Database.Persist.Postgresql
@@ -99,12 +101,15 @@ import           Database.Persist.TH
                    sqlSettings)
 import           GHC.Generics
                    (Generic, Generic1)
-import           Network
-                   (PortID(PortNumber), connectTo)
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
-import qualified Network.Wai.Handler.Warp        as Warp
-import           Prelude                         hiding
+import           Network.Socket
+                   (AddrInfoFlag(AI_NUMERICSERV, AI_NUMERICHOST),
+                   Socket, SocketType(Stream), addrAddress, addrFamily,
+                   addrFlags, addrProtocol, addrSocketType, close,
+                   connect, defaultHints, getAddrInfo, socket)
+import qualified Network.Wai.Handler.Warp      as Warp
+import           Prelude                       hiding
                    (elem)
 import qualified Prelude
 import           Servant
@@ -115,8 +120,6 @@ import           Servant.Client
                    client, mkClientEnv, runClientM)
 import           Servant.Server
                    (Handler)
-import           System.IO
-                   (Handle, hClose)
 import           System.Process
                    (callProcess, readProcess)
 import           Test.QuickCheck
@@ -128,10 +131,10 @@ import           Test.QuickCheck.Instances
 import           Test.QuickCheck.Monadic
                    (monadic)
 import           UnliftIO
-                   (MonadIO, Async, liftIO, async, cancel, waitEither)
+                   (Async, MonadIO, async, cancel, liftIO, waitEither)
 
 import           Test.StateMachine
-import qualified Test.StateMachine.Types.Rank2   as Rank2
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
 -- * User datatype
@@ -233,7 +236,7 @@ postUserC :<|> getUserC :<|> incAgeUserC :<|> deleteUserC :<|> healthC
 
 
 
-data Action (r :: * -> *)
+data Action (r :: Type -> Type)
   = PostUser   User
   | GetUser    (Reference (Key User) r)
   | IncAgeUser (Reference (Key User) r)
@@ -243,8 +246,9 @@ data Action (r :: * -> *)
 instance Rank2.Functor     Action where
 instance Rank2.Foldable    Action where
 instance Rank2.Traversable Action where
+instance CommandNames      Action where
 
-data Response (r :: * -> *)
+data Response (r :: Type -> Type)
   = PostedUser (Reference (Key User) r)
   | GotUser    (Maybe User)
   | IncedAgeUser
@@ -307,18 +311,18 @@ postconditions _         _              _              = error "postconditions"
 ------------------------------------------------------------------------
 -- * How to generate and shrink programs.
 
-generator :: Model Symbolic -> Gen (Action Symbolic)
-generator (Model m) = frequency
+generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
+generator (Model m) = Just $ frequency
   [ (1, PostUser   <$> arbitrary)
   , (3, GetUser    <$> elements (map fst m))
   , (4, IncAgeUser <$> elements (map fst m))
   , (2, DeleteUser <$> elements (map fst m))
   ]
 
-shrinker :: Action Symbolic -> [Action Symbolic]
-shrinker (PostUser (User user age)) =
+shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+shrinker _ (PostUser (User user age)) =
   [ PostUser (User user' age') | (user', age') <- shrink (user, age) ]
-shrinker _                          = []
+shrinker _ _                          = []
 
 ------------------------------------------------------------------------
 -- * The semantics.
@@ -494,13 +498,19 @@ setupDb = do
 
     healthyDb :: String -> IO ()
     healthyDb ip = do
-      h <- go 10
-      hClose h
+      sock <- go 10
+      close sock
       where
-        go :: Int -> IO Handle
+        go :: Int -> IO Socket
         go 0 = error "healtyDb: db isn't healthy"
         go n = do
-          connectTo ip (PortNumber 5432)
+          let hints = defaultHints
+                { addrFlags      = [AI_NUMERICHOST , AI_NUMERICSERV]
+                , addrSocketType = Stream
+                }
+          addr : _ <- getAddrInfo (Just hints) (Just ip) (Just "5432")
+          sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
+          (connect sock (addrAddress addr) >> return sock)
             `catch` (\(_ :: IOException) -> do
                         threadDelay 1000000
                         go (n - 1))

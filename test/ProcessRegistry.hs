@@ -176,7 +176,8 @@ data Action (r :: Type -> Type)
   | Register Name (Reference Pid r)
   | Unregister Name
   | WhereIs Name
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable,
+            CommandNames)
 
 data Response (r :: Type -> Type)
   = Spawned (Reference Pid r)
@@ -331,8 +332,8 @@ markovNotStochastic3 = Markov f
     f (Two, Two)   = [ (90, Stop) ]
     f _            = []
 
-shrinker :: Action Symbolic -> [Action Symbolic]
-shrinker _act = []
+shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
+shrinker _model _act = []
 
 mock :: Model Symbolic -> Action Symbolic -> GenSym (Response Symbolic)
 mock _m act = case act of
