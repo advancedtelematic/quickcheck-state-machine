@@ -89,19 +89,18 @@ tests docker0 = testGroup "Tests"
       ]
   , testGroup "ProcessRegistry"
      [  QCSM.testProperty "sequential" prop_processRegistry markovGood
-      -- XXX needs rework for new style props
-      -- , testCase "markovDeadlock"
-      --     (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
-      --       (sample (generateCommands (sm markovDeadlock) Nothing)))
-      , testCase "markovNotStochastic1"
-          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
-            (sample (generateCommands (sm markovNotStochastic1) Nothing)))
-      , testCase "markovNotStochastic2"
-          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
-            (sample (generateCommands (sm markovNotStochastic2) Nothing)))
-      , testCase "markovNotStochastic3"
-          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
-            (sample (generateCommands (sm markovNotStochastic3) Nothing)))
+     , testCase "markovDeadlock"
+         (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
+           (sample (generateCommands (sm markovDeadlock) Nothing)))
+     , testCase "markovNotStochastic1"
+         (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+           (sample (generateCommands (sm markovNotStochastic1) Nothing)))
+     , testCase "markovNotStochastic2"
+         (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+           (sample (generateCommands (sm markovNotStochastic2) Nothing)))
+     , testCase "markovNotStochastic3"
+         (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
+           (sample (generateCommands (sm markovNotStochastic3) Nothing)))
      ]
   ]
   where

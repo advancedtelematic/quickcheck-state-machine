@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -52,6 +53,8 @@ import           Control.Monad.IO.Class
                    (MonadIO(..))
 import           Data.Bifunctor
                    (first)
+import           Data.Either
+                   (isLeft, isRight)
 import           Data.Foldable
                    (toList)
 import           Data.Foldable
@@ -132,7 +135,7 @@ instance Exception Err
 data Success r = Unit () | Got r
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
-newtype Resp r = Resp (Either Err (Success r))
+newtype Resp r = Resp { getResp :: Either Err (Success r) }
   deriving (Eq, Show, Functor, Foldable, Traversable)
 
 type MockOp a = Mock -> (Either Err a, Mock)
@@ -169,6 +172,7 @@ data Cmd r
   | Register Pname r
   | Unregister Pname
   | WhereIs Pname
+  | Bad (Cmd r)
   deriving (Show, Functor, Foldable, Traversable)
 
 runMock :: Cmd Pid -> Mock -> (Resp Pid, Mock)
@@ -177,6 +181,7 @@ runMock (Register pname pid) = first (Resp . fmap Unit) . mRegister pname pid
 runMock (Unregister pname) = first (Resp . fmap Unit) . mUnregister pname
 runMock (Kill pid) = first (Resp . fmap Unit) . mKill pid
 runMock (WhereIs pname) = first (Resp . fmap Got) . mWhereIs pname
+runMock (Bad cmd)       = runMock cmd
 
 ------------------------------------------------------------------------
 -- Implementation
@@ -272,6 +277,7 @@ runIO = catchErr . go
     go (Unregister pname)   = Unit <$> ioUnregister pname
     go (Kill pid)           = Unit <$> ioKill pid
     go (WhereIs pname)      = Got  <$> ioWhereIs pname
+    go (Bad cmd)            = go cmd
 
 ------------------------------------------------------------------------
 -- Model
@@ -329,8 +335,14 @@ transition :: Eq1 r => Model r -> Cmd :@ r -> Resp :@ r -> Model r
 transition m c = after . lockstep m c
 
 precondition :: Model Symbolic -> Cmd :@ Symbolic -> Logic
-precondition (Model _ refs) (At c) =
-  forall (toList c) (`elem` map fst refs)
+precondition model@(Model _ refs) cmd@(At cmd')
+  = forall (toList cmd') (`elem` map fst refs)
+  .&& case cmd' of
+        Bad (Bad _) -> Bot .// "impossible: Bad (Bad ...)"
+        Bad _cmd    -> Boolean (isLeft  resp) .// "Bad command doesn't throw error"
+        _cmd        -> Boolean (isRight resp) .// "Good command throws error"
+  where
+    resp = getResp (fst (step model cmd))
 
 postcondition
   :: Model   Concrete
@@ -370,13 +382,20 @@ generator m@(Model _ refs) = oneof $ concat
 genName :: Gen Pname
 genName = elements (map Pname ["A", "B", "C"])
 
-genSpawn, genRegister, genUnregister, genKill, genWhereIs ::
-  Model Symbolic -> Gen (Cmd :@ Symbolic)
+genSpawn, genRegister, genUnregister, genKill, genWhereIs,
+  genBadSpawn, genBadRegister, genBadUnregister, genBadKill, genBadWhereIs ::
+    Model Symbolic -> Gen (Cmd :@ Symbolic)
 genSpawn _      = At <$> pure Spawn
 genRegister m   = At <$> (Register <$> genName <*> genRef m)
 genUnregister _ = At . Unregister <$> genName
 genKill m       = At . Kill <$> genRef m
 genWhereIs _    = At . WhereIs <$> genName
+
+genBadSpawn _      = At <$> pure (Bad Spawn)
+genBadRegister m   = At . Bad <$> (Register <$> genName <*> genRef m)
+genBadUnregister _ = At . Bad . Unregister <$> genName
+genBadKill m       = At . Bad . Kill <$> genRef m
+genBadWhereIs _    = At . Bad . WhereIs <$> genName
 
 genRef :: Model Symbolic -> Gen (Reference Proc.Pid Symbolic)
 genRef (Model _ refs) = elements (map fst refs)
@@ -402,13 +421,20 @@ sm chain =
 ------------------------------------------------------------------------
 -- additional class instances
 
+
 instance CommandNames (At Cmd) where
-  cmdName (At Spawn{})      = "Spawn"
-  cmdName (At Register{})   = "Register"
-  cmdName (At Unregister{}) = "Unregister"
-  cmdName (At Kill{})       = "Kill"
-  cmdName (At WhereIs{})    = "WhereIs"
-  cmdNames _ = ["Spawn", "Register", "Unregister", "Kill", "WhereIs"]
+  cmdName (At cmd0) = conName cmd0
+    where
+      conName cmd = case cmd of
+        Spawn {}      -> "Spawn"
+        Register {}   -> "Register"
+        Unregister {} -> "Unregister"
+        Kill {}       -> "Kill"
+        WhereIs {}    -> "WhereIs"
+        Bad cmd'      -> "Bad" ++ conName cmd'
+  cmdNames _ = cmds ++ map ("Bad" ++) cmds
+    where
+      cmds = ["Spawn", "Register", "Unregister", "Kill", "WhereIs"]
 
 instance Functor f => Rank2.Functor (At f) where
   fmap = \f (At x) -> At $ fmap (lift f) x
@@ -470,14 +496,18 @@ markovGood :: Markov Model FiniteModel (At Cmd)
 markovGood = Markov f
   where
     f :: FiniteModel -> [(Int, Continue Model FiniteModel (At Cmd))]
-    f (Zero, Zero) = [ (100, Continue "Spawn" genSpawn (One, Zero)) ]
+    f (Zero, Zero) = [ (90, Continue "Spawn" genSpawn (One, Zero))
+                     , (10, Continue "BadKill" genBadKill (Zero, Zero))
+                     ]
 
-    f (One,  Zero) = [ (40,  Continue "Spawn" genSpawn (Two, Zero))
+    f (One,  Zero) = [ (30,  Continue "Spawn" genSpawn (Two, Zero))
                      , (40,  Continue "Register" genRegister (One, One))
                      , (20,  Continue "Kill" genKill (Zero, Zero))
+                     , (10,  Continue "BadWhereIs" genBadWhereIs (One, Zero))
                      ]
-    f (One,  One)  = [ (50,  Continue "Spawn" genSpawn (Two, One))
+    f (One,  One)  = [ (40,  Continue "Spawn" genSpawn (Two, One))
                      , (20,  Continue "Unregister" genUnregister (One, Zero))
+                     , (10,  Continue "BadUnregister" genBadUnregister (One, One))
                      , (30,  Continue "WhereIs" genWhereIs (One, One))
                      ]
     f (Two, Zero)  = [ (80, Continue "Register" genRegister (Two, One))
@@ -492,7 +522,9 @@ markovGood = Markov f
                      ]
     f (Two, Two)   = [ (30, Stop)
                      , (20, Continue "Unregister" genUnregister (Two, One))
-                     , (50, Continue "WhereIs" genWhereIs (Two, Two))
+                     , (30, Continue "WhereIs" genWhereIs (Two, Two))
+                     , (10, Continue "BadRegister" genBadRegister (Two, Two))
+                     , (10, Continue "BadSpawn" genBadSpawn (Two, Two))
                      ]
     f _            = []
 
