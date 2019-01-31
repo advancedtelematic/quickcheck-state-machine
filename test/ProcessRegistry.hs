@@ -33,6 +33,7 @@
 
 module ProcessRegistry
   ( prop_processRegistry
+  , prop_parallelProcessRegistry
   , markovGood
   , markovDeadlock
   , markovNotStochastic1
@@ -215,8 +216,11 @@ procTable =
 
 ioReset :: IO ()
 ioReset = do
-  ks <- fmap fst <$> HashTable.toList procTable
-  traverse_ (HashTable.delete procTable) ks
+  pids <- fmap fst <$> HashTable.toList pidTable
+  traverse_ (HashTable.delete pidTable) pids
+
+  pnames <- fmap fst <$> HashTable.toList procTable
+  traverse_ (HashTable.delete procTable) pnames
 
 ioSpawn :: IO Proc.Pid
 ioSpawn = do
@@ -466,7 +470,7 @@ instance ToExpr Proc.Pid where
 ------------------------------------------------------------------------
 
 prop_processRegistry :: Markov Model FiniteModel (At Cmd) -> Property
-prop_processRegistry chain = noShrinking $
+prop_processRegistry chain =
   forAllCommands sm' Nothing $ \cmds ->
     monadicIO $ do
       liftIO ioReset
@@ -477,6 +481,18 @@ prop_processRegistry chain = noShrinking $
         $ res === Ok
  where
    sm' = sm chain
+
+prop_parallelProcessRegistry :: Markov Model FiniteModel (At Cmd) -> Property
+prop_parallelProcessRegistry chain = noShrinking $
+  forAllParallelCommands sm' $ \cmds -> monadicIO $ do
+  liftIO ioReset
+  -- If we run more than once below we'll end up with (already registered)
+  -- errors. Perhaps 'runParallelCommandsNTimes' needs to be parametrised by a
+  -- clean up function? Also see
+  -- https://github.com/advancedtelematic/quickcheck-state-machine/issues/83 .
+  prettyParallelCommands cmds =<< runParallelCommandsNTimes 1 sm' cmds
+  where
+    sm' = sm chain
 
 ------------------------------------------------------------------------
 -- Usage specification
