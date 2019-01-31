@@ -43,6 +43,7 @@ library
                      , Test.StateMachine.Types.References
                      , Test.StateMachine.Utils
                      , Test.StateMachine.Z
+                     , Modular
   other-modules:
       Paths_quickcheck_state_machine
   build-depends:
