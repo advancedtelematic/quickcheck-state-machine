@@ -104,9 +104,9 @@ pre-conditions are used while generating programs (lists of actions).
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition (Model m) cmd = case cmd of
   Create        -> Top
-  Read  ref     -> ref `elem` domain m
-  Write ref _   -> ref `elem` domain m
-  Increment ref -> ref `elem` domain m
+  Read  ref     -> ref `elem` map fst m
+  Write ref _   -> ref `elem` map fst m
+  Increment ref -> ref `elem` map fst m
 ```
 
 The transition function explains how actions change the model. Note that the
@@ -146,8 +146,8 @@ Next we have to explain how to generate and shrink actions.
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
 generator (Model model) = Just $ frequency
   [ (1, pure Create)
-  , (4, Read  <$> elements (domain model))
-  , (4, Write <$> elements (domain model) <*> arbitrary)
+  , (4, Read  <$> elements (map fst model))
+  , (4, Write <$> elements (map fst model) <*> arbitrary)
   , (4, Increment <$> elements (domain model))
   ]
 
@@ -205,9 +205,9 @@ minimal counterexample:
 *** Failed! Falsifiable (after 12 tests and 2 shrinks):
 Commands
   { unCommands =
-      [ Command Create (fromList [ Var 0 ])
-      , Command (Write (Reference (Symbolic (Var 0))) 5) (fromList [])
-      , Command (Read (Reference (Symbolic (Var 0)))) (fromList [])
+      [ Command Create [ Var 0 ]
+      , Command (Write (Reference (Symbolic (Var 0))) 5) []
+      , Command (Read (Reference (Symbolic (Var 0)))) []
       ]
   }
 
@@ -256,20 +256,20 @@ condition:
 *** Failed! Falsifiable (after 26 tests and 6 shrinks):
 ParallelCommands
   { prefix =
-      Commands { unCommands = [ Command Create (fromList [ Var 0 ]) ] }
+      Commands { unCommands = [ Command Create [ Var 0 ] ] }
   , suffixes =
       [ Pair
           { proj1 =
               Commands
                 { unCommands =
-                    [ Command (Increment (Reference (Symbolic (Var 0)))) (fromList [])
-                    , Command (Read (Reference (Symbolic (Var 0)))) (fromList [])
+                    [ Command (Increment (Reference (Symbolic (Var 0)))) []
+                    , Command (Read (Reference (Symbolic (Var 0)))) []
                     ]
                 }
           , proj2 =
               Commands
                 { unCommands =
-                    [ Command (Increment (Reference (Symbolic (Var 0)))) (fromList [])
+                    [ Command (Increment (Reference (Symbolic (Var 0)))) []
                     ]
                 }
           }
