@@ -1,15 +1,15 @@
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE Rank2Types            #-}
-{-# LANGUAGE RecordWildCards       #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE ConstraintKinds        #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE Rank2Types             #-}
+{-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeOperators          #-}
 
 module Modular where
 
@@ -21,6 +21,8 @@ import           Data.Kind
                    (Type)
 import           Data.Proxy
                    (Proxy(Proxy))
+import           GHC.Records
+                   (HasField, getField)
 import           Prelude
 import           Test.QuickCheck
                    (Gen, elements, generate, oneof, suchThat)
@@ -55,6 +57,10 @@ instance Rank2.Foldable (Const a) where
 
 class InitModel (model :: (Type -> Type) -> Type) where
   initModel :: forall r. model r
+
+instance (InitModel model1, InitModel model2) => InitModel (model1 :*: model2) where
+  initModel = initModel `Pair` initModel
+
 
 class Transition model cmd resp where
   transition :: (Ord1 r, Show1 r) => model r -> cmd r -> resp r -> model r
@@ -109,25 +115,32 @@ generateCommands _proxy = do
 
 ------------------------------------------------------------------------
 
-data Model r = Model
-  { processes :: [Reference Int r]
-  }
-
-class HasProcesses a where
-  getProcesses :: a r -> [Reference Int r]
-  putProcesses :: [Reference Int r] -> a r
-
-  modifyProcesses :: ([Reference Int r] -> [Reference Int r]) -> a r -> a r
-  modifyProcesses f = putProcesses . f . getProcesses
-
-instance HasProcesses Model where
-  getProcesses = processes
-
-instance InitModel Model where
-  initModel = Model []
+-- * Spawn
 
 data Spawn (r :: Type -> Type) = Spawn
   deriving Show
+
+data SpawnModel r = SpawnModel
+  { processes :: [Reference Int r]
+  }
+
+-- XXX: Can we use GHC.Records.HasField?
+class HasProcesses m where
+  getProcesses :: m r -> [Reference Int r]
+  setProcesses :: [Reference Int r] -> m r -> m r
+
+  modifyProcesses :: ([Reference Int r] -> [Reference Int r]) -> m r -> m r
+  modifyProcesses f m = setProcesses (f (getProcesses m)) m
+
+instance HasProcesses m1 => HasProcesses (m1 :*: m2) where
+  getProcesses (Pair m1 _m2) = getProcesses m1
+
+instance HasProcesses SpawnModel where
+  getProcesses                    = processes
+  setProcesses ps SpawnModel {..} = SpawnModel { processes = ps, ..}
+
+instance InitModel SpawnModel where
+  initModel = SpawnModel []
 
 instance Precondition model Spawn where
   precondition _model Spawn = Top
@@ -141,24 +154,48 @@ instance Generator model Spawn where
 instance Mock model Spawn (Reference Int) where
   mock _model Spawn = genSym
 
+-- * Kill
+
 data Kill r = Kill (Reference Int r)
   deriving Show
 
-instance Transition Model Kill (Const ()) where
-  transition Model {..} (Kill r) (Const ()) =
-    Model { processes = filter (/= r) processes, .. }
+data KillModel r = KillModel
+  { killed :: [Reference Int r]
+  }
 
-instance Precondition Model Kill where
-  precondition Model {..} (Kill pid) = pid `Logic.elem` processes
+instance InitModel KillModel where
+  initModel = KillModel []
 
-instance Generator Model Kill where
-  generator Model{..} = Kill <$> elements processes
+class HasKilled m where
+  getKilled :: m r -> [Reference Int r]
+  setKilled :: [Reference Int r] -> m r -> m r
+
+  modifyKilled :: ([Reference Int r] -> [Reference Int r]) -> m r -> m r
+  modifyKilled f m = setKilled (f (getKilled m)) m
+
+instance HasKilled m2 => HasKilled (m1 :*: m2) where
+  getKilled (Pair _m1 m2) = getKilled m2
+
+instance HasKilled KillModel where
+  getKilled = killed
+  setKilled ps KillModel {..} = KillModel { killed = ps }
+
+instance HasKilled model => Transition model Kill (Const ()) where
+  transition m (Kill r) (Const ()) = modifyKilled (++ [r]) m
+
+instance HasProcesses model => Precondition model Kill where
+  precondition m (Kill pid) = pid `Logic.elem` getProcesses m
+
+instance HasProcesses model => Generator model Kill where
+  generator m = Kill <$> elements (getProcesses m)
 
 instance Mock model Kill (Const ()) where
   mock _model Kill{} = pure (Const ())
 
+------------------------------------------------------------------------
+
 g :: IO (Commands (Spawn :+: Kill) (Reference Int :+: Const ()))
-g = generate (generateCommands (Proxy @Model))
+g = generate (generateCommands (Proxy @(SpawnModel :*: KillModel)))
 
 test :: IO ()
 test = print =<< g
