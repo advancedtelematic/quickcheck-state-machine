@@ -2,6 +2,9 @@ resolver: lts-13.1
 packages:
   - '.'
 extra-deps:
+  - haskus-utils-data-1.1.1@sha256:84f804129966028abd95bb33fec2692fa87eceabf93b993c855b502596476e73
+  - haskus-utils-types-1.3.1@sha256:6faea85c4e905031e269cb228359db402b94a3fc40fecf3e59a925b1a0db6cb8
+  - ../haskus-utils/haskus-utils-variant
   - tree-diff-0.0.2@sha256:99d84e4639d8ebbd727f4223ab39b589eedeff7ed659db2f9b5b572fa33cd410
 nix:
   enable: false

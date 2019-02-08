@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE PolyKinds         #-}
@@ -18,16 +19,23 @@ module Test.StateMachine.Types.Rank2
   )
   where
 
-import qualified Control.Applicative as Rank1
-import qualified Control.Monad       as Rank1
-import qualified Data.Foldable       as Rank1
+import qualified Control.Applicative  as Rank1
+import qualified Control.Monad        as Rank1
+import qualified Data.Foldable        as Rank1
+import           Data.Functor.Compose
+                   (Compose(Compose))
+import           Data.Functor.Product
+                   (Product(Pair))
+import           Data.Functor.Sum
+                   (Sum(InL, InR))
 import           Data.Kind
                    (Type)
-import qualified Data.Traversable    as Rank1
+import qualified Data.Traversable     as Rank1
 import           GHC.Generics
-                   ((:*:)((:*:)), (:+:)(L1, R1), Generic1, K1(K1),
-                   M1(M1), Rec1(Rec1), Rep1, U1(U1), from1, to1, (:.:)(Comp1))
-import           Prelude             hiding
+                   ((:*:)((:*:)), (:+:)(L1, R1), (:.:)(Comp1),
+                   Generic1, K1(K1), M1(M1), Rec1(Rec1), Rep1, U1(U1),
+                   from1, to1)
+import           Prelude              hiding
                    (Applicative(..), Foldable(..), Functor(..),
                    Traversable(..), (<$>))
 
@@ -62,6 +70,9 @@ instance (Functor f, Functor g) => Functor (f :*: g) where
 instance (Rank1.Functor f, Functor g) => Functor (f :.: g) where
   fmap f (Comp1 fg) = Comp1 (Rank1.fmap (fmap f) fg)
 
+instance (Rank1.Functor f, Functor g) => Functor (Compose f g) where
+  fmap f (Compose fg) = Compose (Rank1.fmap (fmap f) fg)
+
 instance Functor f => Functor (M1 i c f) where
   fmap f (M1 x) = M1 (fmap f x)
 
@@ -86,12 +97,22 @@ instance Foldable U1 where
 instance Foldable (K1 i c) where
   foldMap _ (K1 _) = mempty
 
+instance Foldable (Rank1.Const a) where
+  foldMap _ _ = mempty
+
 instance (Foldable f, Foldable g) => Foldable (f :+: g) where
   foldMap f (L1 x) = foldMap f x
   foldMap f (R1 y) = foldMap f y
 
+instance (Foldable l, Foldable r) => Foldable (Sum l r) where
+  foldMap f (InL x) = foldMap f x
+  foldMap f (InR x) = foldMap f x
+
 instance (Foldable f, Foldable g) => Foldable (f :*: g) where
   foldMap f (x :*: y) = foldMap f x `mappend` foldMap f y
+
+instance (Foldable f, Foldable g) => Foldable (Product f g) where
+  foldMap f (Pair x y) = foldMap f x `mappend` foldMap f y
 
 instance (Rank1.Foldable f, Foldable g) => Foldable (f :.: g) where
   foldMap f (Comp1 fg) = Rank1.foldMap (foldMap f) fg
