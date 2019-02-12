@@ -49,6 +49,8 @@ module Test.StateMachine.Sequential
 
 import           Control.Exception
                    (ErrorCall, IOException, displayException)
+import           Control.Monad
+                   (unless)
 import           Control.Monad.Catch
                    (MonadCatch, catch)
 import           Control.Monad.State
@@ -312,7 +314,7 @@ shrinkAndValidate StateMachine { precondition, transition, mock, shrinker } =
     remapVars :: Map Var Var -> Symbolic a -> Maybe (Symbolic a)
     remapVars scope (Symbolic v) = Symbolic <$> M.lookup v scope
 
-runCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+runCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
             => (MonadCatch m, MonadIO m)
             => StateMachine model cmd m resp
             -> Commands cmd resp
@@ -336,7 +338,7 @@ getChanContents chan = reverse <$> atomically (go' [])
         Just x  -> go' (x : acc)
         Nothing -> return acc
 
-executeCommands :: (Rank2.Traversable cmd, Rank2.Foldable resp)
+executeCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
                 => (MonadCatch m, MonadIO m)
                 => StateMachine model cmd m resp
                 -> TChan (Pid, HistoryEvent cmd resp)
@@ -366,13 +368,38 @@ executeCommands StateMachine {..} hchan pid check =
               return ExceptionThrown
             Right cresp -> do
               atomically (writeTChan hchan (pid, Response cresp))
-              let (sresp, counter') = runGenSym (mock smodel scmd) counter
               case (check, logic (postcondition cmodel ccmd cresp)) of
                 (True, VFalse ce) -> return (PostconditionFailed (show ce))
                 _                 -> case (check, logic (fromMaybe (const Top) invariant cmodel)) of
                                        (True, VFalse ce') -> return (InvariantBroken (show ce'))
                                        _                  -> do
-                                         put ( insertConcretes vars (getUsedConcrete cresp) env
+                                         let (sresp, counter') = runGenSym (mock smodel scmd) counter
+                                             cvars             = getUsedConcrete cresp
+                                         unless (length vars == length cvars) $
+                                           error $ unlines
+                                             [ ""
+                                             , ""
+                                             , "Mismatch between `mock` and `semantics`."
+                                             , ""
+                                             , "The definition of `mock` for the command:"
+                                             , ""
+                                             , "    ", show ccmd
+                                             , ""
+                                             , "returns the following references:"
+                                             , ""
+                                             , "    ", show vars
+                                             , ""
+                                             , "while the response from `semantics` returns the following references:"
+                                             , ""
+                                             , "    ", show cvars
+                                             , ""
+                                             , "Continuing to execute commands at this point could result in scope"
+                                             , "errors, because we might have commands that use references (returned"
+                                             , "by `mock`) that are not available (returned by `semantics`), to avoid"
+                                             , "this please fix the mismatch."
+                                             , ""
+                                             ]
+                                         put ( insertConcretes vars cvars env
                                              , transition smodel scmd sresp
                                              , counter'
                                              , transition cmodel ccmd cresp
