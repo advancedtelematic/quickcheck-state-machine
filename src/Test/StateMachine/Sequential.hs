@@ -48,7 +48,7 @@ module Test.StateMachine.Sequential
   where
 
 import           Control.Exception
-                   (ErrorCall, IOException, displayException)
+                   (SomeException, displayException)
 import           Control.Monad.Catch
                    (MonadCatch, catch)
 import           Control.Monad.State
@@ -356,9 +356,7 @@ executeCommands StateMachine {..} hchan pid check =
           let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
           atomically (writeTChan hchan (pid, Invocation ccmd (S.fromList vars)))
           !ecresp <- lift (fmap Right (semantics ccmd))
-                       `catch` (\(err :: IOException) ->
-                                   return (Left (displayException err)))
-                       `catch` (\(err :: ErrorCall) ->
+                       `catch` (\(err :: SomeException) ->
                                    return (Left (displayException err)))
           case ecresp of
             Left err    -> do
