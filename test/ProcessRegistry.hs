@@ -34,15 +34,7 @@
 module ProcessRegistry
   ( prop_processRegistry
   , prop_parallelProcessRegistry
-  , markovGood
-  , markovDeadlock
-  , markovNotStochastic1
-  , markovNotStochastic2
-  , markovNotStochastic3
   , sm
-  , initFiniteModel
-  , printStaticStats
-  , printStats
   )
   where
 
@@ -71,22 +63,13 @@ import           Data.Map
 import qualified Data.Map                      as Map
 import           Data.Maybe
                    (fromJust, isJust, isNothing)
-import           Data.Proxy
-                   (Proxy(Proxy))
 import           Data.TreeDiff
                    (ToExpr(..), defaultExprViaShow)
-import           Generic.Data
-                   (gfiniteEnumFromTo, gmaxBound, gminBound)
 import           GHC.Generics
                    (Generic)
-import qualified Numeric.LinearAlgebra         as LinAlg
-import           Numeric.LinearAlgebra.Static
-                   (L, Sq, matrix, unwrap)
 import           Prelude                       hiding
                    (elem, notElem)
 import qualified Prelude                       as P
-import           System.FilePath
-                   ((<.>), (</>))
 import           System.IO.Unsafe
                    (unsafePerformIO)
 import           System.Posix.Types
@@ -95,18 +78,15 @@ import qualified System.Process                as Proc
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Gen, Property, elements, maxFailPercent,
-                   maxSuccess, noShrinking, oneof,
-                   quickCheckWithResult, stdArgs, tables, (===))
+                   (Gen, Property, elements, noShrinking, oneof,
+                   tabulate, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
-import           Text.Printf
-                   (printf)
 
-import           MarkovChain
 import           Test.StateMachine
 import           Test.StateMachine.Types
-                   (Reference(..))
+                   (History(..), Operation(..), Reference(..),
+                   makeOperations)
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
@@ -225,7 +205,7 @@ ioReset = do
 ioSpawn :: IO Proc.Pid
 ioSpawn = do
   die <- randomRIO (1, 6) :: IO Int
-  when (die == -1) $
+  when (die == 1) $
     throwIO UnknownError
   ph <- Proc.spawnCommand "true"
   mpid <- Proc.getPid ph
@@ -318,7 +298,7 @@ data Event r = Event
   , cmd      :: Cmd :@ r
   , after    :: Model  r
   , mockResp :: Resp Pid
-  }
+  } deriving Show
 
 lockstep :: Eq1 r
          => Model   r
@@ -366,50 +346,41 @@ symbolicResp m c = At <$> traverse (const genSym) resp
     (resp, _mock') = step m c
 
 generator :: Model Symbolic -> Gen (Cmd :@ Symbolic)
-generator m@(Model _ refs) = oneof $ concat
-    [ withoutPids
-    , if null refs then [] else withPids
-    ]
+generator (Model _ refs) = oneof
+  [ genSpawn
+  , genRegister
+  , genUnregister
+  , genKill
+  , genWhereIs
+
+  , genBadSpawn
+  , genBadRegister
+  , genBadUnregister
+  , genBadKill
+  , genBadWhereIs
+  ]
   where
-    withoutPids :: [Gen (Cmd :@ Symbolic)]
-    withoutPids =
-      [ genSpawn m ]
+    genName = elements (map Pname ["A", "B", "C"])
 
-    withPids :: [Gen (Cmd :@ Symbolic)]
-    withPids =
-      [ genRegister m
-      , genUnregister m
-      , genKill m
-      , genWhereIs m
-      ]
+    genSpawn      = At <$> pure Spawn
+    genRegister   = At <$> (Register <$> genName <*> genRef)
+    genUnregister = At . Unregister <$> genName
+    genKill       = At . Kill <$> genRef
+    genWhereIs    = At . WhereIs <$> genName
 
-genName :: Gen Pname
-genName = elements (map Pname ["A", "B", "C"])
+    genBadSpawn      = At <$> pure (Bad Spawn)
+    genBadRegister   = At . Bad <$> (Register <$> genName <*> genRef)
+    genBadUnregister = At . Bad . Unregister <$> genName
+    genBadKill       = At . Bad . Kill <$> genRef
+    genBadWhereIs    = At . Bad . WhereIs <$> genName
 
-genSpawn, genRegister, genUnregister, genKill, genWhereIs,
-  genBadSpawn, genBadRegister, genBadUnregister, genBadKill, genBadWhereIs ::
-    Model Symbolic -> Gen (Cmd :@ Symbolic)
-genSpawn _      = At <$> pure Spawn
-genRegister m   = At <$> (Register <$> genName <*> genRef m)
-genUnregister _ = At . Unregister <$> genName
-genKill m       = At . Kill <$> genRef m
-genWhereIs _    = At . WhereIs <$> genName
-
-genBadSpawn _      = At <$> pure (Bad Spawn)
-genBadRegister m   = At . Bad <$> (Register <$> genName <*> genRef m)
-genBadUnregister _ = At . Bad . Unregister <$> genName
-genBadKill m       = At . Bad . Kill <$> genRef m
-genBadWhereIs _    = At . Bad . WhereIs <$> genName
-
-genRef :: Model Symbolic -> Gen (Reference Proc.Pid Symbolic)
-genRef (Model _ refs) = elements (map fst refs)
+    genRef  = elements (map fst refs)
 
 shrinker :: Model Symbolic -> Cmd :@ Symbolic -> [Cmd :@ Symbolic]
 shrinker _ _ = []
 
-sm :: Markov Model FiniteModel (At Cmd)
-   -> AdvancedStateMachine Model FiniteModel (At Cmd) IO (At Resp)
-sm chain =
+sm :: StateMachine Model (At Cmd) IO (At Resp)
+sm =
   StateMachine
     initModel
     transition
@@ -417,7 +388,7 @@ sm chain =
     postcondition
     Nothing
     (Just . generator)
-    (Just (chain, (Zero, Zero)))
+    Nothing
     shrinker
     semantics
     symbolicResp
@@ -469,165 +440,77 @@ instance ToExpr Proc.Pid where
 
 ------------------------------------------------------------------------
 
-prop_processRegistry :: Markov Model FiniteModel (At Cmd) -> Property
-prop_processRegistry chain =
-  forAllCommands sm' Nothing $ \cmds ->
+prop_processRegistry :: Property
+prop_processRegistry = noShrinking $
+  forAllCommands sm Nothing $ \cmds ->
     monadicIO $ do
       liftIO ioReset
-      (hist, _model, res) <- runCommands sm' cmds
-      tabulateState sm' hist
-      prettyCommands sm' hist
+      (hist, _model, res) <- runCommands sm cmds
+      prettyCommands sm hist
         $ checkCommandNames cmds
+        $ tabulate "Observations" (map show $ replayHist hist)
         $ res === Ok
- where
-   sm' = sm chain
 
-prop_parallelProcessRegistry :: Markov Model FiniteModel (At Cmd) -> Property
-prop_parallelProcessRegistry chain = noShrinking $
-  forAllParallelCommands sm' $ \cmds -> monadicIO $ do
+prop_parallelProcessRegistry :: Property
+prop_parallelProcessRegistry = noShrinking $
+  forAllParallelCommands sm $ \cmds -> monadicIO $ do
   liftIO ioReset
   -- If we run more than once below we'll end up with (already registered)
   -- errors. Perhaps 'runParallelCommandsNTimes' needs to be parametrised by a
   -- clean up function? Also see
   -- https://github.com/advancedtelematic/quickcheck-state-machine/issues/83 .
-  prettyParallelCommands cmds =<< runParallelCommandsNTimes 1 sm' cmds
-  where
-    sm' = sm chain
+  prettyParallelCommands cmds =<< runParallelCommandsNTimes 1 sm cmds
 
 ------------------------------------------------------------------------
--- Usage specification
+-- Usage analysis
 
 data Fin2
   = Zero
   | One
-  | Two
+  | TwoOrMore
   deriving (Enum, Bounded, Show, Eq, Read, Ord)
 
-type FiniteModel = (Fin2, Fin2)
+type ModelState = (Fin2, Fin2)
 
-initFiniteModel :: FiniteModel
-initFiniteModel = (Zero, Zero)
+abstract :: Model Concrete -> ModelState
+abstract (Model Mock{..} _) =
+  let spawned = case length pids of
+        0 -> Zero
+        1 -> One
+        _ -> TwoOrMore
+      registered = case length (Map.keys registry) of
+        0 -> Zero
+        1 -> One
+        _ -> TwoOrMore
+   in (spawned, registered)
 
-markovGood :: Markov Model FiniteModel (At Cmd)
-markovGood = Markov f
+-----
+
+replayOp :: Model Concrete
+       -> Operation (At Cmd) (At Resp)
+       -> (Model Concrete, ModelState, ModelState, Bool)
+replayOp model (Operation cmd resp _) =
+  let success = toMock model' resp == mockResp e
+      from    = abstract model
+      to      = abstract model'
+  in (model', from, to, success)
   where
-    f :: FiniteModel -> [(Int, Continue Model FiniteModel (At Cmd))]
-    f (Zero, Zero) = [ (90, Continue "Spawn" genSpawn (One, Zero))
-                     , (10, Continue "BadKill" genBadKill (Zero, Zero))
-                     ]
+    e      = lockstep model cmd resp
+    model' = after e
+replayOp model (Crash _ _ _) =
+  let state = abstract model
+  in (model, state, state, False)
 
-    f (One,  Zero) = [ (30,  Continue "Spawn" genSpawn (Two, Zero))
-                     , (40,  Continue "Register" genRegister (One, One))
-                     , (20,  Continue "Kill" genKill (Zero, Zero))
-                     , (10,  Continue "BadWhereIs" genBadWhereIs (One, Zero))
-                     ]
-    f (One,  One)  = [ (40,  Continue "Spawn" genSpawn (Two, One))
-                     , (20,  Continue "Unregister" genUnregister (One, Zero))
-                     , (10,  Continue "BadUnregister" genBadUnregister (One, One))
-                     , (30,  Continue "WhereIs" genWhereIs (One, One))
-                     ]
-    f (Two, Zero)  = [ (80, Continue "Register" genRegister (Two, One))
-                     , (20, Continue "Kill" genKill (One, Zero))
-                     ]
-
-    f (Two, One)   = [ (40, Continue "Register" genRegister (Two, Two))
-                     , (10, Continue "Kill" genKill (One, One))
-                     , (20, Continue "Unregister" genUnregister (Two, Zero))
-                     , (20, Continue "WhereIs" genWhereIs (Two, One))
-                     , (10, Stop)
-                     ]
-    f (Two, Two)   = [ (30, Stop)
-                     , (20, Continue "Unregister" genUnregister (Two, One))
-                     , (30, Continue "WhereIs" genWhereIs (Two, Two))
-                     , (10, Continue "BadRegister" genBadRegister (Two, Two))
-                     , (10, Continue "BadSpawn" genBadSpawn (Two, Two))
-                     ]
-    f _            = []
-
-markovDeadlock :: Markov Model FiniteModel (At Cmd)
-markovDeadlock = Markov f
+replayOps :: [Operation (At Cmd) (At Resp)] -> [(ModelState, ModelState, Bool)]
+replayOps ops = map (\(_, from, to, success) -> (from, to, success)) (go initModel ops)
   where
-    genName' :: Gen Pname
-    genName' = return (Pname "A")
+    go :: Model Concrete
+       -> [Operation (At Cmd) (At Resp)]
+       -> [(Model Concrete, ModelState, ModelState, Bool)]
+    go _ []         = []
+    go m (c : ops') = (m, from, to, success) : go m' ops'
+      where
+        (m', from, to, success) = replayOp m c
 
-    genRegister' :: Model Symbolic -> Gen (Cmd :@ Symbolic)
-    genRegister' m   = At <$> (Register <$> genName' <*> genRef m)
-
-    f :: FiniteModel -> [(Int, Continue Model FiniteModel (At Cmd))]
-    f (Zero, Zero) = [ (100, Continue "Spawn"    genSpawn (One, Zero)) ]
-    f (One,  Zero) = [ (100, Continue "Spawn"    genSpawn (Two, Zero)) ]
-    f (Two, Zero)  = [ (100, Continue "Register" genRegister' (Two, One)) ]
-    f (Two, One)   = [ (100, Continue "Register" genRegister' (Two, Two)) ]
-    f (Two, Two)   = [ (100, Stop) ]
-    f _            = []
-
-markovNotStochastic1 :: Markov Model FiniteModel (At Cmd)
-markovNotStochastic1 = Markov f
-  where
-    f (Zero, Zero) = [ ( 90, Continue "Spawn" genSpawn (One, Zero)) ]
-    f (One, Zero)  = [ (100, Stop) ]
-    f _            = []
-
-markovNotStochastic2 :: Markov Model FiniteModel (At Cmd)
-markovNotStochastic2 = Markov f
-  where
-    f (Zero, Zero) = [ (110, Continue "Spawn" genSpawn (One, Zero))
-                     , (-10, Stop)
-                     ]
-    f (One, Zero)  = [ (100, Stop) ]
-    f _            = []
-
-markovNotStochastic3 :: Markov Model FiniteModel (At Cmd)
-markovNotStochastic3 = Markov f
-  where
-    f (Zero, Zero) = [ (90, Continue "Spawn" genSpawn (One, Zero))
-                     , (10, Stop)
-                     ]
-    f (One, Zero)  = [ (100, Stop) ]
-    f (Two, Two)   = [ (90, Stop) ]
-    f _            = []
-
-printStaticStats :: IO ()
-printStaticStats = do
-  case transitionMatrix markovGood of
-    SomeMatrix _ _ mat -> do
-      let mat' :: Sq 10
-          mat' = matrix (concat (LinAlg.toLists (unwrap mat)))
-      putStrLn ""
-      putStrLn "Transition matrix:"
-      print mat'
-      putStrLn ""
-      putStrLn "Long-run state occupancy:"
-      let states :: [FiniteModel]
-          states = gfiniteEnumFromTo gminBound gmaxBound
-      mapM_ (\(s, p) -> printf "%-15s %-15.2f\n" (show s) p)
-        (zip states (LinAlg.toList (unwrap (MarkovChain.pi mat'))))
-      putStrLn ""
-      putStrLn "Expected test case length:"
-      print (expectedLength (fundamental (reduceCol (reduceRow mat'))))
-
-printStats :: Int -> Maybe FilePath -> IO ()
-printStats runs mdir = do
-  let args = stdArgs { maxFailPercent = 10, maxSuccess = runs }
-  res <- quickCheckWithResult args (prop_processRegistry markovGood)
-  case compatibleMatrices (Proxy @10) (transitionMatrix markovGood)
-                          (results (Proxy @FiniteModel) (tables res)) of
-    Left err -> error err
-    Right (CompatibleMatrices pn p s f) -> do
-      putStrLn ""
-      putStrLn "Succcessful transitions from state i to state j:"
-      print s
-      putStrLn ""
-      putStrLn "Failed transitions from state i to state j:"
-      print f
-      putStrLn ""
-      putStrLn "Single use reliability:"
-      case mdir of
-        Nothing  -> print (singleUseReliability pn (reduceRow p) Nothing (s, f))
-        Just dir -> do
-          -- Load and print priors?
-          r <- singleUseReliabilityIO pn (reduceRow p :: L 9 10)
-                                      (dir </> "successes" <.> "hmatrix")
-                                      (dir </> "failures" <.> "hmatrix")
-                                      (s, f)
-          print r
+replayHist :: History (At Cmd) (At Resp) -> [(ModelState, ModelState, Bool)]
+replayHist = replayOps . makeOperations . unHistory
