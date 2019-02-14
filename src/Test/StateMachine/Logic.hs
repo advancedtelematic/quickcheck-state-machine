@@ -32,8 +32,8 @@ module Test.StateMachine.Logic
   , (.<=)
   , (.>)
   , (.>=)
-  , elem
-  , notElem
+  , member
+  , notMember
   , (.//)
   , (.&&)
   , (.||)
@@ -43,9 +43,7 @@ module Test.StateMachine.Logic
   )
   where
 
-import           Prelude hiding
-                   (elem, notElem)
-import qualified Prelude
+import Prelude
 
 ------------------------------------------------------------------------
 
@@ -69,21 +67,21 @@ data Predicate
   | forall a. (Ord a, Show a) => a :<= a
   | forall a. (Ord a, Show a) => a :>  a
   | forall a. (Ord a, Show a) => a :>= a
-  | forall a. (Eq  a, Show a) => Elem    a [a]
-  | forall a. (Eq  a, Show a) => NotElem a [a]
+  | forall t a. (Foldable t, Eq a, Show a, Show (t a)) => Member    a (t a)
+  | forall t a. (Foldable t, Eq a, Show a, Show (t a)) => NotMember a (t a)
 
 deriving instance Show Predicate
 
 dual :: Predicate -> Predicate
 dual p = case p of
-  x :== y        -> x :/= y
-  x :/= y        -> x :== y
-  x :<  y        -> x :>= y
-  x :<= y        -> x :>  y
-  x :>  y        -> x :<= y
-  x :>= y        -> x :<  y
-  x `Elem`    xs -> x `NotElem` xs
-  x `NotElem` xs -> x `Elem`    xs
+  x :== y          -> x :/= y
+  x :/= y          -> x :== y
+  x :<  y          -> x :>= y
+  x :<= y          -> x :>  y
+  x :>  y          -> x :<= y
+  x :>= y          -> x :<  y
+  x `Member`    xs -> x `NotMember` xs
+  x `NotMember` xs -> x `Member`    xs
 
 -- See Yuri Gurevich's "Intuitionistic logic with strong negation" (1977).
 strongNeg :: Logic -> Logic
@@ -166,14 +164,14 @@ logic (Annotate s l) = case logic l of
 
 predicate :: Predicate -> Value
 predicate p0 = let b = go p0 in case p0 of
-  x :== y        -> b (x == y)
-  x :/= y        -> b (x /= y)
-  x :<  y        -> b (x <  y)
-  x :<= y        -> b (x <= y)
-  x :>  y        -> b (x >  y)
-  x :>= y        -> b (x >= y)
-  x `Elem`    xs -> b (x `Prelude.elem`    xs)
-  x `NotElem` xs -> b (x `Prelude.notElem` xs)
+  x :== y          -> b (x == y)
+  x :/= y          -> b (x /= y)
+  x :<  y          -> b (x <  y)
+  x :<= y          -> b (x <= y)
+  x :>  y          -> b (x >  y)
+  x :>= y          -> b (x >= y)
+  x `Member`    xs -> b (x `elem`    xs)
+  x `NotMember` xs -> b (x `notElem` xs)
   where
     go :: Predicate -> Bool -> Value
     go _ True  = VTrue
@@ -187,8 +185,8 @@ infix  5 .<
 infix  5 .<=
 infix  5 .>
 infix  5 .>=
-infix  8 `elem`
-infix  8 `notElem`
+infix  8 `member`
+infix  8 `notMember`
 infixl 4 .//
 infixr 3 .&&
 infixr 2 .||
@@ -212,11 +210,11 @@ x .> y = Predicate (x :> y)
 (.>=) :: (Ord a, Show a) => a -> a -> Logic
 x .>= y = Predicate (x :>= y)
 
-elem :: (Eq a, Show a) => a -> [a] -> Logic
-elem x xs = Predicate (Elem x xs)
+member :: (Foldable t, Eq a, Show a, Show (t a)) => a -> t a -> Logic
+member x xs = Predicate (Member x xs)
 
-notElem :: (Eq a, Show a) => a -> [a] -> Logic
-notElem x xs = Predicate (NotElem x xs)
+notMember :: (Foldable t, Eq a, Show a, Show (t a)) => a -> t a -> Logic
+notMember x xs = Predicate (NotMember x xs)
 
 (.//) :: Logic -> String -> Logic
 l .// s = Annotate s l

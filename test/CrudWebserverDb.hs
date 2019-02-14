@@ -109,9 +109,7 @@ import           Network.Socket
                    addrFlags, addrProtocol, addrSocketType, close,
                    connect, defaultHints, getAddrInfo, socket)
 import qualified Network.Wai.Handler.Warp      as Warp
-import           Prelude                       hiding
-                   (elem)
-import qualified Prelude
+import           Prelude
 import           Servant
                    ((:<|>)(..), (:>), Application, Capture, Delete,
                    Get, JSON, Post, Put, ReqBody, Server, serve)
@@ -293,9 +291,9 @@ transitions _         _                 _                =
 
 preconditions :: Model Symbolic -> Action Symbolic -> Logic
 preconditions _         (PostUser _)     = Top
-preconditions (Model m) (GetUser    key) = key `elem` map fst m
-preconditions (Model m) (IncAgeUser key) = key `elem` map fst m
-preconditions (Model m) (DeleteUser key) = key `elem` map fst m
+preconditions (Model m) (GetUser    key) = key `member` map fst m
+preconditions (Model m) (IncAgeUser key) = key `member` map fst m
+preconditions (Model m) (DeleteUser key) = key `member` map fst m
 
 
 
@@ -494,7 +492,7 @@ setupDb = do
     trim :: String -> String
     trim = dropWhileEnd isGarbage . dropWhile isGarbage
       where
-        isGarbage = flip Prelude.elem ['\'', '\n']
+        isGarbage = flip elem ['\'', '\n']
 
     healthyDb :: String -> IO ()
     healthyDb ip = do

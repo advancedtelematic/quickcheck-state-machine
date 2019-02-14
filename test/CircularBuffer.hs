@@ -57,9 +57,7 @@ import           Data.Vector.Unboxed.Mutable
 import qualified Data.Vector.Unboxed.Mutable   as V
 import           GHC.Generics
                    (Generic, Generic1)
-import           Prelude                       hiding
-                   (elem)
-import qualified Prelude                       as P
+import           Prelude
 import           Test.QuickCheck
                    (Gen, Positive(..), Property, arbitrary, elements,
                    frequency, shrink, (===))
@@ -109,7 +107,7 @@ newBuffer :: Bugs -> Int -> IO Buffer
 newBuffer bugs n = Buffer
   <$> newIORef 0
   <*> newIORef 0
-  <*> V.new (if FullIsEmpty `P.elem` bugs then n else n + 1)
+  <*> V.new (if FullIsEmpty `elem` bugs then n else n + 1)
 
 -- | See 'Put'.
 putBuffer :: Int -> Buffer -> IO ()
@@ -132,9 +130,9 @@ lenBuffer bugs Buffer{top, bot, arr} = do
   i <- readIORef top
   j <- readIORef bot
   return $
-    if BadRem `P.elem` bugs then
+    if BadRem `elem` bugs then
       (i - j) `rem` V.length arr
-    else if StillBadRem `P.elem` bugs then
+    else if StillBadRem `elem` bugs then
       abs ((i - j) `rem` V.length arr)
     else
       (i - j) `mod` V.length arr
@@ -198,15 +196,15 @@ initModel = Model []
 
 precondition :: Bugs -> Model Symbolic -> Action Symbolic -> Logic
 precondition _    _         (New n) = n .> 0
-precondition bugs (Model m) (Put _ buffer) | NoSizeCheck `P.elem` bugs =
-  buffer `elem` map fst m
+precondition bugs (Model m) (Put _ buffer) | NoSizeCheck `elem` bugs =
+  buffer `member` map fst m
 precondition _    (Model m) (Put _ buffer) = Boolean $ isJust $ do
   specBuffer <- lookup buffer m
   guard $ length (specContents specBuffer) < specSize specBuffer
 precondition _    (Model m) (Get buffer) = Boolean $ isJust $ do
   specBuffer <- lookup buffer m
   guard $ not (null (specContents specBuffer))
-precondition _    (Model m) (Len buffer) = buffer `elem` map fst m
+precondition _    (Model m) (Len buffer) = buffer `member` map fst m
 
 transition :: Eq1 r => Model r -> Action r -> Response r -> Model r
 transition (Model m) (New n)        (NewR ref) =
