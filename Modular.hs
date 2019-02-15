@@ -60,6 +60,7 @@ import           Test.StateMachine.Types.References
 
 ------------------------------------------------------------------------
 
+infixr 1 :+:
 type (:+:) = Sum
 
 instance (Show (l a), Show (r a)) => Show ((l :+: r) a) where
@@ -373,3 +374,95 @@ test2 = do
 -- bank3 refines bank2 sees c2
 -- file : act -> PRS \x N \x KIND
 -- invariant forall a : act. file(a) = (owner(a), bal(a), kind(a))
+
+------------------------------------------------------------------------
+
+data Account = Account
+  deriving (Eq, Show)
+data Person  = Person
+  deriving (Eq, Show)
+type Money   = Int
+
+data Open     r = Open Person Account
+data Close    r = Close Account
+data Deposit  r = Deposit Account Money
+data Withdraw r = Withdraw Account Money
+
+type Bank0 = Open :+: Close :+: Deposit :+: Withdraw
+
+data Model0 r = Model0
+  { accounts :: [Account]
+  , owner    :: Account -> Money
+  , balance  :: Account -> Money
+  }
+
+class HasAccounts model where
+  getAccounts :: model r -> [Account]
+
+instance HasAccounts m1 => HasAccounts (m1 :*: m2) where
+  getAccounts = undefined
+
+instance HasAccounts Model0 where
+  getAccounts = accounts
+
+instance Precondition Model0 Open where
+  precondition = undefined
+
+instance Precondition Model0 Close where
+  precondition = undefined
+
+instance Precondition Model0 Deposit where
+  precondition = undefined
+
+instance HasAccounts model => Precondition model Withdraw where
+  precondition = undefined
+
+----
+
+data Move1 r = Move1 Account (Withdraw r)
+
+type Bank1 = Bank0 :+: Move1
+
+data InBank r = InBank { inbank :: [(Account, Money)] }
+
+class HasInBank model where
+  getInBank :: model r -> [(Account, Money)]
+
+instance HasInBank InBank where
+  getInBank = inbank
+
+instance HasInBank m2 => HasInBank (m1 :*: m2) where
+  getInBank = undefined
+
+type Model1 = Model0 :*: InBank
+
+instance (HasAccounts model, HasInBank model) => Precondition model Move1 where
+  precondition model (Move1 a w) =
+    precondition model w Logic..&&
+    a `Logic.elem` getAccounts model
+
+instance Precondition Model1 Bank1 where
+  precondition (Pair model0 (InBank b)) (InL bank0) = precondition model0 bank0 Logic..&&
+    case bank0 of
+      -- This is the only new part:
+      InR (InL (Close a)) -> a `Logic.notElem` map fst b
+  precondition model1 (InR move1) = precondition model1 move1
+
+----
+
+data Kind = Normal | Savings
+
+data BankKind r = BankKind { kind :: Account -> Kind }
+
+
+
+-- kind : act -> KIND (init := \emptyset)
+
+-- save (p : PRS) refines move1, where owner(a) = p and owner(b) = p
+--   and kind(a) = normal and kind(b) = savings
+
+-- open (k : KIND) refines open
+-- kind(a) := k
+
+-- close refines close
+-- kind := {a} <-| kind
