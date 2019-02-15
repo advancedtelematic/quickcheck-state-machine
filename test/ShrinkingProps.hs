@@ -21,8 +21,7 @@ module ShrinkingProps (
   , ShrinkParFailure(..)
   ) where
 
-import           Prelude                       hiding
-                   (elem)
+import           Prelude
 
 import           Control.Monad
                    (replicateM)
@@ -306,7 +305,7 @@ transition model cmd = eventAfter . lockstep model cmd
 
 precondition :: Model Symbolic -> Cmd :@ Symbolic -> Logic
 precondition (Model _ knownRefs _) (At cmd) =
-    forall (toList cmd) (`elem` map fst knownRefs)
+    forall (toList cmd) (`member` map fst knownRefs)
 
 postcondition :: HasCallStack
               => Model Concrete -> Cmd :@ Concrete -> Resp :@ Concrete -> Logic

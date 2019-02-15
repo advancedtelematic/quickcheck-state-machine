@@ -93,9 +93,9 @@ update ref i m = (ref, i) : filter ((/= ref) . fst) m
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition (Model m) cmd = case cmd of
   Create        -> Top
-  Read  ref     -> ref `elem` domain m
-  Write ref _   -> ref `elem` domain m
-  Increment ref -> ref `elem` domain m
+  Read  ref     -> ref `member` domain m
+  Write ref _   -> ref `member` domain m
+  Increment ref -> ref `member` domain m
 
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition (Model m) cmd resp = case (cmd, resp) of
@@ -175,7 +175,7 @@ prop_precondition :: Property
 prop_precondition = once $ monadicIO $ do
   (hist, _model, res) <- runCommands sm' cmds
   prettyCommands sm' hist
-    (res === PreconditionFailed "PredicateC (NotElem (Reference (Symbolic (Var 0))) [])")
+    (res === PreconditionFailed "PredicateC (NotMember (Reference (Symbolic (Var 0))) [])")
     where
       sm'  = sm None
       cmds = Commands
