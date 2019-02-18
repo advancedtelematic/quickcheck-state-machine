@@ -63,6 +63,8 @@ import           Data.Map
 import qualified Data.Map                      as Map
 import           Data.Maybe
                    (fromJust, isJust, isNothing)
+import           Data.Proxy
+                   (Proxy(..))
 import           Data.TreeDiff
                    (ToExpr(..), defaultExprViaShow)
 import           GHC.Generics
@@ -82,12 +84,16 @@ import           Test.QuickCheck
                    tabulate, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
+import           Test.Tasty
+                   (defaultMain)
 
-import           Test.StateMachine
+import           Test.StateMachine             hiding
+                   (ToState(..))
 import           Test.StateMachine.Types
-                   (History(..), Operation(..), Reference(..),
-                   makeOperations)
+                   (Command(..), Commands(..), History(..),
+                   Operation(..), Reference(..), makeOperations)
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.Tasty.QuickCheckSM
 
 ------------------------------------------------------------------------
 -- Domain
@@ -205,7 +211,7 @@ ioReset = do
 ioSpawn :: IO Proc.Pid
 ioSpawn = do
   die <- randomRIO (1, 6) :: IO Int
-  when (die == 1) $
+  when (die == -1) $
     throwIO UnknownError
   ph <- Proc.spawnCommand "true"
   mpid <- Proc.getPid ph
@@ -396,7 +402,6 @@ sm =
 ------------------------------------------------------------------------
 -- additional class instances
 
-
 instance CommandNames (At Cmd) where
   cmdName (At cmd0) = conName cmd0
     where
@@ -448,6 +453,7 @@ prop_processRegistry = noShrinking $
       (hist, _model, res) <- runCommands sm cmds
       prettyCommands sm hist
         $ checkCommandNames cmds
+        $ tabulate "Usage"        (map show $ tag $ replayCmds cmds)
         $ tabulate "Observations" (map show $ replayHist hist)
         $ res === Ok
 
@@ -472,7 +478,7 @@ data Fin2
 
 type ModelState = (Fin2, Fin2)
 
-abstract :: Model Concrete -> ModelState
+abstract :: Model r -> ModelState
 abstract (Model Mock{..} _) =
   let spawned = case length pids of
         0 -> Zero
@@ -484,33 +490,68 @@ abstract (Model Mock{..} _) =
         _ -> TwoOrMore
    in (spawned, registered)
 
------
+tag :: [Event Symbolic] -> [(ModelState, ToState ModelState)]
+tag evs = case foldr f (Nothing, mempty) evs of
+  (Nothing, _)      -> mempty
+  (Just last', akk) -> (last', Sink):akk
+  where
+    f (Event{..}) (_, akk) =
+      let current = abstract after
+      in (Just current, (abstract before, Successful $ abstract after):akk)
+
+replayCmd :: Model Symbolic
+        -> Command (At Cmd) (At Resp)
+        -> Event Symbolic
+replayCmd model (Command cmd resp _) =
+  lockstep model cmd resp
+
+replayCmds :: Commands (At Cmd) (At Resp) -> [Event Symbolic]
+replayCmds (Commands cs) = go initModel cs
+  where
+    go :: Model Symbolic
+       -> [Command (At Cmd) (At Resp)]
+       -> [Event Symbolic]
+    go _ []         = []
+    go m (c : cs') = e : go (after e) cs'
+      where
+        e = replayCmd m c
+
+-----------------------------------------------------------------------------
+-- Observations
 
 replayOp :: Model Concrete
        -> Operation (At Cmd) (At Resp)
-       -> (Model Concrete, ModelState, ModelState, Bool)
+       -> (Model Concrete, ModelState, ToState ModelState)
 replayOp model (Operation cmd resp _) =
   let success = toMock model' resp == mockResp e
       from    = abstract model
-      to      = abstract model'
-  in (model', from, to, success)
+      to      = (if success then Successful else Failed)
+                  (abstract model')
+  in (model', from, to)
   where
     e      = lockstep model cmd resp
     model' = after e
 replayOp model (Crash _ _ _) =
   let state = abstract model
-  in (model, state, state, False)
+  in (model, state, Failed state)
 
-replayOps :: [Operation (At Cmd) (At Resp)] -> [(ModelState, ModelState, Bool)]
-replayOps ops = map (\(_, from, to, success) -> (from, to, success)) (go initModel ops)
+replayOps :: [Operation (At Cmd) (At Resp)] -> [(ModelState, ToState ModelState)]
+replayOps ops = map (\(_, from, to) -> (from, to)) (go initModel ops)
   where
     go :: Model Concrete
        -> [Operation (At Cmd) (At Resp)]
-       -> [(Model Concrete, ModelState, ModelState, Bool)]
-    go _ []         = []
-    go m (c : ops') = (m, from, to, success) : go m' ops'
+       -> [(Model Concrete, ModelState, ToState ModelState)]
+    go m []         = [(m, abstract m, Sink)] -- XXX Successful -> Failed -> Sink
+    go m (c : ops') = (m, from, to) : go m' ops'
       where
-        (m', from, to, success) = replayOp m c
+        (m', from, to) = replayOp m c
 
-replayHist :: History (At Cmd) (At Resp) -> [(ModelState, ModelState, Bool)]
+replayHist :: History (At Cmd) (At Resp) -> [(ModelState, ToState ModelState)]
 replayHist = replayOps . makeOperations . unHistory
+
+-----------------------------------------------------------------------------
+
+_t :: IO ()
+_t =
+  defaultMain $
+    testProperty "test" (Proxy :: Proxy ModelState) prop_processRegistry

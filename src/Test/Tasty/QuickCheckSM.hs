@@ -8,65 +8,59 @@
 {-# LANGUAGE TypeOperators              #-}
 
 module Test.Tasty.QuickCheckSM
-  ( testProperty
+  ( ToState (..)
+  , testProperty
   , successful
   ) where
 
+import qualified Data.Map                 as Map
 import           Data.Proxy
                    (Proxy(..))
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum)
+import           Generic.Data
+                   (gfiniteEnumFromTo, gmaxBound, gminBound)
 import           GHC.Generics
                    (Generic, Rep)
+import           GHC.TypeLits
+                   (SomeNat(..), someNatVal)
+import           MarkovChain
+                   (singleUseReliability, singleUseReliabilityIO)
 import           Options.Applicative
                    (metavar)
 import           Prelude
 import           System.FilePath
                    ((<.>), (</>))
-import qualified Test.QuickCheck              as QC
-import qualified Test.Tasty.Options           as Tasty
-import qualified Test.Tasty.Providers         as Tasty
-import qualified Test.Tasty.QuickCheck        as QC
+import qualified Test.QuickCheck          as QC
+import           Test.StateMachine.Markov
+import qualified Test.Tasty.Options       as Tasty
+import qualified Test.Tasty.Providers     as Tasty
+import qualified Test.Tasty.QuickCheck    as QC
 import           Test.Tasty.Runners
                    (formatMessage)
 import           Text.Printf
                    (printf)
 
-import           Generic.Data
-                   (gfiniteEnumFromTo, gmaxBound, gminBound)
-import           GHC.TypeLits
-                   (type (-), SomeNat(..), someNatVal)
-import           MarkovChain
-                   (reduceRow, singleUseReliability,
-                   singleUseReliabilityIO)
-import           Numeric.LinearAlgebra.Static
-                   (L)
-
-import           Test.StateMachine.Markov
-                   (CompatibleMatrices(..), Markov, compatibleMatrices,
-                   maybeToRight, results, transitionMatrix)
-
 ---------------------------------------------------------------------------------
 
 data QCSM
-  = forall model state cmd.
-      ( Ord state, Read state
-      , Generic state
-      , GEnum FiniteEnum (Rep state), GBounded (Rep state)
-      ) => QCSM Tasty.TestName (Proxy state) (Markov model state cmd) QC.Property
+  =  forall state.
+     ( Show state, Read state, Ord state
+     , Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state)
+     )
+  => QCSM Tasty.TestName (Proxy state) QC.Property
 
 testProperty
-  :: forall model state cmd a.
-     (Read state, Ord state)
-  => Generic state
-  => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
+  :: forall state a.
+     (Show state, Read state, Ord state)
+  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
   => QC.Testable a
   => Tasty.TestName
-  -> (Markov model state cmd -> a)
-  -> Markov model state cmd
+  -> (Proxy state)
+  -> a
   -> Tasty.TestTree
-testProperty name prop markov
-  = Tasty.singleTest name $ QCSM name (Proxy @state) markov (QC.property (prop markov))
+testProperty name proxy prop
+  = Tasty.singleTest name $ QCSM name proxy (QC.property prop)
 
 
 -- | Maximum ratio of failed tests before giving up
@@ -111,7 +105,7 @@ instance Tasty.IsTest QCSM where
     , Tasty.Option (Proxy :: Proxy StateMachinePath)
     ]
 
-  run opts (QCSM name proxy markov prop) _yieldProgress = do
+  run opts (QCSM name (proxy :: Proxy state) prop) _yieldProgress = do
     (replaySeed, args) <- optionSetToArgs opts
 
     let
@@ -128,10 +122,10 @@ instance Tasty.IsTest QCSM where
 
     rel <- case mfp of
       Just fp -> do
-        obs <- reliabilityWithPrior name fp proxy markov res
+        obs <- reliabilityWithPrior name fp proxy res
         return $ either id formatReliability obs
       Nothing -> do
-        let obs = reliability proxy markov res
+        let obs = reliability proxy res
         return $ either id formatReliability obs
 
     let testSuccessful  = successful res
@@ -142,26 +136,29 @@ instance Tasty.IsTest QCSM where
         if putReplayInDesc then replayMsg else "")
 
 reliabilityWithPrior
-  :: forall proxy state model cmd
+  :: forall proxy state
    . (Read state, Ord state)
   => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-  => Tasty.TestName -> FilePath -> proxy state -> Markov model state cmd -> QC.Result
+  => Tasty.TestName -> FilePath -> proxy state -> QC.Result
   -> IO (Either String Double)
-reliabilityWithPrior name fp proxy markov res = do
+reliabilityWithPrior name fp proxy res = do
   let succsFp = fp </> name <> "-succs" <.> "matrix"
       failsFp = fp </> name <> "-fails" <.> "matrix"
+
   case someNatVal dim' of
-    Nothing -> error "validation error: dim n"
+    Nothing -> fail "validation error: dim n"
     Just (SomeNat pn@(Proxy :: Proxy n)) -> do
-      let usage = transitionMatrix markov
-          obs   = results proxy (QC.tables res)
-      case compatibleMatrices pn usage obs of
-        Left err -> return (fail err)
-        Right (CompatibleMatrices (Proxy :: Proxy n) p s f) -> do
-          let q   :: L (n - 1) n
-              q   = reduceRow p
-          rel <- singleUseReliabilityIO pn q succsFp failsFp (s, f)
-          return (return rel)
+      case usage proxy <$> Map.lookup "Usage" (QC.tables res) of
+        Nothing -> fail "reliability: no 'Usage' table"
+        Just usg -> do
+          case results proxy <$> (Map.lookup "Observations" (QC.tables res)) of
+            Nothing -> fail "reliability: no 'Observations' table"
+            Just obs -> do
+              case compatibleMatrices pn usg obs of
+                Left err -> fail err
+                Right (CompatibleMatrices (Proxy :: Proxy n) q s f) -> do
+                  rel <- singleUseReliabilityIO pn q succsFp failsFp (s, f)
+                  return (pure rel)
   where
     dim' :: Integer
     dim' = succ $ toInteger $ length states
@@ -170,18 +167,19 @@ reliabilityWithPrior name fp proxy markov res = do
     states = gfiniteEnumFromTo gminBound gmaxBound
 
 reliability
-  :: forall proxy state model cmd
-   . (Read state, Ord state)
+  :: forall state.
+     (Read state, Ord state)
   => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-  => proxy state -> Markov model state cmd -> QC.Result
+  => Proxy state -> QC.Result
   -> Either String Double
-reliability proxy markov res = do
-  SomeNat pn@(Proxy :: Proxy n) <- maybeToRight (someNatVal dim') "validation error: dim n"
-  let obs   = results proxy (QC.tables res)
-      usage = transitionMatrix markov
-  CompatibleMatrices (Proxy :: Proxy n) p s f <- compatibleMatrices pn usage obs
-  let q   :: L (n - 1) n
-      q   = reduceRow p
+reliability proxy res = do
+  SomeNat pn@(Proxy :: Proxy n) <- maybeToRight (someNatVal dim')
+    "validation error: dim n"
+  usg <- usage proxy <$> maybeToRight (Map.lookup "Usage" (QC.tables res))
+    "reliability: no 'Usage' table"
+  obs <- results proxy <$> maybeToRight (Map.lookup "Observations" (QC.tables res))
+    "reliability: no 'Observations' table"
+  CompatibleMatrices (Proxy :: Proxy n) q s f <- compatibleMatrices pn usg obs
   return $ singleUseReliability pn q Nothing (s, f)
   where
     dim' :: Integer

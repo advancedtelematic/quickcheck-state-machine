@@ -22,7 +22,6 @@ module Test.StateMachine
   , checkCommandNames
   , commandNames
   , commandNamesInOrder
-  , tabulateState
 
     -- * Parallel property combinators
   , forAllParallelCommands

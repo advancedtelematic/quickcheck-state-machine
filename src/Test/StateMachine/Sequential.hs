@@ -41,7 +41,6 @@ module Test.StateMachine.Sequential
   , commandNames
   , commandNamesInOrder
   , checkCommandNames
-  , tabulateState
   )
   where
 
@@ -58,10 +57,6 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
-import           Data.Function
-                   (on)
-import           Data.List
-                   (groupBy, sortBy)
 import qualified Data.Map                          as M
 import           Data.Map.Strict
                    (Map)
@@ -82,7 +77,7 @@ import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, sized)
 import           Test.QuickCheck.Monadic
-                   (PropertyM, monitor, run)
+                   (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 import qualified Text.PrettyPrint.ANSI.Leijen      as PP
@@ -474,47 +469,3 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
   where
     go :: [String] -> Command cmd resp -> [String]
     go ih cmd = commandName cmd : ih
-
-------------------------------------------------------------------------
-
-tabulateState :: forall model state cmd m resp. (MonadIO m, Show state)
-              => (Eq state, CommandNames cmd)
-              => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-              => AdvancedStateMachine model state cmd m resp
-              -> History cmd resp
-              -> PropertyM m ()
-tabulateState StateMachine {..} hist = case distribution of
-  Nothing              -> error "tabulateState: A Markov chain must be specified."
-  Just (markov, start) -> do
-    let stateTransitions = go markov start initModel [] (makeOperations (unHistory hist))
-    mapM_ (monitor . uncurry newTabulate) (groupByState stateTransitions)
-  where
-    go :: Markov model state cmd -> state -> model Concrete
-       -> [(state, String, ToState state)] -> [Operation cmd resp]
-       -> [(state, String, ToState state)]
-    go _markov state  _model acc []         = reverse ((state, "Stop", Sink) : acc)
-    go markov  state  model  acc (op : ops) =
-      let
-        cmd     = operationCommand op
-        conName = cmdName cmd
-        state'  = fromMaybe (error ("gatherTransition: " ++ conName ++
-                                    " not found in Markov chain."))
-                            (lookupMarkov markov state conName)
-      in
-        case op of
-          Operation _cmd resp _pid
-  -- XXX: check invariant
-            | boolean (postcondition model cmd resp) ->
-                go markov state' (transition model cmd resp)
-                   ((state, conName, Successful state') : acc) ops
-            | otherwise -> reverse ((state, conName, Failed state') : acc)
-          Crash _cmd _err _pid -> reverse ((state, conName, Failed state') : acc)
-
-    groupByState :: [(state, String, ToState state)] -> [(String, [String])]
-    groupByState
-      = concatMap (\xs -> case xs of
-          []         -> []
-          (s, _) : _ -> [(s, map snd xs)])
-      . groupBy ((==)    `on` fst)
-      . sortBy  (compare `on` fst)
-      . map (\(state, _conName, estate') -> (show state, show estate'))
