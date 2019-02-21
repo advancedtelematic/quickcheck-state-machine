@@ -7,13 +7,13 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Test.Tasty.QuickCheckSM
+module Test.Tasty.QuickCheck.Sampling
   ( ToState (..)
   , testProperty
   , successful
   ) where
 
-import qualified Data.Map                 as Map
+import qualified Data.Map                   as Map
 import           Data.Proxy
                    (Proxy(..))
 import           Generic.Data
@@ -31,11 +31,11 @@ import           Options.Applicative
 import           Prelude
 import           System.FilePath
                    ((<.>), (</>))
-import qualified Test.QuickCheck          as QC
-import           Test.StateMachine.Markov
-import qualified Test.Tasty.Options       as Tasty
-import qualified Test.Tasty.Providers     as Tasty
-import qualified Test.Tasty.QuickCheck    as QC
+import qualified Test.QuickCheck            as QC
+import           Test.StateMachine.Sampling
+import qualified Test.Tasty.Options         as Tasty
+import qualified Test.Tasty.Providers       as Tasty
+import qualified Test.Tasty.QuickCheck      as QC
 import           Test.Tasty.Runners
                    (formatMessage)
 import           Text.Printf
@@ -43,12 +43,12 @@ import           Text.Printf
 
 ---------------------------------------------------------------------------------
 
-data QCSM
+data QCSampling
   =  forall state.
      ( Show state, Read state, Ord state
      , Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state)
      )
-  => QCSM Tasty.TestName (Proxy state) QC.Property
+  => QCSampling Tasty.TestName (Proxy state) QC.Property
 
 testProperty
   :: forall state a.
@@ -60,7 +60,7 @@ testProperty
   -> a
   -> Tasty.TestTree
 testProperty name proxy prop
-  = Tasty.singleTest name $ QCSM name proxy (QC.property prop)
+  = Tasty.singleTest name $ QCSampling name proxy (QC.property prop)
 
 
 -- | Maximum ratio of failed tests before giving up
@@ -93,7 +93,7 @@ optionSetToArgs opts = do
   where
     StateMachineMaxFailPercent maxFail = Tasty.lookupOption opts
 
-instance Tasty.IsTest QCSM where
+instance Tasty.IsTest QCSampling where
   testOptions = pure
     [ Tasty.Option (Proxy :: Proxy QC.QuickCheckTests)
     , Tasty.Option (Proxy :: Proxy QC.QuickCheckReplay)
@@ -105,7 +105,7 @@ instance Tasty.IsTest QCSM where
     , Tasty.Option (Proxy :: Proxy StateMachinePath)
     ]
 
-  run opts (QCSM name (proxy :: Proxy state) prop) _yieldProgress = do
+  run opts (QCSampling name (proxy :: Proxy state) prop) _yieldProgress = do
     (replaySeed, args) <- optionSetToArgs opts
 
     let

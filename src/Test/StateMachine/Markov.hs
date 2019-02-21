@@ -21,7 +21,6 @@ module Test.StateMachine.Markov
   , ToState(..)
   , SomeMatrix(..)
   , ppSomeMatrix
-  , usage
   , results
   , maybeToRight
   , CompatibleMatrices(..)
@@ -47,7 +46,7 @@ import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
 import           Data.Maybe
-                   (fromJust, fromMaybe)
+                   (fromMaybe)
 import           Data.Proxy
                    (Proxy(Proxy))
 import           Data.String
@@ -66,10 +65,8 @@ import           GHC.TypeLits
                    natVal, sameNat, someNatVal)
 import           GHC.TypeLits.Compare
                    ((:<=?)(..), (%<=?))
-import           Numeric.LinearAlgebra
-                   (fromRows)
 import           Numeric.LinearAlgebra.Static
-                   -- (L, R, Sq, dvmap, linspace, matrix, norm_1)
+                   (L, Sq, matrix)
 import           Prelude
 import           System.Random
                    (RandomGen, mkStdGen, randomR)
@@ -198,7 +195,7 @@ markovToGraphElems markov _start = (nodes, edges)
 transitionMatrix :: forall model state cmd. (Eq state, Generic state)
                  => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
                  => Markov model state cmd -> SomeMatrix
-transitionMatrix markov = fromMaybe (error "transitionMatrix: impossible") $ do
+transitionMatrix markov = fromMaybe (error "results: impossible") $ do
   SomeNat pn@(Proxy :: Proxy n) <- someNatVal dimension
   return (SomeMatrix pn pn (matrix values :: Sq n))
   where
@@ -237,8 +234,8 @@ lookupFrequency markov (Just from) to =
 
 ------------------------------------------------------------------------
 
---- | We can transition into a state successful or not, or the it can
---- actually be the sink/stop state.
+-- | We can transition into a state successful or not, or the it can
+-- actually be the sink/stop state.
 data ToState state
   = Successful state
   | Failed state
@@ -252,43 +249,26 @@ data SomeMatrix where
 ppSomeMatrix :: SomeMatrix -> String
 ppSomeMatrix (SomeMatrix _ _ mat) = show mat
 
-probabilisticNormalize :: SomeMatrix -> SomeMatrix
-probabilisticNormalize (SomeMatrix pm pn m) =
-  let f = fromJust . create . fromRows . map (unwrap . normalizeV) . toRows
-  in SomeMatrix pm pn (f m)
-
-normalizeV :: KnownNat n => R n -> R n
-normalizeV v = v / linspace (norm_1 v, norm_1 v)
-
-usage
-  :: forall state proxy. (Read state, Ord state)
-  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-  => proxy state -> Map String Int
-  -> SomeMatrix
-usage _ = probabilisticNormalize . go . fst . readTable @state
-  where
-    go = fromMaybe (error "usage: impossible") . toMatrix
-
-results
-  :: forall state proxy. (Read state, Ord state)
-  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-  => proxy state -> Map String Int
-  -> (SomeMatrix, SomeMatrix)
-results _ = bimap go go . readTable @state
+results :: forall state proxy. (Read state, Ord state)
+        => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+        => proxy state -> Map String (Map String Int)
+        -> (SomeMatrix, SomeMatrix)
+results _ = bimap go go . readTables @state
   where
     go = fromMaybe (error "results: impossible") . toMatrix
 
-readTable :: (Read state, Ord state)
-           => Map String Int
+readTables :: (Read state, Ord state)
+           => Map String (Map String Int)
            -> (Map (state, Maybe state) Double, Map (state, Maybe state) Double)
-readTable m = bimap Map.fromList Map.fromList $ swap $
+readTables m = bimap Map.fromList Map.fromList $ swap $
   partitionEithers
-    [ case s' of
-        Successful s'' -> Right ((s, Just s''), fromIntegral n)
-        Failed     s'' -> Left  ((s, Just s''), fromIntegral n)
-        Sink           -> Right ((s, Nothing),  fromIntegral n)
+    [ case read es' of
+        Successful s' -> Right ((s, Just s'), fromIntegral n)
+        Failed     s' -> Left  ((s, Just s'), fromIntegral n)
+        Sink          -> Right ((s, Nothing), fromIntegral n)
         -- ^ Transitioning into a sink never fails.
-    | ((s, s'), n)  <- map (first read) (Map.toList m)
+    | (s, m')  <- map (first read) (Map.toList m)
+    , (es', n) <- Map.toList m'
     ]
 
 toMatrix :: forall state. Ord state
@@ -327,12 +307,12 @@ data CompatibleMatrices n where
     , 1 <= (n - 1)
     , (n - 1) <= n
     , (n - (n - 1)) ~ 1
-    ) => Proxy n -> L (n - 1) n -> L (n - 1) n -> L (n - 1) n -> CompatibleMatrices n
+    ) => Proxy n -> Sq n -> L (n - 1) n -> L (n - 1) n -> CompatibleMatrices n
 
 compatibleMatrices :: KnownNat n => Proxy n -> SomeMatrix -> (SomeMatrix, SomeMatrix)
                    -> Either String (CompatibleMatrices n)
 compatibleMatrices pn (SomeMatrix po pp p) (SomeMatrix pm pq s, SomeMatrix pr ps f) = do
-  Refl <- maybeToRight (lemma0  po pn) "lemma0 pn po"
+  Refl <- maybeToRight (sameNat pn po) "sameNat pn po"
   Refl <- maybeToRight (sameNat pn pp) "sameNat pn pp"
   Refl <- maybeToRight (sameNat pn pq) "sameNat pn pq"
   Refl <- maybeToRight (sameNat pn ps) "sameNat pn ps"

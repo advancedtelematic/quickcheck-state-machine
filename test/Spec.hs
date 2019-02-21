@@ -4,6 +4,8 @@ module Main (main) where
 
 import           Control.Exception
                    (catch)
+import           Data.Proxy
+                   (Proxy(..))
 import           Prelude
 import           System.Exit
                    (ExitCode(..))
@@ -19,9 +21,10 @@ import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
                    (expectFailure, ioProperty, testProperty,
                    withMaxSuccess)
+import qualified Test.Tasty.QuickCheck.Sampling as Sampling
 
 import           CircularBuffer
-import qualified CrudWebserverDb       as WS
+import qualified CrudWebserverDb                as WS
 import           DieHard
 import           Echo
 import           ErrorEncountered
@@ -81,7 +84,7 @@ tests docker0 = testGroup "Tests"
           (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
       ]
   , testGroup "ProcessRegistry"
-     [ testProperty "sequential" prop_processRegistry
+     [ Sampling.testProperty "sequential" (Proxy :: Proxy ModelState) prop_processRegistry
      , testProperty "parallel" prop_parallelProcessRegistry
      ]
   ]

@@ -35,6 +35,7 @@ library
                      , Test.StateMachine.Logic
                      , Test.StateMachine.Markov
                      , Test.StateMachine.Parallel
+                     , Test.StateMachine.Sampling
                      , Test.StateMachine.Sequential
                      , Test.StateMachine.Types
                      , Test.StateMachine.Types.Environment
@@ -42,7 +43,8 @@ library
                      , Test.StateMachine.Types.History
                      , Test.StateMachine.Types.Rank2
                      , Test.StateMachine.Types.References
-                     , Test.Tasty.QuickCheckSM
+                     , Test.Tasty.QuickCheck.Markov
+                     , Test.Tasty.QuickCheck.Sampling
                      , Test.StateMachine.Utils
                      , Test.StateMachine.Z
   other-modules:

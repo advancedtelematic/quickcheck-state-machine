@@ -32,7 +32,8 @@
 -----------------------------------------------------------------------------
 
 module ProcessRegistry
-  ( prop_processRegistry
+  ( ModelState
+  , prop_processRegistry
   , prop_parallelProcessRegistry
   , sm
   )
@@ -56,27 +57,25 @@ import           Data.Functor.Classes
                    (Eq1, Show1)
 import           Data.Hashable
                    (Hashable(..))
-import qualified Data.HashTable.IO             as HashTable
-import qualified Data.List                     as List
+import qualified Data.HashTable.IO              as HashTable
+import qualified Data.List                      as List
 import           Data.Map
                    (Map)
-import qualified Data.Map                      as Map
+import qualified Data.Map                       as Map
 import           Data.Maybe
                    (fromJust, isJust, isNothing)
-import           Data.Proxy
-                   (Proxy(..))
 import           Data.TreeDiff
                    (ToExpr(..), defaultExprViaShow)
 import           GHC.Generics
                    (Generic)
-import           Prelude                       hiding
+import           Prelude                        hiding
                    (elem, notElem)
-import qualified Prelude                       as P
+import qualified Prelude                        as P
 import           System.IO.Unsafe
                    (unsafePerformIO)
 import           System.Posix.Types
                    (CPid(..))
-import qualified System.Process                as Proc
+import qualified System.Process                 as Proc
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
@@ -84,16 +83,14 @@ import           Test.QuickCheck
                    tabulate, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
-import           Test.Tasty
-                   (defaultMain)
 
-import           Test.StateMachine             hiding
+import           Test.StateMachine              hiding
                    (ToState(..))
 import           Test.StateMachine.Types
                    (Command(..), Commands(..), History(..),
                    Operation(..), Reference(..), makeOperations)
-import qualified Test.StateMachine.Types.Rank2 as Rank2
-import           Test.Tasty.QuickCheckSM
+import qualified Test.StateMachine.Types.Rank2  as Rank2
+import           Test.Tasty.QuickCheck.Sampling
 
 ------------------------------------------------------------------------
 -- Domain
@@ -548,10 +545,3 @@ replayOps ops = map (\(_, from, to) -> (from, to)) (go initModel ops)
 
 replayHist :: History (At Cmd) (At Resp) -> [(ModelState, ToState ModelState)]
 replayHist = replayOps . makeOperations . unHistory
-
------------------------------------------------------------------------------
-
-_t :: IO ()
-_t =
-  defaultMain $
-    testProperty "test" (Proxy :: Proxy ModelState) prop_processRegistry
