@@ -430,7 +430,7 @@ prettyPrintHistory StateMachine { initModel, transition }
         , modelDiff current previous
         , PP.line, PP.line
         , PP.string "   == "
-        , PP.string (show cmd)
+        , PP.string (ppShow cmd)
         , PP.string " ==> "
         , PP.string err
         , PP.string " [ "
@@ -444,9 +444,9 @@ prettyPrintHistory StateMachine { initModel, transition }
         , modelDiff current previous
         , PP.line, PP.line
         , PP.string "   == "
-        , PP.string (show cmd)
+        , PP.string (ppShow cmd)
         , PP.string " ==> "
-        , PP.string (show resp)
+        , PP.string (ppShow resp)
         , PP.string " [ "
         , PP.int (unPid pid)
         , PP.string " ]"
