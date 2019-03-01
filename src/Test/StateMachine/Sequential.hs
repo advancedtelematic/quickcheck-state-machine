@@ -25,6 +25,7 @@
 
 module Test.StateMachine.Sequential
   ( forAllCommands
+  , existsCommands
   , generateCommands
   , generateCommandsState
   , getUsedVars
@@ -80,7 +81,8 @@ import           GHC.Generics
                    (Generic, Rep)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, collect, sized)
+                   (Gen, Property, Testable, choose, collect, once,
+                   sized, suchThat)
 import           Test.QuickCheck.Monadic
                    (PropertyM, monitor, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -111,6 +113,23 @@ forAllCommands :: (Testable prop, Show state)
                -> Property
 forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
+
+-- | Generate commands from a list of generators.
+existsCommands :: (Show (cmd Symbolic), Show (resp Symbolic))
+               => (Testable prop, Rank2.Foldable resp)
+               => AdvancedStateMachine model state cmd m resp
+               -> [model Symbolic -> Gen (cmd Symbolic)]  -- ^ Generators.
+               -> (Commands cmd resp -> prop)             -- ^ Predicate.
+               -> Property
+existsCommands StateMachine { initModel, precondition, transition, mock } gens0 =
+  once . forAllShrinkShow (go gens0 initModel newCounter []) (const []) ppShow
+  where
+    go []           _model _counter acc = return (Commands (reverse acc))
+    go (gen : gens) model  counter  acc = do
+      cmd <- gen model `suchThat` (boolean . precondition model)
+      let (resp, counter') = runGenSym (mock model cmd) counter
+      go gens (transition model cmd resp) counter'
+         (Command cmd resp (getUsedVars resp) : acc)
 
 generateCommands :: (Rank2.Foldable resp, Show (model Symbolic))
                  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
