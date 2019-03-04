@@ -114,7 +114,7 @@ forAllCommands sm mnum =
   forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
 
 -- | Generate commands from a list of generators.
-existsCommands :: (Show (cmd Symbolic), Show (resp Symbolic))
+existsCommands :: (Show (model Symbolic), Show (cmd Symbolic), Show (resp Symbolic))
                => (Testable prop, Rank2.Foldable resp)
                => StateMachine model cmd m resp
                -> [model Symbolic -> Gen (cmd Symbolic)]  -- ^ Generators.
@@ -125,10 +125,17 @@ existsCommands StateMachine { initModel, precondition, transition, mock } gens0 
   where
     go []           _model _counter acc = return (Commands (reverse acc))
     go (gen : gens) model  counter  acc = do
-      cmd <- gen model `suchThat` (boolean . precondition model)
+      cmd <- fromMaybe (deadlockError model) <$>
+               suchThatMaybeN 100 (gen model) (boolean . precondition model)
       let (resp, counter') = runGenSym (mock model cmd) counter
       go gens (transition model cmd resp) counter'
          (Command cmd resp (getUsedVars resp) : acc)
+
+    deadlockError model = error $ concat
+      [ "A deadlock occured while generating commands.\n"
+      , "No pre-condition holds in the following model:\n"
+      , ppShow model
+      ]
 
 generateCommands :: (Rank2.Foldable resp, Show (model Symbolic))
                  => CommandNames cmd

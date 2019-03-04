@@ -37,12 +37,13 @@ tests docker0 = testGroup "Tests"
   , ShrinkingProps.tests
   , testProperty "Die Hard"
       (expectFailure (withMaxSuccess 2000 prop_dieHard))
-  , testGroup "Memory reference"
-      [ testProperty "No bug"                             (prop_sequential None)
-      , testProperty "Logic bug"           (expectFailure (prop_sequential Logic))
-      , testProperty "Race bug sequential"                (prop_sequential Race)
-      , testProperty "Race bug parallel"   (expectFailure (prop_parallel   Race))
-      , testProperty "Precondition failed" prop_precondition
+  , testGroup "MemoryReference"
+      [ testProperty "NoBug"                            (prop_sequential None)
+      , testProperty "LogicBug"          (expectFailure (prop_sequential Logic))
+      , testProperty "RaceBugSequential"                (prop_sequential Race)
+      , testProperty "RaceBugParallel"   (expectFailure (prop_parallel   Race))
+      , testProperty "PreconditionFailed" prop_precondition
+      , testProperty "ExistsCommands"     prop_existsCommands
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "sequential" prop_error_sequential

@@ -24,6 +24,7 @@ module Test.StateMachine.Utils
   , whenFailM
   , forAllShrinkShow
   , anyP
+  , suchThatMaybeN
   , suchThatOneOf
   , oldCover
   , Shrunk(..)

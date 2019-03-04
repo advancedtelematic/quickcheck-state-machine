@@ -13,6 +13,7 @@ module MemoryReference
   ( prop_sequential
   , prop_parallel
   , prop_precondition
+  , prop_existsCommands
   , Bug(..)
   )
   where
@@ -41,7 +42,8 @@ import           Test.QuickCheck.Monadic
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
-                   (Commands(..), Reference(..), Symbolic(..), Var(..))
+                   (Commands(Commands), Reference(..), Symbolic(..),
+                   Var(Var))
 import qualified Test.StateMachine.Types       as Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Z
@@ -143,12 +145,18 @@ mock (Model m) cmd = case cmd of
   Increment _ -> pure Incremented
 
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
-generator (Model model) = Just $ frequency
-  [ (1, pure Create)
-  , (4, Read  <$> elements (domain model))
-  , (4, Write <$> elements (domain model) <*> arbitrary)
-  , (4, Increment <$> elements (domain model))
+generator m = Just $ frequency
+  [ (1, genCreate m)
+  , (4, genWrite m)
+  , (4, genRead m)
+  , (4, genIncr m)
   ]
+
+genCreate, genRead, genWrite, genIncr :: Model Symbolic -> Gen (Command Symbolic)
+genCreate _model        = return Create
+genRead   (Model model) = Read  <$> elements (domain model)
+genWrite  (Model model) = Write <$> elements (domain model) <*> arbitrary
+genIncr   (Model model) = Increment <$> elements (domain model)
 
 shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
 shrinker _ (Write ref i) = [ Write ref i' | i' <- shrink i ]
@@ -180,3 +188,16 @@ prop_precondition = once $ monadicIO $ do
       sm'  = sm None
       cmds = Commands
         [ Types.Command (Read (Reference (Symbolic (Var 0)))) (ReadValue 0) [] ]
+
+prop_existsCommands :: Property
+prop_existsCommands = existsCommands sm' gens $ \cmds -> monadicIO $ do
+  (hist, _model, res) <- runCommands sm' cmds
+  prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
+  where
+    sm'  = sm None
+    gens =
+      [ genCreate
+      , genWrite
+      , genIncr
+      , genRead
+      ]
