@@ -1,6 +1,5 @@
 {-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE PolyKinds             #-}
@@ -28,6 +27,7 @@ module Test.StateMachine.Sequential
   , existsCommands
   , generateCommands
   , generateCommandsState
+  , deadlockError
   , getUsedVars
   , shrinkCommands
   , shrinkAndValidate
@@ -71,6 +71,10 @@ import           Data.Proxy
 import qualified Data.Set                          as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
+import           Generic.Data
+                   (FiniteEnum, GBounded, GEnum)
+import           GHC.Generics
+                   (Generic, Rep)
 import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, once,
@@ -101,12 +105,12 @@ forAllCommands :: Testable prop
                -> Maybe Int -- ^ Minimum number of commands.
                -> (Commands cmd resp -> prop)     -- ^ Predicate.
                -> Property
-forAllCommands sm mnum =
-  forAllShrinkShow (generateCommands sm mnum) (shrinkCommands sm) ppShow
+forAllCommands sm mminSize =
+  forAllShrinkShow (generateCommands sm mminSize) (shrinkCommands sm) ppShow
 
 -- | Generate commands from a list of generators.
-existsCommands :: (Show (model Symbolic), Show (cmd Symbolic), Show (resp Symbolic))
-               => (Testable prop, Rank2.Foldable resp)
+existsCommands :: forall model cmd m resp prop. (Testable prop, Rank2.Foldable resp)
+               => (Show (model Symbolic), Show (cmd Symbolic), Show (resp Symbolic))
                => StateMachine model cmd m resp
                -> [model Symbolic -> Gen (cmd Symbolic)]  -- ^ Generators.
                -> (Commands cmd resp -> prop)             -- ^ Predicate.
@@ -114,19 +118,30 @@ existsCommands :: (Show (model Symbolic), Show (cmd Symbolic), Show (resp Symbol
 existsCommands StateMachine { initModel, precondition, transition, mock } gens0 =
   once . forAllShrinkShow (go gens0 initModel newCounter []) (const []) ppShow
   where
+    go :: [model Symbolic -> Gen (cmd Symbolic)] -> model Symbolic -> Counter
+       -> [Command cmd resp] -> Gen (Commands cmd resp)
     go []           _model _counter acc = return (Commands (reverse acc))
     go (gen : gens) model  counter  acc = do
-      cmd <- fromRight (deadlockError model) <$>
+      cmd <- either (deadlockError model acc . ppShow) id <$>
                gen model `suchThatEither` (boolean . precondition model)
       let (resp, counter') = runGenSym (mock model cmd) counter
       go gens (transition model cmd resp) counter'
          (Command cmd resp (getUsedVars resp) : acc)
 
-    deadlockError model = error $ concat
-      [ "A deadlock occured while generating commands.\n"
-      , "No pre-condition holds in the following model:\n"
-      , ppShow model
-      ]
+deadlockError :: (Show (model Symbolic), Show (cmd Symbolic), Show (resp Symbolic))
+              => model Symbolic -> [Command cmd resp] -> String -> b
+deadlockError model generated counterexamples = error $ concat
+  [ "\n"
+  , "A deadlock occured while generating commands.\n"
+  , "No pre-condition holds in the following model:\n\n"
+  , "    " ++ ppShow model
+  , "\n\nThe following commands have been generated so far:\n\n"
+  , "    " ++ ppShow generated
+  , "\n\n"
+  , "Example commands generated whose pre-condition doesn't hold:\n\n"
+  , "    " ++ counterexamples
+  , "\n"
+  ]
 
 generateCommands :: (Rank2.Foldable resp, Show (model Symbolic))
                  => (Show (cmd Symbolic), Show (resp Symbolic))
@@ -145,30 +160,19 @@ generateCommandsState :: forall model cmd m resp. Rank2.Foldable resp
 generateCommandsState StateMachine { precondition, generator, transition, mock } counter0 mminSize = do
   let minSize = fromMaybe 0 mminSize
   size0 <- lift (sized (\k -> choose (minSize, k + minSize)))
-  Commands <$> go size0 counter0 []
+  go size0 counter0 []
   where
     go :: Int -> Counter -> [Command cmd resp]
-       -> StateT (model Symbolic) Gen [Command cmd resp]
-    go 0    _       cmds = return (reverse cmds)
+       -> StateT (model Symbolic) Gen (Commands cmd resp)
+    go 0    _       cmds = return (Commands (reverse cmds))
     go size counter cmds = do
       model <- get
       case generator model of
-        Nothing  -> return (reverse cmds)
+        Nothing  -> return (Commands (reverse cmds))
         Just gen -> do
           enext <- lift $ gen `suchThatEither` (boolean . precondition model)
           case enext of
-            Left ces -> error $ concat
-                          [ "\n"
-                          , "A deadlock occured while generating commands.\n"
-                          , "No pre-condition holds in the following model:\n\n"
-                          , "    " ++ ppShow model
-                          , "\n\nThe following commands have been generated so far:\n\n"
-                          , "    " ++ ppShow (reverse cmds)
-                          , "\n\n"
-                          , "Example commands generated whose pre-condition doesn't hold:\n\n"
-                          , "    " ++ ppShow ces
-                          , "\n"
-                          ]
+            Left  ces  -> deadlockError model (reverse cmds) (ppShow ces)
             Right next -> do
               let (resp, counter') = runGenSym (mock model next) counter
               put (transition model next resp)

@@ -44,12 +44,12 @@ import           Data.Bifunctor
                    (bimap)
 import           Data.List
                    (partition, permutations)
-import qualified Data.Map.Strict                   as Map
+import qualified Data.Map.Strict               as Map
 import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                          as S
+import qualified Data.Set                      as S
 import           Data.Tree
                    (Tree(Node))
 import           Prelude
@@ -68,7 +68,7 @@ import           Test.StateMachine.BoxDrawer
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2     as Rank2
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------

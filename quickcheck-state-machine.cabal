@@ -33,6 +33,7 @@ library
                      , Test.StateMachine.BoxDrawer
                      , Test.StateMachine.ConstructorName
                      , Test.StateMachine.Logic
+                     , Test.StateMachine.Markov
                      , Test.StateMachine.Parallel
                      , Test.StateMachine.Sequential
                      , Test.StateMachine.Types
@@ -50,11 +51,12 @@ library
         base >=4.10 && <5,
         containers >=0.5.7.1,
         exceptions >=0.8.3,
+        generic-data >= 0.3.0.0,
         mtl >=2.2.1,
         pretty-show >=1.6.16,
         QuickCheck >=2.9.2,
+        random >= 1.1,
         tree-diff >=0.0.2,
-        vector >=0.12.0.1,
         unliftio >=0.2.7.0
   default-language:    Haskell2010
 
