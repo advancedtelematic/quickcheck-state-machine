@@ -24,9 +24,9 @@ module Test.StateMachine.Utils
   , whenFailM
   , forAllShrinkShow
   , anyP
-  , suchThatMaybeN
-  , suchThatOneOf
+  , suchThatEither
   , oldCover
+  , newTabulate
   , Shrunk(..)
   , shrinkS
   , shrinkListS
@@ -40,9 +40,8 @@ import           Prelude
 
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, Testable, again,
-                   counterexample, frequency, resize, shrink,
-                   shrinkList, shrinking, sized, suchThatMaybe,
-                   whenFail)
+                   counterexample, resize, shrink, shrinkList,
+                   shrinking, sized, whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
@@ -51,6 +50,10 @@ import           Test.QuickCheck.Property
 #if !MIN_VERSION_QuickCheck(2,10,0)
 import           Test.QuickCheck.Property
                    (succeeded)
+#endif
+#if MIN_VERSION_QuickCheck(2,12,0)
+import           Test.QuickCheck
+                   (tabulate)
 #endif
 
 ------------------------------------------------------------------------
@@ -87,29 +90,15 @@ instance Testable () where
     liftUnit () = succeeded
 #endif
 
--- | Like 'Test.QuickCheck.suchThatMaybe', but retries @n@ times.
-suchThatMaybeN :: Int -> Gen a -> (a -> Bool) -> Gen (Maybe a)
-suchThatMaybeN 0 _   _ = return Nothing
-suchThatMaybeN n gen p = do
-  mx <- gen `suchThatMaybe` p
-  case mx of
-    Just x  -> return (Just x)
-    Nothing -> sized (\m -> resize (m + 1) (suchThatMaybeN (n - 1) gen p))
-
-suchThatOneOf :: [(Int, Gen a)] -> (a -> Bool) -> Gen (Maybe a)
-gens0 `suchThatOneOf` p = go gens0 (length gens0 - 1)
+suchThatEither :: Gen a -> (a -> Bool) -> Gen (Either [a] a)
+gen `suchThatEither` p = sized (try [] 0 . max 100)
   where
-    go []   _ = return Nothing
-    go gens n = do
-      i <- frequency (zip (map fst gens) (map return [0 .. n]))
-      case splitAt i gens of
-        (_,     [])           -> error ("suchThatOneOf: impossible, as we" ++
-                                       " split the list on its length - 1.")
-        (gens', gen : gens'') -> do
-           mx <- suchThatMaybeN 20 (snd gen) p
-           case mx of
-             Just x  -> return (Just x)
-             Nothing -> go (gens' ++ gens'') (n - 1)
+    try ces _ 0 = return (Left (reverse ces))
+    try ces k n = do
+      x <- resize (2 * k + n) gen
+      if p x
+      then return (Right x)
+      else try (x : ces) (k + 1) (n - 1)
 
 -- | Pre-QuickCheck-2.12 version of cover.
 oldCover :: Testable prop => Bool -> Int -> String -> prop -> Property
@@ -120,6 +109,15 @@ oldCover x n s p =
   -- QuickCheck-2.12 introduced a breaking change in the cover
   -- combinator, see issue #248 for details.
   cover (fromIntegral n) x s p
+#endif
+
+-- | The tabulate combinator was only introduced in QuickCheck-2.12.
+newTabulate :: Testable prop => String -> [String] -> prop -> Property
+newTabulate key values p =
+#if !MIN_VERSION_QuickCheck(2,12,0)
+  property p
+#else
+  tabulate key values p
 #endif
 
 -----------------------------------------------------------------------------

@@ -332,7 +332,6 @@ sm = QSM.StateMachine {
        , semantics     = semantics
        , mock          = mock
        , invariant     = Nothing
-       , distribution  = Nothing
        }
 
 {-------------------------------------------------------------------------------
