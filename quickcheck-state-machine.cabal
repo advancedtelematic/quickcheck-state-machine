@@ -42,7 +42,6 @@ library
                      , Test.StateMachine.Types.History
                      , Test.StateMachine.Types.Rank2
                      , Test.StateMachine.Types.References
-                     , Test.Tasty.QuickCheckSM
                      , Test.StateMachine.Utils
                      , Test.StateMachine.Z
   other-modules:
@@ -55,8 +54,8 @@ library
         filepath,
         generic-data >=0.3.0.0,
         graphviz,
-        hmatrix,
         markov-chain-usage-model,
+        matrix,
         mtl >=2.2.1,
         optparse-applicative,
         pretty-show >=1.6.16,
@@ -84,7 +83,6 @@ test-suite quickcheck-state-machine-test
                        generic-data,
                        hashable,
                        hashtables >=1.2,
-                       hmatrix,
                        http-client,
                        markov-chain-usage-model,
                        monad-logger,

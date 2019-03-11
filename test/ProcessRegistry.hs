@@ -41,8 +41,6 @@ module ProcessRegistry
   , markovNotStochastic3
   , sm
   , initFiniteModel
-  , printStaticStats
-  , printStats
   )
   where
 
@@ -71,22 +69,13 @@ import           Data.Map
 import qualified Data.Map                      as Map
 import           Data.Maybe
                    (fromJust, isJust, isNothing)
-import           Data.Proxy
-                   (Proxy(Proxy))
 import           Data.TreeDiff
                    (ToExpr(..), defaultExprViaShow)
-import           Generic.Data
-                   (gfiniteEnumFromTo, gmaxBound, gminBound)
 import           GHC.Generics
                    (Generic)
-import qualified Numeric.LinearAlgebra         as LinAlg
-import           Numeric.LinearAlgebra.Static
-                   (L, Sq, matrix, unwrap)
 import           Prelude                       hiding
                    (elem, notElem)
 import qualified Prelude                       as P
-import           System.FilePath
-                   ((<.>), (</>))
 import           System.IO.Unsafe
                    (unsafePerformIO)
 import           System.Posix.Types
@@ -95,15 +84,10 @@ import qualified System.Process                as Proc
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Gen, Property, elements, maxFailPercent,
-                   maxSuccess, noShrinking, oneof,
-                   quickCheckWithResult, stdArgs, tables, (===))
+                   (Gen, Property, elements, noShrinking, oneof, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
-import           Text.Printf
-                   (printf)
 
-import           MarkovChain
 import           Test.StateMachine
 import           Test.StateMachine.Types
                    (Reference(..))
@@ -586,48 +570,3 @@ markovNotStochastic3 = Markov f
     f (One, Zero)  = [ (100, Stop) ]
     f (Two, Two)   = [ (90, Stop) ]
     f _            = []
-
-printStaticStats :: IO ()
-printStaticStats = do
-  case transitionMatrix markovGood of
-    SomeMatrix _ _ mat -> do
-      let mat' :: Sq 10
-          mat' = matrix (concat (LinAlg.toLists (unwrap mat)))
-      putStrLn ""
-      putStrLn "Transition matrix:"
-      print mat'
-      putStrLn ""
-      putStrLn "Long-run state occupancy:"
-      let states :: [FiniteModel]
-          states = gfiniteEnumFromTo gminBound gmaxBound
-      mapM_ (\(s, p) -> printf "%-15s %-15.2f\n" (show s) p)
-        (zip states (LinAlg.toList (unwrap (MarkovChain.pi mat'))))
-      putStrLn ""
-      putStrLn "Expected test case length:"
-      print (expectedLength (fundamental (reduceCol (reduceRow mat'))))
-
-printStats :: Int -> Maybe FilePath -> IO ()
-printStats runs mdir = do
-  let args = stdArgs { maxFailPercent = 10, maxSuccess = runs }
-  res <- quickCheckWithResult args (prop_processRegistry markovGood)
-  case compatibleMatrices (Proxy @10) (transitionMatrix markovGood)
-                          (results (Proxy @FiniteModel) (tables res)) of
-    Left err -> error err
-    Right (CompatibleMatrices pn p s f) -> do
-      putStrLn ""
-      putStrLn "Succcessful transitions from state i to state j:"
-      print s
-      putStrLn ""
-      putStrLn "Failed transitions from state i to state j:"
-      print f
-      putStrLn ""
-      putStrLn "Single use reliability:"
-      case mdir of
-        Nothing  -> print (singleUseReliability pn (reduceRow p) Nothing (s, f))
-        Just dir -> do
-          -- Load and print priors?
-          r <- singleUseReliabilityIO pn (reduceRow p :: L 9 10)
-                                      (dir </> "successes" <.> "hmatrix")
-                                      (dir </> "failures" <.> "hmatrix")
-                                      (s, f)
-          print r
