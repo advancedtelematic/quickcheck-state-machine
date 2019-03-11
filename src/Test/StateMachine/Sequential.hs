@@ -71,10 +71,6 @@ import           Data.Proxy
 import qualified Data.Set                          as S
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
-import           Generic.Data
-                   (FiniteEnum, GBounded, GEnum)
-import           GHC.Generics
-                   (Generic, Rep)
 import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, once,

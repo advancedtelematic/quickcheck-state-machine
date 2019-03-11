@@ -71,6 +71,7 @@ test-suite quickcheck-state-machine-test
                        doctest,
                        filelock,
                        filepath,
+                       hashtables,
                        http-client,
                        monad-logger,
                        mtl,
@@ -106,8 +107,9 @@ test-suite quickcheck-state-machine-test
                        Echo,
                        ErrorEncountered,
                        MemoryReference,
-                       TicketDispenser,
-                       ShrinkingProps
+                       ProcessRegistry,
+                       ShrinkingProps,
+                       TicketDispenser
 
   ghc-options:
               -threaded -rtsopts -with-rtsopts=-N
