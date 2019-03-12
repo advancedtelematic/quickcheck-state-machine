@@ -96,7 +96,6 @@ echoSM env = StateMachine
     , postcondition = mPostconditions
     , generator = mGenerator
     , invariant = Nothing
-    , distribution = Nothing
     , shrinker = mShrinker
     , semantics = mSemantics
     , mock = mMock
