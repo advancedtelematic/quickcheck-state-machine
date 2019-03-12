@@ -113,11 +113,11 @@ oldCover x n s p =
 
 -- | The tabulate combinator was only introduced in QuickCheck-2.12.
 newTabulate :: Testable prop => String -> [String] -> prop -> Property
-newTabulate key values p =
+newTabulate =
 #if !MIN_VERSION_QuickCheck(2,12,0)
-  property p
+  \_key _values p -> property p
 #else
-  tabulate key values p
+  tabulate
 #endif
 
 -----------------------------------------------------------------------------
