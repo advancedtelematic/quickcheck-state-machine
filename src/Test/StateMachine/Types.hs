@@ -87,6 +87,7 @@ data Reason
   | PostconditionFailed String
   | InvariantBroken String
   | ExceptionThrown
+  | MockSemanticsMismatch
   deriving (Eq, Show)
 
 data ParallelCommandsF t cmd resp = ParallelCommands
