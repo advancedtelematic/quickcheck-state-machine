@@ -29,13 +29,13 @@ import           Data.IORef
 import           Data.Typeable
                    (Typeable)
 import           Test.QuickCheck
-                   (Arbitrary, Property, arbitrary, elements,
+                   (Arbitrary, Gen, Property, arbitrary, elements,
                    frequency, ioProperty, property, shrink, (.&&.),
                    (.||.), (===))
 
 import           Test.StateMachine
 import           Test.StateMachine.Types.References
-import           Test.StateMachine.Z (empty)
+import           Test.StateMachine.Z (empty, domain)
 
 ------------------------------------------------------------------------
 
@@ -78,7 +78,7 @@ data Response r
   = -- | New element was created.
     Created (Ref r)
     -- | Command 'Find' was successful with a return value.
-  | Found Element
+  | Found (Ref r)
     -- | Command 'Union' was successful.
   | United
 
@@ -128,12 +128,10 @@ transition m cmd resp = case (cmd, resp) of
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition m cmd resp = case (cmd, resp) of
   (New _,           Created ref)  -> m' ! ref .== ref
-      where
-          m' = transition m cmd resp
-  (Find ref,        Found ref')   -> opaque (m ! ref) .== ref'
-  (Union ref1 ref2, United) -> m' ! ref1 .== m' ! ref2
-      where
-          m' = transition m cmd resp
+  (Find ref,        Found ref')   -> m ! ref .== ref'
+  (Union ref1 ref2, United)       -> m' ! ref1 .== m' ! ref2
+  where
+      m' = transition m cmd resp
 
 ------------------------------------------------------------------------
 
@@ -169,5 +167,20 @@ unionElements e1 e2 = do
 
 semantics :: Command Concrete -> IO (Response Concrete)
 semantics (New x)           = Created . Reference . Concrete . Opaque <$> newElement x
-semantics (Find ref)        = Found  <$> findElement (opaque ref)
+semantics (Find ref)        = Found   . Reference . Concrete . Opaque <$> findElement (opaque ref)
 semantics (Union ref1 ref2) = United <$  unionElements (opaque ref1) (opaque ref2)
+
+mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
+mock (Model m) cmd = case cmd of
+  New _           -> Created <$> genSym
+  Find ref        -> Found <$> pure (Model m ! ref)
+  Union ref1 ref2 -> pure United
+
+generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
+generator (Model m)
+  | null m    = Just $ New <$> arbitrary
+  | otherwise = Just $ frequency
+    [ (1, New <$> arbitrary)
+    , (4, Find <$> elements (domain m))
+    , (4, Union <$> elements (domain m) <*> elements (domain m))
+    ]
