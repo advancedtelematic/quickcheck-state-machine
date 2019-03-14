@@ -58,50 +58,16 @@ data Link a
   = Weight Int
   | Next (Element a)
 
-newElement :: a -> IO (Element a)
-newElement x = do
-  ref <- newIORef (Weight 1)
-  return (Element x ref)
-
-findElement :: Element a -> IO (Element a)
-findElement (Element x ref) = do
-  e <- readIORef ref
-  case e of
-    Weight _  -> return (Element x ref)
-    Next next -> do
-      last' <- findElement next
-      writeIORef ref (Next last')
-      return last'
-
-unionElements :: Element a -> Element a -> IO ()
-unionElements e1 e2 = do
-
-  Element x1 ref1 <- findElement e1
-  Element x2 ref2 <- findElement e2
-  Weight w1       <- readIORef ref1
-  Weight w2       <- readIORef ref2
-
-  if w1 <= w2
-  then do
-    writeIORef ref1 (Next (Element x2 ref2))
-    writeIORef ref2 (Weight (w1 + w2))
-  else do
-    writeIORef ref2 (Next (Element x1 ref1))
-    writeIORef ref1 (Weight (w1 + w2))
-
 instance Eq (Element a) where
   Element _ ref1 == Element _ ref2 = ref1 == ref2
 
 instance Show a => Show (Element a) where
   show (Element x _) = "Element " ++ show x
 
-------------------------------------------------------------------------
+type Ref a r = Reference (Opaque (Element a)) r
 
 -- We represent actions in the same way as they do in section 11 of the
 -- paper.
-
-type Ref a r = Reference (Opaque (Element a)) r
-
 data Command a r
   = New a
   | Find (Ref a r)
@@ -127,6 +93,7 @@ newtype Model a r = Model [(Ref a r, Ref a r)]
 initModel :: Model a r
 initModel = Model empty
 
+-- Find representative of 'ref'
 (!) :: (Eq a, Eq1 r) => Model a r -> Ref a r -> Ref a r
 Model m ! ref = case lookup ref m of
   Just ref' | ref == ref' -> ref
@@ -144,13 +111,19 @@ precondition m@(Model model) cmd = case cmd of
   Find ref        -> ref   `member` map fst model
   Union ref1 ref2 -> (ref1 `member` map fst model) :&&
                      (ref2 `member` map fst model) :&&
+                     -- TODO: Should we add this condition, or let Union fail
+                     -- when the two node belonged to the same equivalence set?
                      (m ! ref1 ./= m ! ref2)
 
 transition :: (Show a, Eq a, Eq1 r) => Model a r -> Command a r -> Response a r -> Model a r
 transition m cmd resp = case (cmd, resp) of
   (New _,           Created ref) -> m `extend` (ref, ref)
-  (Find ref,        _)           -> m
-  (Union ref1 ref2, _)           -> m `extend` (ref1, ref2)
+  (Find ref,        _)           ->
+      -- The equivalence relation should be the same after 'find' command.
+      m
+  (Union ref1 ref2, _)           ->
+      -- It doesn't matter whether ref1's root is pointed to ref2's root or vice versa.
+      m `extend` (ref1, ref2)
 
 postcondition :: (Show a, Eq a) => Model a Concrete -> Command a Concrete -> Response a Concrete -> Logic
 postcondition m cmd resp = case (cmd, resp) of
@@ -161,6 +134,38 @@ postcondition m cmd resp = case (cmd, resp) of
   (Union ref1 ref2, United) -> m' ! ref1 .== m' ! ref2
       where
           m' = transition m cmd resp
+
+------------------------------------------------------------------------
+
+newElement :: a -> IO (Element a)
+newElement x = do
+  ref <- newIORef (Weight 1)
+  return (Element x ref)
+
+findElement :: Element a -> IO (Element a)
+findElement (Element x ref) = do
+  e <- readIORef ref
+  case e of
+    Weight _  -> return (Element x ref)
+    Next next -> do
+      last' <- findElement next
+      writeIORef ref (Next last')
+      return last'
+
+unionElements :: Element a -> Element a -> IO ()
+unionElements e1 e2 = do
+  Element x1 ref1 <- findElement e1
+  Element x2 ref2 <- findElement e2
+  Weight w1       <- readIORef ref1
+  Weight w2       <- readIORef ref2
+
+  if w1 <= w2
+  then do
+    writeIORef ref1 (Next (Element x2 ref2))
+    writeIORef ref2 (Weight (w1 + w2))
+  else do
+    writeIORef ref2 (Next (Element x1 ref1))
+    writeIORef ref1 (Weight (w1 + w2))
 
 semantics :: Typeable a => Command a Concrete -> IO (Response a Concrete)
 semantics (New x)           = Created . Reference . Concrete . Opaque <$> newElement x
