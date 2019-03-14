@@ -1,8 +1,12 @@
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
 -----------------------------------------------------------------------------
@@ -26,16 +30,26 @@ import           Data.Functor.Classes
                    (Eq1(..), Show1(..), showsPrec1)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
+import           Data.Kind
+                   (Type)
+import           Data.TreeDiff
+                   (ToExpr)
 import           Data.Typeable
                    (Typeable)
+import           GHC.Generics
+                   (Generic, Generic1)
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, arbitrary, elements,
                    frequency, ioProperty, property, shrink, (.&&.),
                    (.||.), (===))
+import           Test.QuickCheck.Monadic
+                   (monadicIO)
 
 import           Test.StateMachine
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Types.References
-import           Test.StateMachine.Z (empty, domain)
+import           Test.StateMachine.Z
+                   (empty, domain)
 
 ------------------------------------------------------------------------
 
@@ -72,7 +86,12 @@ data Command r
   = New Int
   | Find (Ref r)
   | Union (Ref r) (Ref r)
-  deriving (Show)
+  deriving (Eq, Show,
+            Generic1,
+            Rank2.Functor,
+            Rank2.Foldable,
+            Rank2.Traversable,
+            CommandNames)
 
 data Response r
   = -- | New element was created.
@@ -81,6 +100,10 @@ data Response r
   | Found (Ref r)
     -- | Command 'Union' was successful.
   | United
+  deriving (Generic1, Rank2.Foldable)
+
+deriving instance Show (Response Symbolic)
+deriving instance Show (Response Concrete)
 
 ------------------------------------------------------------------------
 
@@ -88,7 +111,10 @@ data Response r
 -- in section 12 of the paper.
 
 newtype Model r = Model [(Ref r, Ref r)]
-    deriving Eq
+    deriving (Generic, Eq, Show)
+
+instance ToExpr (Model Symbolic)
+instance ToExpr (Model Concrete)
 
 initModel :: Model r
 initModel = Model empty
@@ -128,7 +154,7 @@ transition m cmd resp = case (cmd, resp) of
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition m cmd resp = case (cmd, resp) of
   (New _,           Created ref)  -> m' ! ref .== ref
-  (Find ref,        Found ref')   -> m ! ref .== ref'
+  (Find ref,        Found ref')   -> Top -- m ! ref .== ref'
   (Union ref1 ref2, United)       -> m' ! ref1 .== m' ! ref2
   where
       m' = transition m cmd resp
@@ -184,3 +210,21 @@ generator (Model m)
     , (4, Find <$> elements (domain m))
     , (4, Union <$> elements (domain m) <*> elements (domain m))
     ]
+
+shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
+shrinker _ (New n) = [ New n' | n' <- shrink n ]
+shrinker _ _       = []
+
+sm :: StateMachine Model Command IO Response
+sm = StateMachine initModel transition precondition postcondition
+         Nothing generator Nothing shrinker semantics mock
+
+prop_unionFind_sequential :: Property
+prop_unionFind_sequential =
+  forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+    (hist, _model, res) <- runCommands sm cmds
+    prettyCommands sm hist (checkCommandNames cmds (res === Ok))
+
+prop_unionFind_parallel :: Property
+prop_unionFind_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $ do
+  prettyParallelCommands cmds =<< runParallelCommands sm cmds
