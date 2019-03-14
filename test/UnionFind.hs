@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -36,6 +35,7 @@ import           Test.QuickCheck
 
 import           Test.StateMachine
 import           Test.StateMachine.Types.References
+import           Test.StateMachine.Z (empty)
 
 ------------------------------------------------------------------------
 
@@ -100,35 +100,69 @@ instance Show a => Show (Element a) where
 -- We represent actions in the same way as they do in section 11 of the
 -- paper.
 
-data Ref a = Ref (Concrete (Opaque (Element a)))
+type Ref a r = Reference (Opaque (Element a)) r
 
-unRef :: Ref a -> Element a
-unRef (Ref (Concrete (Opaque ref))) = ref
+data Command a r
+  = New a
+  | Find (Ref a r)
+  | Union (Ref a r) (Ref a r)
+  deriving (Show)
 
-data Action a
-  = New
-  | Find (Ref a)
-  | Union (Ref a) (Ref a)
-
-data Response a
+data Response a r
   = -- | New element was created.
-    Created (Ref a)
-    -- | Action 'Find' was successful with a return value.
+    Created (Ref a r)
+    -- | Command 'Find' was successful with a return value.
   | Found (Element a)
-    -- | Action 'Find' was unsuccessful.
-  | NotFound
-    -- | Action 'Union' was successful.
-  | UnionSucceed
-    -- | Action 'Union' was unsuccessful as the two argument already belonged to the same tree.
-  | IdenticalRoot
+    -- | Command 'Union' was successful.
+  | United
 
-instance Eq a => Eq (Ref a) where
-  Ref v1 == Ref v2 = liftEq (==) v1 v2
+------------------------------------------------------------------------
 
-instance Show a => Show (Ref a) where
-  show (Ref v) = showsPrec1 10 v ""
+-- The model corresponds closely to the *relational specification* given
+-- in section 12 of the paper.
 
-instance Show a => Show (Action a) where
-  show New               = "New"
-  show (Find ref)        = "Find ("  ++ show ref ++ ")"
-  show (Union ref1 ref2) = "Union (" ++ show ref1 ++ ") (" ++ show ref2 ++ ")"
+newtype Model a r = Model [(Ref a r, Ref a r)]
+    deriving Eq
+
+initModel :: Model a r
+initModel = Model empty
+
+(!) :: (Eq a, Eq1 r) => Model a r -> Ref a r -> Ref a r
+Model m ! ref = case lookup ref m of
+  Just ref' | ref == ref' -> ref
+            | otherwise   -> Model m ! ref'
+  Nothing                 -> error "(!): couldn't find key"
+
+extend :: (Eq a, Eq1 r) => Model a r -> (Ref a r, Ref a r) -> Model a r
+extend (Model m) p@(ref1, ref2) = Model (p : filter ((/=) ref1 . fst) m)
+
+------------------------------------------------------------------------
+
+precondition :: Eq a => Model a Symbolic -> Command a Symbolic -> Logic
+precondition m@(Model model) cmd = case cmd of
+  New _           -> Top
+  Find ref        -> ref   `member` map fst model
+  Union ref1 ref2 -> (ref1 `member` map fst model) :&&
+                     (ref2 `member` map fst model) :&&
+                     (m ! ref1 ./= m ! ref2)
+
+transition :: (Show a, Eq a, Eq1 r) => Model a r -> Command a r -> Response a r -> Model a r
+transition m cmd resp = case (cmd, resp) of
+  (New _,           Created ref) -> m `extend` (ref, ref)
+  (Find ref,        _)           -> m
+  (Union ref1 ref2, _)           -> m `extend` (ref1, ref2)
+
+postcondition :: (Show a, Eq a) => Model a Concrete -> Command a Concrete -> Response a Concrete -> Logic
+postcondition m cmd resp = case (cmd, resp) of
+  (New _,           Created ref)  -> m' ! ref .== ref
+      where
+          m' = transition m cmd resp
+  (Find ref,        Found ref')   -> opaque (m ! ref) .== ref'
+  (Union ref1 ref2, United) -> m' ! ref1 .== m' ! ref2
+      where
+          m' = transition m cmd resp
+
+semantics :: Typeable a => Command a Concrete -> IO (Response a Concrete)
+semantics (New x)           = Created . Reference . Concrete . Opaque <$> newElement x
+semantics (Find ref)        = Found  <$> findElement (opaque ref)
+semantics (Union ref1 ref2) = United <$  unionElements (opaque ref1) (opaque ref2)
