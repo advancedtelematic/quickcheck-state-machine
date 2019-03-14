@@ -52,33 +52,33 @@ import           Test.StateMachine.Z (empty)
 
 -- Our implementation is slightly different in that we use @IORef@s
 -- instead of @STRef@s (see issue #84).
-data Element a = Element a (IORef (Link a))
+data Element = Element Int (IORef Link)
 
-data Link a
+data Link
   = Weight Int
-  | Next (Element a)
+  | Next Element
 
-instance Eq (Element a) where
+instance Eq Element where
   Element _ ref1 == Element _ ref2 = ref1 == ref2
 
-instance Show a => Show (Element a) where
+instance Show Element where
   show (Element x _) = "Element " ++ show x
 
-type Ref a r = Reference (Opaque (Element a)) r
+type Ref r = Reference (Opaque Element) r
 
 -- We represent actions in the same way as they do in section 11 of the
 -- paper.
-data Command a r
-  = New a
-  | Find (Ref a r)
-  | Union (Ref a r) (Ref a r)
+data Command r
+  = New Int
+  | Find (Ref r)
+  | Union (Ref r) (Ref r)
   deriving (Show)
 
-data Response a r
+data Response r
   = -- | New element was created.
-    Created (Ref a r)
+    Created (Ref r)
     -- | Command 'Find' was successful with a return value.
-  | Found (Element a)
+  | Found Element
     -- | Command 'Union' was successful.
   | United
 
@@ -87,25 +87,25 @@ data Response a r
 -- The model corresponds closely to the *relational specification* given
 -- in section 12 of the paper.
 
-newtype Model a r = Model [(Ref a r, Ref a r)]
+newtype Model r = Model [(Ref r, Ref r)]
     deriving Eq
 
-initModel :: Model a r
+initModel :: Model r
 initModel = Model empty
 
 -- Find representative of 'ref'
-(!) :: (Eq a, Eq1 r) => Model a r -> Ref a r -> Ref a r
+(!) :: Eq1 r => Model r -> Ref r -> Ref r
 Model m ! ref = case lookup ref m of
   Just ref' | ref == ref' -> ref
             | otherwise   -> Model m ! ref'
   Nothing                 -> error "(!): couldn't find key"
 
-extend :: (Eq a, Eq1 r) => Model a r -> (Ref a r, Ref a r) -> Model a r
+extend :: Eq1 r => Model r -> (Ref r, Ref r) -> Model r
 extend (Model m) p@(ref1, ref2) = Model (p : filter ((/=) ref1 . fst) m)
 
 ------------------------------------------------------------------------
 
-precondition :: Eq a => Model a Symbolic -> Command a Symbolic -> Logic
+precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition m@(Model model) cmd = case cmd of
   New _           -> Top
   Find ref        -> ref   `member` map fst model
@@ -115,7 +115,7 @@ precondition m@(Model model) cmd = case cmd of
                      -- when the two node belonged to the same equivalence set?
                      (m ! ref1 ./= m ! ref2)
 
-transition :: (Show a, Eq a, Eq1 r) => Model a r -> Command a r -> Response a r -> Model a r
+transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
 transition m cmd resp = case (cmd, resp) of
   (New _,           Created ref) -> m `extend` (ref, ref)
   (Find ref,        _)           ->
@@ -125,7 +125,7 @@ transition m cmd resp = case (cmd, resp) of
       -- It doesn't matter whether ref1's root is pointed to ref2's root or vice versa.
       m `extend` (ref1, ref2)
 
-postcondition :: (Show a, Eq a) => Model a Concrete -> Command a Concrete -> Response a Concrete -> Logic
+postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition m cmd resp = case (cmd, resp) of
   (New _,           Created ref)  -> m' ! ref .== ref
       where
@@ -137,12 +137,12 @@ postcondition m cmd resp = case (cmd, resp) of
 
 ------------------------------------------------------------------------
 
-newElement :: a -> IO (Element a)
+newElement :: Int -> IO Element
 newElement x = do
   ref <- newIORef (Weight 1)
   return (Element x ref)
 
-findElement :: Element a -> IO (Element a)
+findElement :: Element -> IO Element
 findElement (Element x ref) = do
   e <- readIORef ref
   case e of
@@ -152,7 +152,7 @@ findElement (Element x ref) = do
       writeIORef ref (Next last')
       return last'
 
-unionElements :: Element a -> Element a -> IO ()
+unionElements :: Element -> Element -> IO ()
 unionElements e1 e2 = do
   Element x1 ref1 <- findElement e1
   Element x2 ref2 <- findElement e2
@@ -167,7 +167,7 @@ unionElements e1 e2 = do
     writeIORef ref2 (Next (Element x1 ref1))
     writeIORef ref1 (Weight (w1 + w2))
 
-semantics :: Typeable a => Command a Concrete -> IO (Response a Concrete)
+semantics :: Command Concrete -> IO (Response Concrete)
 semantics (New x)           = Created . Reference . Concrete . Opaque <$> newElement x
 semantics (Find ref)        = Found  <$> findElement (opaque ref)
 semantics (Union ref1 ref2) = United <$  unionElements (opaque ref1) (opaque ref2)
