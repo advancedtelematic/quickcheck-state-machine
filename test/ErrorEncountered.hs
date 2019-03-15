@@ -14,8 +14,6 @@ import           Data.Functor.Classes
                    (Eq1)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude

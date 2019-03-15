@@ -66,8 +66,8 @@ semantics bug cmd = case cmd of
     where
     -- One of the problems is a bug that writes a wrong value to the
     -- reference.
-      i' | i `Prelude.elem` [5..10] = if bug == Logic then i + 1 else i
-         | otherwise                = i
+      i' | i `elem` [5..10] = if bug == Logic then i + 1 else i
+         | otherwise        = i
   Increment ref -> do
     -- The other problem is that we introduce a possible race condition
     -- when incrementing.
@@ -104,9 +104,9 @@ pre-conditions are used while generating programs (lists of actions).
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition (Model m) cmd = case cmd of
   Create        -> Top
-  Read  ref     -> ref `elem` map fst m
-  Write ref _   -> ref `elem` map fst m
-  Increment ref -> ref `elem` map fst m
+  Read  ref     -> ref `member` map fst m
+  Write ref _   -> ref `member` map fst m
+  Increment ref -> ref `member` map fst m
 ```
 
 The transition function explains how actions change the model. Note that the

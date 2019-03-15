@@ -50,8 +50,6 @@ import           Data.Kind
                    (Type)
 import           Data.Maybe
                    (isJust)
-import           Data.TreeDiff
-                   (ToExpr)
 import           Data.Vector.Unboxed.Mutable
                    (IOVector)
 import qualified Data.Vector.Unboxed.Mutable   as V

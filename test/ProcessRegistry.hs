@@ -56,8 +56,6 @@ import           Data.Map
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
                    (isJust, isNothing)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude                       hiding
@@ -73,7 +71,6 @@ import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
-import           Test.StateMachine.Markov
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 

@@ -14,6 +14,11 @@ module Test.StateMachine.Markov
   , forAllMarkov
   , generateMarkov
   , generateMarkovState
+
+  -- * Re-export
+  , FiniteEnum
+  , GBounded
+  , GEnum
   )
   where
 
