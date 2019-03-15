@@ -11,6 +11,7 @@
 
 module MemoryReference
   ( prop_sequential
+  , prop_runSavedCommands
   , prop_parallel
   , prop_precondition
   , prop_existsCommands
@@ -56,6 +57,7 @@ data Command r
   deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 deriving instance Show (Command Symbolic)
+deriving instance Read (Command Symbolic)
 deriving instance Show (Command Concrete)
 
 data Response r
@@ -66,6 +68,7 @@ data Response r
   deriving (Generic1, Rank2.Foldable)
 
 deriving instance Show (Response Symbolic)
+deriving instance Read (Response Symbolic)
 deriving instance Show (Response Concrete)
 
 newtype Model r = Model [(Reference (Opaque (IORef Int)) r, Int)]
@@ -167,9 +170,15 @@ sm bug = StateMachine initModel transition precondition postcondition
 prop_sequential :: Bug -> Property
 prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
   (hist, _model, res) <- runCommands sm' cmds
-  prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
+  prettyCommands sm' hist (saveCommands "/tmp" cmds
+                             (checkCommandNames cmds (res === Ok)))
     where
       sm' = sm bug
+
+prop_runSavedCommands :: Bug -> FilePath -> Property
+prop_runSavedCommands bug fp = monadicIO $ do
+  (hist, _model, res) <- runSavedCommands (sm bug) fp
+  prettyCommands (sm bug) hist (res === Ok)
 
 prop_parallel :: Bug -> Property
 prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do

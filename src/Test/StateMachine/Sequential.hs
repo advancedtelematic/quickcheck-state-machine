@@ -460,6 +460,7 @@ saveCommands dir cmds prop = go `whenFail` prop
       let fp = dir </> file
       writeFile fp (ppShow cmds)
       putStrLn ("Saved counterexample in: " ++ fp)
+      putStrLn ""
 
 runSavedCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
                  => (MonadCatch m, MonadIO m)

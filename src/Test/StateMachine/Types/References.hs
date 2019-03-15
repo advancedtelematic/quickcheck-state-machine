@@ -55,6 +55,7 @@ data Symbolic a where
   Symbolic :: Typeable a => Var -> Symbolic a
 
 deriving instance Show (Symbolic a)
+deriving instance Typeable a => Read (Symbolic a)
 deriving instance Eq   (Symbolic a)
 deriving instance Ord  (Symbolic a)
 
@@ -124,6 +125,15 @@ instance (Show1 r, Show a) => Show (Reference a r) where
     where
       appPrec = 10
 
+instance Typeable a => Read (Reference a Symbolic) where
+  readsPrec d = readParen (d > app_prec)
+                  (\r -> [ (Reference m, t)
+                         | ("Reference", s) <- lex r
+                         , (m, t) <- readsPrec (app_prec + 1) s
+                         ])
+    where
+      app_prec = 10
+
 reference :: Typeable a => a -> Reference a Concrete
 reference = Reference . Concrete
 
@@ -139,6 +149,9 @@ newtype Opaque a = Opaque
 
 instance Show (Opaque a) where
   showsPrec _ (Opaque _) = showString "Opaque"
+
+instance Read (Opaque a) where
+  readsPrec _ _ = error "Read Opaque: impossible"
 
 instance ToExpr (Opaque a) where
   toExpr _ = App "Opaque" []
