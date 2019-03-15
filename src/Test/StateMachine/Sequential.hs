@@ -457,7 +457,9 @@ saveCommands dir cmds prop = go `whenFail` prop
     go :: IO ()
     go = do
       file <- formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
-      writeFile (dir </> file) (ppShow cmds)
+      let fp = dir </> file
+      writeFile fp (ppShow cmds)
+      putStrLn ("Saved counterexample in: " ++ fp)
 
 runSavedCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
                  => (MonadCatch m, MonadIO m)
