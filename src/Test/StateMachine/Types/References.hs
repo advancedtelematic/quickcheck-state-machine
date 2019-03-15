@@ -49,7 +49,7 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 ------------------------------------------------------------------------
 
 newtype Var = Var Int
-  deriving (Eq, Ord, Show, Generic, ToExpr)
+  deriving (Eq, Ord, Show, Generic, ToExpr, Read)
 
 data Symbolic a where
   Symbolic :: Typeable a => Var -> Symbolic a

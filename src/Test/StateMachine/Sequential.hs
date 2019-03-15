@@ -39,6 +39,8 @@ module Test.StateMachine.Sequential
   , executeCommands
   , prettyPrintHistory
   , prettyCommands
+  , saveCommands
+  , runSavedCommands
   , commandNames
   , commandNamesInOrder
   , checkCommandNames
@@ -67,12 +69,16 @@ import           Data.Monoid
 import           Data.Proxy
                    (Proxy(..))
 import qualified Data.Set                          as S
+import           Data.Time
+                   (defaultTimeLocale, formatTime, getZonedTime)
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
 import           Prelude
+import           System.FilePath
+                   ((</>))
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, once,
-                   sized)
+                   sized, whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -81,7 +87,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen      as PP
 import           Text.Show.Pretty
                    (ppShow)
 import           UnliftIO
-                   (MonadIO, TChan, atomically, newTChanIO,
+                   (MonadIO, TChan, atomically, liftIO, newTChanIO,
                    tryReadTChan, writeTChan)
 
 import           Test.StateMachine.ConstructorName
@@ -443,6 +449,25 @@ prettyCommands :: (MonadIO m, ToExpr (model Concrete))
                -> Property
                -> PropertyM m ()
 prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
+
+saveCommands :: (Show (cmd Symbolic), Show (resp Symbolic))
+             => FilePath -> Commands cmd resp -> Property -> Property
+saveCommands dir cmds prop = go `whenFail` prop
+  where
+    go :: IO ()
+    go = do
+      file <- formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
+      writeFile (dir </> file) (ppShow cmds)
+
+runSavedCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
+                 => (MonadCatch m, MonadIO m)
+                 => (Read (cmd Symbolic), Read (resp Symbolic))
+                 => StateMachine model cmd m resp
+                 -> FilePath
+                 -> PropertyM m (History cmd resp, model Concrete, Reason)
+runSavedCommands sm fp = do
+  cmds <- read <$> liftIO (readFile fp)
+  runCommands sm cmds
 
 ------------------------------------------------------------------------
 
