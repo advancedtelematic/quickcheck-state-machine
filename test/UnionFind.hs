@@ -81,12 +81,7 @@ data Command r
   = New Int
   | Find (Ref r)
   | Union (Ref r) (Ref r)
-  deriving (Eq, Show,
-            Generic1,
-            Rank2.Functor,
-            Rank2.Foldable,
-            Rank2.Traversable,
-            CommandNames)
+  deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response r
   = -- | New element was created.
@@ -132,27 +127,32 @@ precondition m@(Model model) cmd = case cmd of
   Find ref        -> ref   `member` map fst model
   Union ref1 ref2 -> (ref1 `member` map fst model) :&&
                      (ref2 `member` map fst model) :&&
-                     -- TODO: Should we add this condition, or let Union fail
-                     -- when the two node belonged to the same equivalence set?
                      (m ! ref1 ./= m ! ref2)
 
 transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
-transition m cmd resp = case (cmd, resp) of
+transition m@(Model model) cmd resp = case (cmd, resp) of
   (New _,           Created ref) -> m `extend` (ref, ref)
-  (Find ref,        _)           ->
+  (Find _,          Found _)     ->
       -- The equivalence relation should be the same after 'find' command.
       m
-  (Union ref1 ref2, _)           ->
-      -- It doesn't matter whether ref1's root is pointed to ref2's root or vice versa.
-      m `extend` (ref1, ref2)
+  (Union ref1 ref2, United)      ->
+      if m ! ref1 == m ! ref2
+         then
+         -- To avoid making acyclic graph
+         m
+         else
+         -- It doesn't matter whether ref1's root is pointed to ref2's root or vice versa.
+         m `extend` (ref1, ref2)
 
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition m cmd resp = case (cmd, resp) of
   (New _,           Created ref)  -> m' ! ref .== ref
-  (Find ref,        Found ref')   -> Top -- m ! ref .== ref'
-  (Union ref1 ref2, United)       -> m' ! ref1 .== m' ! ref2
+  (Find ref,        Found ref')   -> m .== m' -- .&& m ! ref .== ref'
+  (Union ref1 ref2, United)       ->
+    let z = m' ! ref1
+     in (z .== m ! ref1 .|| z .== m ! ref2) .&& m' ! ref1 .== m' ! ref2
   where
-      m' = transition m cmd resp
+    m' = transition m cmd resp
 
 ------------------------------------------------------------------------
 
@@ -175,16 +175,19 @@ unionElements :: Element -> Element -> IO ()
 unionElements e1 e2 = do
   Element x1 ref1 <- findElement e1
   Element x2 ref2 <- findElement e2
-  Weight w1       <- readIORef ref1
-  Weight w2       <- readIORef ref2
+  if ref1 == ref2
+    then error "identical tree"
+    else do
+      Weight w1       <- readIORef ref1
+      Weight w2       <- readIORef ref2
 
-  if w1 <= w2
-  then do
-    writeIORef ref1 (Next (Element x2 ref2))
-    writeIORef ref2 (Weight (w1 + w2))
-  else do
-    writeIORef ref2 (Next (Element x1 ref1))
-    writeIORef ref1 (Weight (w1 + w2))
+      if w1 <= w2
+      then do
+        writeIORef ref1 (Next (Element x2 ref2))
+        writeIORef ref2 (Weight (w1 + w2))
+      else do
+        writeIORef ref2 (Next (Element x1 ref1))
+        writeIORef ref1 (Weight (w1 + w2))
 
 semantics :: Command Concrete -> IO (Response Concrete)
 semantics (New x)           = Created . Reference . Concrete . Opaque <$> newElement x
@@ -202,8 +205,8 @@ generator (Model m)
   | null m    = Just $ New <$> arbitrary
   | otherwise = Just $ frequency
     [ (1, New <$> arbitrary)
-    , (4, Find <$> elements (domain m))
-    , (4, Union <$> elements (domain m) <*> elements (domain m))
+    , (8, Find <$> elements (domain m))
+    , (8, Union <$> elements (domain m) <*> elements (domain m))
     ]
 
 shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
