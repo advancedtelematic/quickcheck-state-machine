@@ -90,7 +90,7 @@ import           Data.Text
                    (Text)
 import qualified Data.Text                     as T
 import           Data.TreeDiff
-                   (Expr(App), ToExpr, toExpr)
+                   (Expr(App))
 import           Database.Persist.Postgresql
                    (ConnectionPool, ConnectionString, Key, SqlBackend,
                    delete, get, getJust, insert, liftSqlPersistMPool,

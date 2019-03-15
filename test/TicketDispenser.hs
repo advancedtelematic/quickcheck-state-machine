@@ -39,8 +39,6 @@ import           Control.Exception
                    (IOException, catch)
 import           Data.Kind
                    (Type)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude                       hiding

@@ -25,8 +25,6 @@ import           Data.Functor.Classes
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude                       hiding
