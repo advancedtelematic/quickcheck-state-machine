@@ -199,7 +199,7 @@ semantics (Union ref1 ref2) = United <$ unionElements (opaque ref1) (opaque ref2
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
 mock (Model m) cmd = case cmd of
   New _           -> Created <$> genSym
-  Find ref        -> Found <$> pure (Model m ! ref)
+  Find ref        -> Found <$> genSym
   Union ref1 ref2 -> pure United
 
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
