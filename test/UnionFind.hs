@@ -117,7 +117,13 @@ Model m ! ref = case lookup ref m of
   Nothing                 -> error "(!): couldn't find key"
 
 extend :: Eq1 r => Model r -> (Ref r, Ref r) -> Model r
-extend (Model m) p@(ref1, ref2) = Model (p : filter ((/=) ref1 . fst) m)
+extend (Model m) p@(ref1, ref2) =
+    case lookup ref1 m of
+      Just z -> -- case of 'Union' command
+          let w = Model m ! ref2 in
+          Model $ map (\(x, y) -> if y == z then (x, w) else (x, y)) m
+      Nothing -> -- case of 'New' command
+          Model $ p : m
 
 ------------------------------------------------------------------------
 
@@ -136,19 +142,15 @@ transition m@(Model model) cmd resp = case (cmd, resp) of
       -- The equivalence relation should be the same after 'find' command.
       m
   (Union ref1 ref2, United)      ->
-      if m ! ref1 == m ! ref2
-         then
-         -- To avoid making acyclic graph
-         m
-         else
-         -- It doesn't matter whether ref1's root is pointed to ref2's root or vice versa.
-         m `extend` (ref1, ref2)
+      -- Update the model with a new equivalence relation between ref1 and ref2.
+      -- It doesn't matter whether ref1's root is pointed to ref2's root or vice versa.
+      m `extend` (ref1, ref2)
 
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition m cmd resp = case (cmd, resp) of
-  (New _,           Created ref)  -> m' ! ref .== ref
-  (Find ref,        Found ref')   -> m .== m' -- .&& m ! ref .== ref'
-  (Union ref1 ref2, United)       ->
+  (New _,           Created ref) -> m' ! ref .== ref
+  (Find _,          Found _)     -> m .== m'
+  (Union ref1 ref2, United)      ->
     let z = m' ! ref1
      in (z .== m ! ref1 .|| z .== m ! ref2) .&& m' ! ref1 .== m' ! ref2
   where
@@ -176,23 +178,23 @@ unionElements e1 e2 = do
   Element x1 ref1 <- findElement e1
   Element x2 ref2 <- findElement e2
   if ref1 == ref2
-    then error "identical tree"
-    else do
-      Weight w1       <- readIORef ref1
-      Weight w2       <- readIORef ref2
+     then error "equivalent elements"
+     else do
+       Weight w1       <- readIORef ref1
+       Weight w2       <- readIORef ref2
 
-      if w1 <= w2
-      then do
-        writeIORef ref1 (Next (Element x2 ref2))
-        writeIORef ref2 (Weight (w1 + w2))
-      else do
-        writeIORef ref2 (Next (Element x1 ref1))
-        writeIORef ref1 (Weight (w1 + w2))
+       if w1 <= w2
+       then do
+         writeIORef ref1 (Next (Element x2 ref2))
+         writeIORef ref2 (Weight (w1 + w2))
+       else do
+         writeIORef ref2 (Next (Element x1 ref1))
+         writeIORef ref1 (Weight (w1 + w2))
 
 semantics :: Command Concrete -> IO (Response Concrete)
 semantics (New x)           = Created . Reference . Concrete . Opaque <$> newElement x
 semantics (Find ref)        = Found   . Reference . Concrete . Opaque <$> findElement (opaque ref)
-semantics (Union ref1 ref2) = United <$  unionElements (opaque ref1) (opaque ref2)
+semantics (Union ref1 ref2) = United <$ unionElements (opaque ref1) (opaque ref2)
 
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
 mock (Model m) cmd = case cmd of
