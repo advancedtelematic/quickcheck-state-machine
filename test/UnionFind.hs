@@ -7,10 +7,11 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  UnionFind
--- Copyright   :  (C) 2017, ATS Advanced Telematic Systems GmbH
+-- Copyright   :  (C) 2017-2019, ATS Advanced Telematic Systems GmbH
 -- License     :  BSD-style (see the file LICENSE)
 --
--- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>
+-- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>,
+--                Momoko Hattori <momohatt10@gmail.com>
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --

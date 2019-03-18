@@ -80,6 +80,10 @@ tests docker0 = testGroup "Tests"
       , testProperty "parallel bad, see issue #218"
           (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
       ]
+  , testGroup "Union Find"
+      [ testProperty "sequential" prop_unionFind_sequential
+      , testProperty "parallel"   prop_unionFind_parallel
+      ]
   ]
   where
     webServer docker bug port test prop
