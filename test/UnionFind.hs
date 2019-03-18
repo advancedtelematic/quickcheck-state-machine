@@ -20,24 +20,24 @@
 --
 -----------------------------------------------------------------------------
 
-module UnionFind where
+module UnionFind
+  ( prop_unionFind_sequential
+  , prop_unionFind_parallel
+  )
+  where
 
 import           Data.Functor.Classes
-                   (Eq1(..), Show1(..), showsPrec1)
+                   (Eq1(..))
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
-import           Data.Kind
-                   (Type)
 import           Data.TreeDiff
                    (ToExpr)
-import           Data.Typeable
-                   (Typeable)
 import           GHC.Generics
                    (Generic, Generic1)
+import           Prelude
 import           Test.QuickCheck
-                   (Arbitrary, Gen, Property, arbitrary, elements,
-                   frequency, ioProperty, property, shrink, (.&&.),
-                   (.||.), (===))
+                   (Gen, Property, arbitrary, elements,
+                   frequency, shrink, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -137,7 +137,7 @@ precondition m@(Model model) cmd = case cmd of
                      (m ! ref1 ./= m ! ref2)
 
 transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
-transition m@(Model model) cmd resp = case (cmd, resp) of
+transition m cmd resp = case (cmd, resp) of
   (New _,           Created ref) -> m `extend` (ref, ref)
   (Find _,          Found _)     ->
       -- The equivalence relation should be the same after 'find' command.
@@ -146,6 +146,7 @@ transition m@(Model model) cmd resp = case (cmd, resp) of
       -- Update the model with a new equivalence relation between ref1 and ref2.
       -- It doesn't matter whether ref1's root is pointed to ref2's root or vice versa.
       m `extend` (ref1, ref2)
+  _                              -> error "transition: impossible."
 
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition m cmd resp = case (cmd, resp) of
@@ -154,6 +155,7 @@ postcondition m cmd resp = case (cmd, resp) of
   (Union ref1 ref2, United)      ->
     let z = m' ! ref1
      in (z .== m ! ref1 .|| z .== m ! ref2) .&& m' ! ref1 .== m' ! ref2
+  _                              -> Bot
   where
     m' = transition m cmd resp
 
@@ -198,10 +200,10 @@ semantics (Find ref)        = Found   . Reference . Concrete . Opaque <$> findEl
 semantics (Union ref1 ref2) = United <$ unionElements (opaque ref1) (opaque ref2)
 
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
-mock (Model m) cmd = case cmd of
-  New _           -> Created <$> genSym
-  Find ref        -> Found <$> genSym
-  Union ref1 ref2 -> pure United
+mock _ cmd = case cmd of
+  New _     -> Created <$> genSym
+  Find _    -> Found <$> genSym
+  Union _ _ -> pure United
 
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
 generator (Model m)
@@ -218,7 +220,7 @@ shrinker _ _       = []
 
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition
-         Nothing generator Nothing shrinker semantics mock
+         Nothing generator shrinker semantics mock
 
 prop_unionFind_sequential :: Property
 prop_unionFind_sequential =

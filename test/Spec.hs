@@ -34,7 +34,7 @@ import           ProcessRegistry
 import qualified ShrinkingProps
 import           Test.StateMachine.Markov
 import           TicketDispenser
-import           UnionFind
+import qualified UnionFind
 
 ------------------------------------------------------------------------
 
@@ -103,8 +103,8 @@ tests docker0 = testGroup "Tests"
             (sample (generateMarkov sm markovNotStochastic3 initState)))
       ]
   , testGroup "Union Find"
-      [ testProperty "sequential" prop_unionFind_sequential
-      , testProperty "parallel"   prop_unionFind_parallel
+      [ testProperty "sequential" UnionFind.prop_unionFind_sequential
+      , testProperty "parallel"   UnionFind.prop_unionFind_parallel
       ]
   ]
   where
