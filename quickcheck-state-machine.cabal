@@ -107,7 +107,8 @@ test-suite quickcheck-state-machine-test
                        ErrorEncountered,
                        MemoryReference,
                        TicketDispenser,
-                       ShrinkingProps
+                       ShrinkingProps,
+                       UnionFind
 
   ghc-options:
               -threaded -rtsopts -with-rtsopts=-N
