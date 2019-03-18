@@ -14,8 +14,6 @@ import           Data.Functor.Classes
                    (Eq1)
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude
@@ -139,7 +137,7 @@ shrinker _ _             = []
 
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition
-         Nothing generator Nothing shrinker semantics mock
+         Nothing generator shrinker semantics mock
 
 prop_error_sequential :: Property
 prop_error_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do

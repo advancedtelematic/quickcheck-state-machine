@@ -50,8 +50,6 @@ import           Data.Kind
                    (Type)
 import           Data.Maybe
                    (isJust)
-import           Data.TreeDiff
-                   (ToExpr)
 import           Data.Vector.Unboxed.Mutable
                    (IOVector)
 import qualified Data.Vector.Unboxed.Mutable   as V
@@ -283,7 +281,7 @@ mock (Model m) (Len buffer) = case lookup buffer m of
 sm :: Version -> Bugs -> StateMachine Model Action IO Response
 sm version bugs = StateMachine
   initModel transition (precondition bugs) postcondition
-  Nothing (generator version) Nothing shrinker (semantics bugs) mock
+  Nothing (generator version) shrinker (semantics bugs) mock
 
 -- | Property parameterized by spec version and bugs.
 prepropcircularBuffer :: Version -> Bugs -> Property

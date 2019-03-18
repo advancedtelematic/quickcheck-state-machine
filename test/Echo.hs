@@ -27,8 +27,6 @@ module Echo
 
 import           Data.Kind
                    (Type)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude
@@ -96,7 +94,6 @@ echoSM env = StateMachine
     , postcondition = mPostconditions
     , generator = mGenerator
     , invariant = Nothing
-    , distribution = Nothing
     , shrinker = mShrinker
     , semantics = mSemantics
     , mock = mMock

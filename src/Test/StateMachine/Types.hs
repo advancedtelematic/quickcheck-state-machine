@@ -39,8 +39,6 @@ module Test.StateMachine.Types
 
 import           Data.Functor.Classes
                    (Ord1, Show1)
-import           Data.Matrix
-                   (Matrix)
 import           Data.Semigroup
                    (Semigroup)
 import           Prelude
@@ -62,7 +60,6 @@ data StateMachine model cmd m resp = StateMachine
   , postcondition  :: model Concrete -> cmd Concrete -> resp Concrete -> Logic
   , invariant      :: Maybe (model Concrete -> Logic)
   , generator      :: model Symbolic -> Maybe (Gen (cmd Symbolic))
-  , distribution   :: Maybe (Matrix Int)
   , shrinker       :: model Symbolic -> cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
@@ -90,6 +87,7 @@ data Reason
   | PostconditionFailed String
   | InvariantBroken String
   | ExceptionThrown
+  | MockSemanticsMismatch
   deriving (Eq, Show)
 
 data ParallelCommandsF t cmd resp = ParallelCommands

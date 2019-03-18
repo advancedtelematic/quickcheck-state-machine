@@ -45,7 +45,7 @@ import           Data.Set
                    (Set)
 import qualified Data.Set                      as Set
 import           Data.TreeDiff
-                   (ToExpr(..), defaultExprViaShow)
+                   (defaultExprViaShow)
 import           Data.Typeable
                    (Typeable)
 import           GHC.Generics
@@ -332,7 +332,6 @@ sm = QSM.StateMachine {
        , semantics     = semantics
        , mock          = mock
        , invariant     = Nothing
-       , distribution  = Nothing
        }
 
 {-------------------------------------------------------------------------------

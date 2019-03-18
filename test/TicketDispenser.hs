@@ -39,8 +39,6 @@ import           Control.Exception
                    (IOException, catch)
 import           Data.Kind
                    (Type)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude                       hiding
@@ -195,7 +193,7 @@ withDbLock run = do
 sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
 sm se files = StateMachine
   initModel transitions preconditions postconditions
-  Nothing generator Nothing shrinker (semantics se files) mock
+  Nothing generator shrinker (semantics se files) mock
 
 -- Sequentially the model is consistent (even though the lock is
 -- shared).

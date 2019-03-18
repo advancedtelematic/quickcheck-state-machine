@@ -38,18 +38,18 @@ import           Control.Monad
                    (foldM, replicateM)
 import           Control.Monad.Catch
                    (MonadCatch)
-import           Control.Monad.State
+import           Control.Monad.State.Strict
                    (runStateT)
 import           Data.Bifunctor
                    (bimap)
 import           Data.List
                    (partition, permutations)
-import qualified Data.Map.Strict                   as Map
+import qualified Data.Map.Strict               as Map
 import           Data.Monoid
                    ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                          as S
+import qualified Data.Set                      as S
 import           Data.Tree
                    (Tree(Node))
 import           Prelude
@@ -65,18 +65,16 @@ import           UnliftIO
                    (MonadIO, MonadUnliftIO, concurrently, newTChanIO)
 
 import           Test.StateMachine.BoxDrawer
-import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2     as Rank2
+import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
 forAllParallelCommands :: Testable prop
                        => (Show (cmd Symbolic), Show (resp Symbolic), Show (model Symbolic))
-                       => CommandNames cmd
                        => (Rank2.Traversable cmd, Rank2.Foldable resp)
                        => StateMachine model cmd m resp
                        -> (ParallelCommands cmd resp -> prop)     -- ^ Predicate.
@@ -124,9 +122,9 @@ forAllParallelCommands sm =
 -- > [A, B] ─┤        ├──┤        │
 -- >         └ [D, E] ┘  └ [H, I] ┘
 --
-generateParallelCommands :: forall model cmd m resp
-                          . (Rank2.Foldable resp, Show (model Symbolic))
-                         => CommandNames cmd
+generateParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
+                         => Show (model Symbolic)
+                         => (Show (cmd Symbolic), Show (resp Symbolic))
                          => StateMachine model cmd m resp
                          -> Gen (ParallelCommands cmd resp)
 generateParallelCommands sm@StateMachine { initModel } = do
