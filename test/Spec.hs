@@ -28,6 +28,7 @@ import           ErrorEncountered
 import           MemoryReference
 import qualified ShrinkingProps
 import           TicketDispenser
+import           UnionFind
 
 ------------------------------------------------------------------------
 
