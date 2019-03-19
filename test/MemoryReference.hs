@@ -177,7 +177,7 @@ prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
 
 prop_runSavedCommands :: Bug -> FilePath -> Property
 prop_runSavedCommands bug fp = monadicIO $ do
-  (hist, _model, res) <- runSavedCommands (sm bug) fp
+  (_cmds, hist, _model, res) <- runSavedCommands (sm bug) fp
   prettyCommands (sm bug) hist (res === Ok)
 
 prop_parallel :: Bug -> Property

@@ -467,10 +467,11 @@ runSavedCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable 
                  => (Read (cmd Symbolic), Read (resp Symbolic))
                  => StateMachine model cmd m resp
                  -> FilePath
-                 -> PropertyM m (History cmd resp, model Concrete, Reason)
+                 -> PropertyM m (Commands cmd resp, History cmd resp, model Concrete, Reason)
 runSavedCommands sm fp = do
   cmds <- read <$> liftIO (readFile fp)
-  runCommands sm cmds
+  (hist, model, res) <- runCommands sm cmds
+  return (cmds, hist, model, res)
 
 ------------------------------------------------------------------------
 
