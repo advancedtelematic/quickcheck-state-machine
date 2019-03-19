@@ -50,6 +50,7 @@ library
         ansi-wl-pprint >=0.6.7.3,
         base >=4.10 && <5,
         containers >=0.5.7.1,
+        directory >=1.0.0.0,
         exceptions >=0.8.3,
         filepath >=1.0,
         generic-data >= 0.3.0.0,

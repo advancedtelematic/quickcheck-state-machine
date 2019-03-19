@@ -74,6 +74,8 @@ import           Data.Time
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
 import           Prelude
+import           System.Directory
+                   (createDirectoryIfMissing)
 import           System.FilePath
                    ((</>))
 import           Test.QuickCheck
@@ -456,6 +458,7 @@ saveCommands dir cmds prop = go `whenFail` prop
   where
     go :: IO ()
     go = do
+      createDirectoryIfMissing True dir
       file <- formatTime defaultTimeLocale "%F_%T" <$> getZonedTime
       let fp = dir </> file
       writeFile fp (ppShow cmds)
