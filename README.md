@@ -396,6 +396,15 @@ Here are some more examples to get you started:
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
     [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)];
 
+  * The union-find
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/UnionFind.hs)
+    -- an imperative implementation of the union-find algorithm. It could be
+    useful to compare the solution to the one that appears in the paper *Testing
+    Monadic Code with QuickCheck*
+    [[PS](http://www.cse.chalmers.se/~rjmh/Papers/QuickCheckST.ps)], which the
+    [`Test.QuickCheck.Monadic`](https://hackage.haskell.org/package/QuickCheck/docs/Test-QuickCheck-Monadic.html)
+    module is based on;
+
   * Ticket
     dispenser
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/TicketDispenser.hs) --
