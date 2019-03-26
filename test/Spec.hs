@@ -31,6 +31,7 @@ import qualified CrudWebserverDb          as WS
 import           DieHard
 import           Echo
 import           ErrorEncountered
+import           Hanoi
 import           MemoryReference
 import           ProcessRegistry
 import qualified ShrinkingProps
@@ -44,6 +45,8 @@ tests :: Bool -> TestTree
 tests docker0 = testGroup "Tests"
   [ testCase "Doctest Z module" (doctest ["src/Test/StateMachine/Z.hs"])
   , ShrinkingProps.tests
+  , testProperty "Towers of Hanoi"
+      (expectFailure (prop_hanoi 3))
   , testProperty "Die Hard"
       (expectFailure (withMaxSuccess 2000 prop_dieHard))
   , testGroup "MemoryReference"
