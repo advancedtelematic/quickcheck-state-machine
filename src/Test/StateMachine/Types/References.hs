@@ -101,6 +101,8 @@ instance ToExpr a => ToExpr (Concrete a) where
 data Reference a r = Reference (r a)
   deriving Generic
 
+deriving instance Typeable a => Read (Reference a Symbolic)
+
 instance ToExpr (r a) => ToExpr (Reference a r)
 
 instance Rank2.Functor (Reference a) where
@@ -125,15 +127,6 @@ instance (Show1 r, Show a) => Show (Reference a r) where
     where
       appPrec = 10
 
-instance Typeable a => Read (Reference a Symbolic) where
-  readsPrec d = readParen (d > app_prec)
-                  (\r -> [ (Reference m, t)
-                         | ("Reference", s) <- lex r
-                         , (m, t) <- readsPrec (app_prec + 1) s
-                         ])
-    where
-      app_prec = 10
-
 reference :: Typeable a => a -> Reference a Concrete
 reference = Reference . Concrete
 
@@ -149,9 +142,6 @@ newtype Opaque a = Opaque
 
 instance Show (Opaque a) where
   showsPrec _ (Opaque _) = showString "Opaque"
-
-instance Read (Opaque a) where
-  readsPrec _ _ = error "Read Opaque: impossible"
 
 instance ToExpr (Opaque a) where
   toExpr _ = App "Opaque" []
