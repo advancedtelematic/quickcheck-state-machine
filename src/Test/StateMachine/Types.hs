@@ -71,12 +71,14 @@ data StateMachine model cmd m resp = StateMachine
 data Command cmd resp = Command !(cmd Symbolic) !(resp Symbolic) ![Var]
 
 deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Command cmd resp)
+deriving instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Command cmd resp)
 
 newtype Commands cmd resp = Commands
   { unCommands :: [Command cmd resp] }
   deriving (Semigroup, Monoid)
 
 deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Commands cmd resp)
+deriving instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Commands cmd resp)
 
 lengthCommands :: Commands cmd resp -> Int
 lengthCommands = length . unCommands

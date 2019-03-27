@@ -23,6 +23,8 @@ module Test.StateMachine
   , checkCommandNames
   , commandNames
   , commandNamesInOrder
+  , saveCommands
+  , runSavedCommands
 
   -- * Parallel property combinators
   , forAllParallelCommands

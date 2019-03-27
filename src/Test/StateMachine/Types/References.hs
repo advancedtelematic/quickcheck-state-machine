@@ -49,12 +49,13 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 ------------------------------------------------------------------------
 
 newtype Var = Var Int
-  deriving (Eq, Ord, Show, Generic, ToExpr)
+  deriving (Eq, Ord, Show, Generic, ToExpr, Read)
 
 data Symbolic a where
   Symbolic :: Typeable a => Var -> Symbolic a
 
 deriving instance Show (Symbolic a)
+deriving instance Typeable a => Read (Symbolic a)
 deriving instance Eq   (Symbolic a)
 deriving instance Ord  (Symbolic a)
 
@@ -99,6 +100,8 @@ instance ToExpr a => ToExpr (Concrete a) where
 
 data Reference a r = Reference (r a)
   deriving Generic
+
+deriving instance Typeable a => Read (Reference a Symbolic)
 
 instance ToExpr (r a) => ToExpr (Reference a r)
 
