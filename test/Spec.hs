@@ -71,16 +71,16 @@ tests docker0 = testGroup "Tests"
       , ticketDispenser "parallel with shared lock"    (expectFailure .
                                                         prop_ticketDispenserParallelBad)
       ]
-  , testGroup "Circular buffer"
-      [ testProperty "`unpropNoSizeCheck`: the first bug is found"
+  , testGroup "CircularBuffer"
+      [ testProperty "unpropNoSizeCheck"
           (expectFailure unpropNoSizeCheck)
-      , testProperty "`unpropFullIsEmpty`: the second bug is found"
+      , testProperty "unpropFullIsEmpty"
           (expectFailure unpropFullIsEmpty)
-      , testProperty "`unpropBadRem`: the third bug is found"
+      , testProperty "unpropBadRem"
           (expectFailure (withMaxSuccess 1000 unpropBadRem))
-      , testProperty "`unpropStillBadRem`: the fourth bug is found"
-          (expectFailure unpropStillBadRem)
-      , testProperty "`prop_circularBuffer`: the fixed version is correct"
+      , testProperty "unpropStillBadRem"
+          (expectFailure (withMaxSuccess 1000 unpropStillBadRem))
+      , testProperty "prop_circularBuffer"
           prop_circularBuffer
       ]
   , testGroup "Echo"
@@ -104,7 +104,7 @@ tests docker0 = testGroup "Tests"
           (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
             (sample (generateMarkov sm markovNotStochastic3 initState)))
       ]
-  , testGroup "Union Find"
+  , testGroup "UnionFind"
       [ testProperty "sequential" UnionFind.prop_unionFind_sequential
       , testProperty "parallel"   UnionFind.prop_unionFind_parallel
       ]
@@ -113,7 +113,7 @@ tests docker0 = testGroup "Tests"
     webServer docker bug port test prop
       | docker    = withResource (WS.setup bug WS.connectionString port) WS.cleanup
                      (const (testProperty test (prop port)))
-      | otherwise = testCase ("No docker, skipping: " ++ test) (return ())
+      | otherwise = testCase ("No docker or running on CI, skipping: " ++ test) (return ())
 
     ticketDispenser test prop =
       withResource setupLock cleanupLock
