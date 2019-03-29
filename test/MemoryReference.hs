@@ -146,12 +146,14 @@ mock (Model m) cmd = case cmd of
   Increment _ -> pure Incremented
 
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
-generator m = Just $ frequency
-  [ (1, genCreate m)
-  , (4, genWrite m)
-  , (4, genRead m)
-  , (4, genIncr m)
-  ]
+generator m@(Model model)
+  | null model = Just (genCreate m)
+  | otherwise  = Just $ frequency
+                          [ (1, genCreate m)
+                          , (4, genWrite m)
+                          , (4, genRead m)
+                          , (4, genIncr m)
+                          ]
 
 genCreate, genRead, genWrite, genIncr :: Model Symbolic -> Gen (Command Symbolic)
 genCreate _model        = return Create
