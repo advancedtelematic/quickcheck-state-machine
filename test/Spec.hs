@@ -73,9 +73,9 @@ tests docker0 = testGroup "Tests"
       ]
   , testGroup "CircularBuffer"
       [ testProperty "unpropNoSizeCheck"
-          (expectFailure unpropNoSizeCheck)
+          (expectFailure (withMaxSuccess 1000 unpropNoSizeCheck))
       , testProperty "unpropFullIsEmpty"
-          (expectFailure unpropFullIsEmpty)
+          (expectFailure (withMaxSuccess 1000 unpropFullIsEmpty))
       , testProperty "unpropBadRem"
           (expectFailure (withMaxSuccess 1000 unpropBadRem))
       , testProperty "unpropStillBadRem"
