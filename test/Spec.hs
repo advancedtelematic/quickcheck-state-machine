@@ -105,8 +105,8 @@ tests docker0 = testGroup "Tests"
             (sample (generateMarkov sm markovNotStochastic3 initState)))
       ]
   , testGroup "UnionFind"
-      [ testProperty "sequential" UnionFind.prop_unionFind_sequential
-      , testProperty "parallel"   UnionFind.prop_unionFind_parallel
+      [ testProperty "sequential" UnionFind.prop_unionFindSequential
+      , testProperty "parallel"   UnionFind.prop_unionFindParallelRace
       ]
   ]
   where

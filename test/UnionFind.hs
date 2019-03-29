@@ -21,8 +21,8 @@
 -----------------------------------------------------------------------------
 
 module UnionFind
-  ( prop_unionFind_sequential
-  , prop_unionFind_parallel
+  ( prop_unionFindSequential
+  , prop_unionFindParallelRace
   )
   where
 
@@ -37,7 +37,7 @@ import           GHC.Generics
 import           Prelude
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements,
-                   frequency, shrink, (===))
+                   frequency, shrink, (===), expectFailure, withMaxSuccess)
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -183,8 +183,8 @@ unionElements e1 e2 = do
   if ref1 == ref2
      then error "equivalent elements"
      else do
-       Weight w1       <- readIORef ref1
-       Weight w2       <- readIORef ref2
+       Weight w1 <- readIORef ref1
+       Weight w2 <- readIORef ref2
 
        if w1 <= w2
        then do
@@ -222,12 +222,15 @@ sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition
          Nothing generator shrinker semantics mock
 
-prop_unionFind_sequential :: Property
-prop_unionFind_sequential =
+prop_unionFindSequential :: Property
+prop_unionFindSequential =
   forAllCommands sm Nothing $ \cmds -> monadicIO $ do
     (hist, _model, res) <- runCommands sm cmds
     prettyCommands sm hist (checkCommandNames cmds (res === Ok))
 
-prop_unionFind_parallel :: Property
-prop_unionFind_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $ do
-  prettyParallelCommands cmds =<< runParallelCommands sm cmds
+-- We expect this property to fail, as the implementation uses IORefs in a
+-- non-atomic way.
+prop_unionFindParallelRace :: Property
+prop_unionFindParallelRace = expectFailure $ withMaxSuccess 1000 $
+  forAllParallelCommands sm $ \cmds -> monadicIO $
+    prettyParallelCommands cmds =<< runParallelCommands sm cmds
