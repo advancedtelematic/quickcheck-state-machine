@@ -105,9 +105,7 @@ tests docker0 = testGroup "Tests"
             (sample (generateMarkov sm markovNotStochastic3 initState)))
       ]
   , testGroup "UnionFind"
-      [ testProperty "sequential" UnionFind.prop_unionFindSequential
-      , testProperty "parallel"   UnionFind.prop_unionFindParallelRace
-      ]
+      [ testProperty "sequential" UnionFind.prop_unionFindSequential ]
   ]
   where
     webServer docker bug port test prop

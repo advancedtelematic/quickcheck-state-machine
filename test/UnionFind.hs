@@ -1,8 +1,8 @@
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE PolyKinds          #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -10,7 +10,7 @@
 -- Copyright   :  (C) 2017-2019, ATS Advanced Telematic Systems GmbH
 -- License     :  BSD-style (see the file LICENSE)
 --
--- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>,
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>,
 --                Momoko Hattori <momohatt10@gmail.com>
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
@@ -22,7 +22,6 @@
 
 module UnionFind
   ( prop_unionFindSequential
-  , prop_unionFindParallelRace
   )
   where
 
@@ -36,16 +35,16 @@ import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, arbitrary, elements,
-                   frequency, shrink, (===), expectFailure, withMaxSuccess)
+                   (Gen, Property, arbitrary, elements, frequency,
+                   shrink, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import qualified Test.StateMachine.Types.Rank2      as Rank2
 import           Test.StateMachine.Types.References
 import           Test.StateMachine.Z
-                   (empty, domain)
+                   (domain, empty)
 
 ------------------------------------------------------------------------
 
@@ -132,8 +131,8 @@ precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition m@(Model model) cmd = case cmd of
   New _           -> Top
   Find ref        -> ref   `member` map fst model
-  Union ref1 ref2 -> (ref1 `member` map fst model) :&&
-                     (ref2 `member` map fst model) :&&
+  Union ref1 ref2 -> (ref1 `member` map fst model) .&&
+                     (ref2 `member` map fst model) .&&
                      (m ! ref1 ./= m ! ref2)
 
 transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
@@ -227,10 +226,3 @@ prop_unionFindSequential =
   forAllCommands sm Nothing $ \cmds -> monadicIO $ do
     (hist, _model, res) <- runCommands sm cmds
     prettyCommands sm hist (checkCommandNames cmds (res === Ok))
-
--- We expect this property to fail, as the implementation uses IORefs in a
--- non-atomic way.
-prop_unionFindParallelRace :: Property
-prop_unionFindParallelRace = expectFailure $ withMaxSuccess 1000 $
-  forAllParallelCommands sm $ \cmds -> monadicIO $
-    prettyParallelCommands cmds =<< runParallelCommands sm cmds
