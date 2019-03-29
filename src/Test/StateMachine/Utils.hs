@@ -90,9 +90,10 @@ instance Testable () where
     liftUnit () = succeeded
 #endif
 
-suchThatEither :: Gen a -> (a -> Bool) -> Gen (Either [a] a)
+suchThatEither :: forall a. Gen a -> (a -> Bool) -> Gen (Either [a] a)
 gen `suchThatEither` p = sized (try [] 0 . max 100)
   where
+    try :: [a] -> Int -> Int -> Gen (Either [a] a)
     try ces _ 0 = return (Left (reverse ces))
     try ces k n = do
       x <- resize (2 * k + n) gen
