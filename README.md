@@ -144,7 +144,8 @@ Next we have to explain how to generate and shrink actions.
 
 ```haskell
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
-generator (Model model) = Just $ frequency
+generator (Model []) = Just (pure Create)
+generator model      = Just $ frequency
   [ (1, pure Create)
   , (4, Read  <$> elements (map fst model))
   , (4, Write <$> elements (map fst model) <*> arbitrary)
