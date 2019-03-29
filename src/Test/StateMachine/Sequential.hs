@@ -351,47 +351,50 @@ executeCommands StateMachine {..} hchan pid check =
               atomically (writeTChan hchan (pid, Exception err))
               return ExceptionThrown
             Right cresp -> do
-              atomically (writeTChan hchan (pid, Response cresp))
-              case (check, logic (postcondition cmodel ccmd cresp)) of
-                (True, VFalse ce) -> return (PostconditionFailed (show ce))
-                _                 -> case (check, logic (fromMaybe (const Top) invariant cmodel)) of
-                                       (True, VFalse ce') -> return (InvariantBroken (show ce'))
-                                       _                  -> do
-                                         let (sresp, counter') = runGenSym (mock smodel scmd) counter
-                                             cvars             = getUsedConcrete cresp
-                                         if length vars /= length cvars
-                                         then do
-                                           let err = unlines
-                                                 [ ""
-                                                 , "Mismatch between `mock` and `semantics`."
-                                                 , ""
-                                                 , "The definition of `mock` for the command:"
-                                                 , ""
-                                                 , "    ", show ccmd
-                                                 , ""
-                                                 , "returns the following references:"
-                                                 , ""
-                                                 , "    ", show vars
-                                                 , ""
-                                                 , "while the response from `semantics` returns the following references:"
-                                                 , ""
-                                                 , "    ", show cvars
-                                                 , ""
-                                                 , "Continuing to execute commands at this point could result in scope"
-                                                 , "errors, because we might have commands that use references (returned"
-                                                 , "by `mock`) that are not available (returned by `semantics`), to avoid"
-                                                 , "this please fix the mismatch."
-                                                 , ""
-                                                 ]
-                                           atomically (writeTChan hchan (pid, Exception err))
-                                           return MockSemanticsMismatch
-                                         else do
+              let cvars = getUsedConcrete cresp
+              if length vars /= length cvars
+              then do
+                let err = mockSemanticsMismatchError (show ccmd) (show vars) (show cvars)
+                atomically (writeTChan hchan (pid, Exception err))
+                return MockSemanticsMismatch
+              else do
+                atomically (writeTChan hchan (pid, Response cresp))
+                case (check, logic (postcondition cmodel ccmd cresp)) of
+                  (True, VFalse ce) -> return (PostconditionFailed (show ce))
+                  _                 -> case (check, logic (fromMaybe (const Top) invariant cmodel)) of
+                                         (True, VFalse ce') -> return (InvariantBroken (show ce'))
+                                         _                  -> do
+                                           let (sresp, counter') = runGenSym (mock smodel scmd) counter
                                            put ( insertConcretes vars cvars env
                                                , transition smodel scmd sresp
                                                , counter'
                                                , transition cmodel ccmd cresp
                                                )
                                            go cmds
+
+    mockSemanticsMismatchError :: String -> String -> String -> String
+    mockSemanticsMismatchError cmd svars cvars = unlines
+      [ ""
+      , "Mismatch between `mock` and `semantics`."
+      , ""
+      , "The definition of `mock` for the command:"
+      , ""
+      , "    ", cmd
+      , ""
+      , "returns the following references:"
+      , ""
+      , "    ", svars
+      , ""
+      , "while the response from `semantics` returns the following references:"
+      , ""
+      , "    ", cvars
+      , ""
+      , "Continuing to execute commands at this point could result in scope"
+      , "errors, because we might have commands that use references (returned"
+      , "by `mock`) that are not available (returned by `semantics`), to avoid"
+      , "this please fix the mismatch."
+      , ""
+      ]
 
 getUsedConcrete :: Rank2.Foldable f => f Concrete -> [Dynamic]
 getUsedConcrete = Rank2.foldMap (\(Concrete x) -> [toDyn x])
