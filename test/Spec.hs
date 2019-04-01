@@ -7,6 +7,8 @@ import           Control.Exception
 import           Data.List
                    (isPrefixOf)
 import           Prelude
+import           System.Environment
+                   (lookupEnv)
 import           System.Exit
                    (ExitCode(..))
 import           System.Process
@@ -69,16 +71,16 @@ tests docker0 = testGroup "Tests"
       , ticketDispenser "parallel with shared lock"    (expectFailure .
                                                         prop_ticketDispenserParallelBad)
       ]
-  , testGroup "Circular buffer"
-      [ testProperty "`unpropNoSizeCheck`: the first bug is found"
-          (expectFailure unpropNoSizeCheck)
-      , testProperty "`unpropFullIsEmpty`: the second bug is found"
-          (expectFailure unpropFullIsEmpty)
-      , testProperty "`unpropBadRem`: the third bug is found"
+  , testGroup "CircularBuffer"
+      [ testProperty "unpropNoSizeCheck"
+          (expectFailure (withMaxSuccess 1000 unpropNoSizeCheck))
+      , testProperty "unpropFullIsEmpty"
+          (expectFailure (withMaxSuccess 1000 unpropFullIsEmpty))
+      , testProperty "unpropBadRem"
           (expectFailure (withMaxSuccess 1000 unpropBadRem))
-      , testProperty "`unpropStillBadRem`: the fourth bug is found"
-          (expectFailure unpropStillBadRem)
-      , testProperty "`prop_circularBuffer`: the fixed version is correct"
+      , testProperty "unpropStillBadRem"
+          (expectFailure (withMaxSuccess 1000 unpropStillBadRem))
+      , testProperty "prop_circularBuffer"
           prop_circularBuffer
       ]
   , testGroup "Echo"
@@ -102,16 +104,14 @@ tests docker0 = testGroup "Tests"
           (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
             (sample (generateMarkov sm markovNotStochastic3 initState)))
       ]
-  , testGroup "Union Find"
-      [ testProperty "sequential" UnionFind.prop_unionFind_sequential
-      , testProperty "parallel"   UnionFind.prop_unionFind_parallel
-      ]
+  , testGroup "UnionFind"
+      [ testProperty "sequential" UnionFind.prop_unionFindSequential ]
   ]
   where
     webServer docker bug port test prop
       | docker    = withResource (WS.setup bug WS.connectionString port) WS.cleanup
                      (const (testProperty test (prop port)))
-      | otherwise = testCase ("No docker, skipping: " ++ test) (return ())
+      | otherwise = testCase ("No docker or running on CI, skipping: " ++ test) (return ())
 
     ticketDispenser test prop =
       withResource setupLock cleanupLock
@@ -128,13 +128,19 @@ tests docker0 = testGroup "Tests"
 
 main :: IO ()
 main = do
+
   -- Check if docker is avaiable.
   ec <- rawSystemNoStdout "docker" ["version"]
           `catch` (\(_ :: IOError) -> return (ExitFailure 127))
   let docker = case ec of
                  ExitSuccess   -> True
                  ExitFailure _ -> False
-  defaultMain (tests docker)
+
+  -- Check if we are running on CI (this environment variable is set by Travis).
+  ci <- (== Just "true") <$> lookupEnv "CONTINUOUS_INTEGRATION"
+
+  -- Only run tests involving docker when we are not on CI, as they are flaky.
+  defaultMain (tests (docker && not ci))
     where
       rawSystemNoStdout cmd args =
         withCreateProcess

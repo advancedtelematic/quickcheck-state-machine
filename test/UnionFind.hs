@@ -1,8 +1,8 @@
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE PolyKinds          #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -10,7 +10,7 @@
 -- Copyright   :  (C) 2017-2019, ATS Advanced Telematic Systems GmbH
 -- License     :  BSD-style (see the file LICENSE)
 --
--- Maintainer  :  Stevan Andjelkovic <stevan@advancedtelematic.com>,
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>,
 --                Momoko Hattori <momohatt10@gmail.com>
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
@@ -21,8 +21,7 @@
 -----------------------------------------------------------------------------
 
 module UnionFind
-  ( prop_unionFind_sequential
-  , prop_unionFind_parallel
+  ( prop_unionFindSequential
   )
   where
 
@@ -36,16 +35,16 @@ import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, arbitrary, elements,
-                   frequency, shrink, (===))
+                   (Gen, Property, arbitrary, elements, frequency,
+                   shrink, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import qualified Test.StateMachine.Types.Rank2      as Rank2
 import           Test.StateMachine.Types.References
 import           Test.StateMachine.Z
-                   (empty, domain)
+                   (domain, empty)
 
 ------------------------------------------------------------------------
 
@@ -132,8 +131,8 @@ precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition m@(Model model) cmd = case cmd of
   New _           -> Top
   Find ref        -> ref   `member` map fst model
-  Union ref1 ref2 -> (ref1 `member` map fst model) :&&
-                     (ref2 `member` map fst model) :&&
+  Union ref1 ref2 -> (ref1 `member` map fst model) .&&
+                     (ref2 `member` map fst model) .&&
                      (m ! ref1 ./= m ! ref2)
 
 transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
@@ -183,8 +182,8 @@ unionElements e1 e2 = do
   if ref1 == ref2
      then error "equivalent elements"
      else do
-       Weight w1       <- readIORef ref1
-       Weight w2       <- readIORef ref2
+       Weight w1 <- readIORef ref1
+       Weight w2 <- readIORef ref2
 
        if w1 <= w2
        then do
@@ -222,12 +221,8 @@ sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition
          Nothing generator shrinker semantics mock
 
-prop_unionFind_sequential :: Property
-prop_unionFind_sequential =
+prop_unionFindSequential :: Property
+prop_unionFindSequential =
   forAllCommands sm Nothing $ \cmds -> monadicIO $ do
     (hist, _model, res) <- runCommands sm cmds
     prettyCommands sm hist (checkCommandNames cmds (res === Ok))
-
-prop_unionFind_parallel :: Property
-prop_unionFind_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $ do
-  prettyParallelCommands cmds =<< runParallelCommands sm cmds
