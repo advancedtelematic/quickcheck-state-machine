@@ -6,7 +6,15 @@
 {-# LANGUAGE FlexibleInstances  #-}
 
 ------------------------------------------------------------------------
-
+-- |
+-- Module      :  Hanoi
+-- Copyright   :  (C) 2019, Adam Boniecki
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Adam Boniecki <adambonie@gmail.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
 -- Solution to the famous Tower of Hanoi puzzle using tools for state
 -- machine property-based testing.
 --
@@ -17,11 +25,7 @@
 ------------------------------------------------------------------------
 
 module Hanoi
-  ( Command(..)
-  , Model(..)
-  , initModel
-  , transitions
-  , prop_hanoi
+  ( prop_hanoi
   ) where
 
 import Data.Kind
@@ -36,6 +40,7 @@ import Test.QuickCheck
          (Gen, Property, (===), Arbitrary (arbitrary), choose, suchThat)
 import Test.QuickCheck.Monadic
          (monadicIO)
+
 import Test.StateMachine
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
@@ -74,23 +79,22 @@ data Response (r :: Type -> Type) = Done
 ------------------------------------------------------------------------
 
 transitions :: Model r -> Command r -> Response r -> Model r
-transitions (Model pegs) (Move (from,to)) _ =
-  Model $ pegs // [(from, xs), (to, x:(pegs!to))]
-    where (x, xs) = (head pegs_from, tail pegs_from)
-          pegs_from = pegs!from
+transitions (Model pegs) (Move (from,to)) _ = case pegs ! from of
+  (x : xs) -> Model $ pegs // [(from, xs), (to, x:(pegs ! to))]
+  _ -> error "transition: impossible, due to preconditon"
 
 preconditions :: Model Symbolic -> Command Symbolic -> Logic
 preconditions (Model pegs) (Move (from,to)) = (Boolean $ isJust x) :&& (x .<= y)
-  where x = listToMaybe $ pegs!from
+  where x = listToMaybe $ pegs ! from
         -- Any disc can be placed on empty peg, so no disc counts as largest disc
-        y = listToMaybe $ (pegs!to) ++ [maxBound]
+        y = listToMaybe $ pegs ! to ++ [maxBound]
 
 -- Check if all discs are at the last peg. The invariant states that this is not
 -- the case, so when it is not satisfied, we have a counter example that is a
 -- solution to our puzzle.
 
 postconditions :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
-postconditions m c r = length lst ./= (sum $ fmap length pegs)
+postconditions m c r = length lst ./= sum (fmap length pegs)
   where lst = pegs ! (snd $ bounds pegs)
         Model pegs = transitions m c r
 
