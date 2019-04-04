@@ -67,7 +67,8 @@ test-suite quickcheck-state-machine-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  build-depends:       base,
+  build-depends:       array,
+                       base,
                        bytestring,
                        containers,
                        directory,
@@ -109,6 +110,7 @@ test-suite quickcheck-state-machine-test
                        DieHard,
                        Echo,
                        ErrorEncountered,
+                       Hanoi,
                        MemoryReference,
                        ProcessRegistry,
                        ShrinkingProps,
