@@ -37,6 +37,8 @@ module TicketDispenser
 
 import           Control.Exception
                    (IOException, catch)
+import           Control.Monad.IO.Class
+                   (liftIO)
 import           Data.Kind
                    (Type)
 import           GHC.Generics
@@ -57,7 +59,7 @@ import           System.IO.Strict
 import           Test.QuickCheck
                    (Gen, Property, frequency, (===))
 import           Test.QuickCheck.Monadic
-                   (monadicIO)
+                   (PropertyM, monadicIO)
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Types.Rank2 as Rank2
@@ -184,39 +186,43 @@ cleanupLock (tdb, tlock) = do
   removeFile tdb
   removeFile tlock
 
-withDbLock :: (DbLock -> IO ()) -> IO ()
+withDbLock :: (DbLock -> PropertyM IO ()) -> PropertyM IO ()
 withDbLock run = do
-  lock <- setupLock
+  lock <- liftIO setupLock
   run lock
-  cleanupLock lock
+  liftIO $ cleanupLock lock
 
 sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
 sm se files = StateMachine
   initModel transitions preconditions postconditions
   Nothing generator shrinker (semantics se files) mock
 
+smUnused :: SharedExclusive -> StateMachine Model Action IO Response
+smUnused se = sm se (error "dblock used during command creation")
+
 -- Sequentially the model is consistent (even though the lock is
 -- shared).
 
-prop_ticketDispenser :: DbLock -> Property
-prop_ticketDispenser files = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
-  (hist, _, res) <- runCommands sm' cmds
-  prettyCommands sm' hist $
-    checkCommandNames cmds (res === Ok)
-  where
-    sm' = sm Shared files
+prop_ticketDispenser :: Property
+prop_ticketDispenser =
+  forAllCommands (smUnused Shared) Nothing $ \cmds -> monadicIO $ do
+    withDbLock $ \ioLock -> do
+      let sm' = sm Shared ioLock
+      (hist, _, res) <- runCommands sm' cmds
+      prettyCommands sm' hist $
+        checkCommandNames cmds (res === Ok)
 
-prop_ticketDispenserParallel :: SharedExclusive -> DbLock -> Property
-prop_ticketDispenserParallel se files =
-  forAllParallelCommands sm' $ \cmds -> monadicIO $
-    prettyParallelCommands cmds =<< runParallelCommandsNTimes 100 sm' cmds
-  where
-    sm' = sm se files
+prop_ticketDispenserParallel :: SharedExclusive -> Property
+prop_ticketDispenserParallel se =
+  forAllParallelCommands (smUnused se) $ \cmds -> monadicIO $
+    withDbLock $ \ioLock -> do
+      let sm' = sm se ioLock
+      prettyParallelCommands cmds =<< runParallelCommandsNTimes 100 sm' cmds
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.
-prop_ticketDispenserParallelOK :: DbLock -> Property
+prop_ticketDispenserParallelOK :: Property
 prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 
-prop_ticketDispenserParallelBad :: DbLock -> Property
+prop_ticketDispenserParallelBad :: Property
 prop_ticketDispenserParallelBad = prop_ticketDispenserParallel Shared
