@@ -62,7 +62,7 @@ module CrudWebserverDb
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar, threadDelay)
 import           Control.Exception
-                   (IOException, bracket, catch)
+                   (IOException, bracket, catch, onException)
 import           Control.Monad.Logger
                    (NoLoggingT, runNoLoggingT)
 import           Control.Monad.Reader
@@ -484,7 +484,7 @@ setupDb = do
     , "--format"
     , "'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"
     ] ""
-  healthyDb pid ip
+  healthyDb pid ip `onException` callProcess "docker" [ "rm", "-f", "-v", pid ]
   return (pid, ip)
   where
     trim :: String -> String
@@ -520,5 +520,5 @@ setupDb = do
 
 cleanup :: (String, Async ()) -> IO ()
 cleanup (pid, aServer) = do
-  callProcess "docker" [ "rm", "-f", pid ]
+  callProcess "docker" [ "rm", "-f", "-v", pid ]
   cancel aServer
