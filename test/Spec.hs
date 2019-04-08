@@ -23,8 +23,7 @@ import           Test.Tasty
 import           Test.Tasty.HUnit
                    (assertFailure, testCase)
 import           Test.Tasty.QuickCheck
-                   (expectFailure, ioProperty, testProperty,
-                   withMaxSuccess)
+                   (expectFailure, testProperty, withMaxSuccess)
 
 import           CircularBuffer
 import qualified CrudWebserverDb          as WS
@@ -68,10 +67,10 @@ tests docker0 = testGroup "Tests"
       , webServer docker0 WS.Race  8803 "Race bug"    (expectFailure . WS.prop_crudWebserverDbParallel)
       ]
   , testGroup "Ticket dispenser"
-      [ ticketDispenser "sequential"                   prop_ticketDispenser
-      , ticketDispenser "parallel with exclusive lock" (withMaxSuccess 30 .
+      [ testProperty "sequential"                   prop_ticketDispenser
+      , testProperty "parallel with exclusive lock" (withMaxSuccess 30
                                                         prop_ticketDispenserParallelOK)
-      , ticketDispenser "parallel with shared lock"    (expectFailure .
+      , testProperty "parallel with shared lock"    (expectFailure
                                                         prop_ticketDispenserParallelBad)
       ]
   , testGroup "CircularBuffer"
@@ -87,10 +86,10 @@ tests docker0 = testGroup "Tests"
           prop_circularBuffer
       ]
   , testGroup "Echo"
-      [ testProperty "sequential"  (ioProperty (prop_echoOK <$> mkEnv))
-      , testProperty "parallel ok" (ioProperty (prop_echoParallelOK False <$> mkEnv))
+      [ testProperty "sequential" prop_echoOK
+      , testProperty "parallel ok" (prop_echoParallelOK False)
       , testProperty "parallel bad, see issue #218"
-          (expectFailure (ioProperty (prop_echoParallelOK True <$> mkEnv)))
+          (expectFailure (prop_echoParallelOK True))
       ]
   , testGroup "ProcessRegistry"
       [ testProperty "sequential" (prop_processRegistry markovGood)
@@ -115,10 +114,6 @@ tests docker0 = testGroup "Tests"
       | docker    = withResource (WS.setup bug WS.connectionString port) WS.cleanup
                      (const (testProperty test (prop port)))
       | otherwise = testCase ("No docker or running on CI, skipping: " ++ test) (return ())
-
-    ticketDispenser test prop =
-      withResource setupLock cleanupLock
-        (\ioLock -> testProperty test (ioProperty (prop <$> ioLock)))
 
     assertException :: Exception e => (e -> Bool) -> IO a -> IO ()
     assertException p io = do

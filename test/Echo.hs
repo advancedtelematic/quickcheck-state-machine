@@ -35,7 +35,8 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 import           UnliftIO
-                   (TVar, atomically, newTVarIO, readTVar, writeTVar)
+                   (TVar, atomically, liftIO, newTVarIO, readTVar,
+                   writeTVar)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -72,18 +73,23 @@ output (Env mBuf) = atomically $ do
 
 -- | Spec for echo.
 
-prop_echoOK :: Env -> Property
-prop_echoOK env = forAllCommands echoSM' Nothing $ \cmds -> monadicIO $ do
+prop_echoOK :: Property
+prop_echoOK = forAllCommands smUnused Nothing $ \cmds -> monadicIO $ do
+    env <- liftIO $ mkEnv
+    let echoSM' = echoSM env
     (hist, _, res) <- runCommands echoSM' cmds
     prettyCommands echoSM' hist (res === Ok)
-    where echoSM' = echoSM env
 
-prop_echoParallelOK :: Bool -> Env -> Property
-prop_echoParallelOK problem env = forAllParallelCommands echoSM' $ \cmds -> monadicIO $ do
+prop_echoParallelOK :: Bool -> Property
+prop_echoParallelOK problem = forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
+    env <- liftIO $ mkEnv
+    let echoSM' = echoSM env
     let n | problem   = 2
           | otherwise = 1
     prettyParallelCommands cmds =<< runParallelCommandsNTimes n echoSM' cmds
-    where echoSM' = echoSM env
+
+smUnused :: StateMachine Model Action IO Response
+smUnused = echoSM $ error "used env during command generation"
 
 echoSM :: Env -> StateMachine Model Action IO Response
 echoSM env = StateMachine
