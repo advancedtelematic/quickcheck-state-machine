@@ -498,7 +498,7 @@ setupDb = do
       close sock
       where
         go :: Int -> IO Socket
-        go 0 = error "healtyDb: db isn't healthy"
+        go 0 = error "healthyDb: db isn't healthy"
         go n = do
           let hints = defaultHints
                 { addrFlags      = [AI_NUMERICHOST , AI_NUMERICSERV]
