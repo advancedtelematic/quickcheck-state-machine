@@ -507,12 +507,12 @@ setupDb = do
           addr : _ <- getAddrInfo (Just hints) (Just ip) (Just "5432")
           sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
           (connect sock (addrAddress addr) >>
-            callProcess "docker"
+            readProcess "docker"
               [ "exec"
               , "-u", "postgres"
               , pid
               , "psql", "-U", "postgres", "-d", "postgres", "-c", "SELECT 1 + 1"
-              ] >> return sock)
+              ] "" >> return sock)
             `catch` (\(_ :: IOException) -> do
                         threadDelay 1000000
                         go (n - 1))
