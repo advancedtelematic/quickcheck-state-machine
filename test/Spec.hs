@@ -42,7 +42,10 @@ import qualified UnionFind
 
 tests :: Bool -> TestTree
 tests docker0 = testGroup "Tests"
-  [ testCase "Doctest Z module" (doctest ["src/Test/StateMachine/Z.hs"])
+  [ testGroup "Doctest"
+      [ testCase "Z"     (doctest ["src/Test/StateMachine/Z.hs"])
+      , testCase "Logic" (doctest ["src/Test/StateMachine/Logic.hs"])
+      ]
   , ShrinkingProps.tests
   , testProperty "Towers of Hanoi"
       (expectFailure (prop_hanoi 3))

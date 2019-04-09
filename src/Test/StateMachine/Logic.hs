@@ -26,6 +26,7 @@ module Test.StateMachine.Logic
   , boolean
   , logic
   , predicate
+  , gatherAnnotations
   , (.==)
   , (./=)
   , (.<)
@@ -176,6 +177,56 @@ predicate p0 = let b = go p0 in case p0 of
     go :: Predicate -> Bool -> Value
     go _ True  = VTrue
     go p False = VFalse (PredicateC (dual p))
+
+-- | Gather user annotations of a true logic expression.
+--
+-- >>> gatherAnnotations (Top .// "top")
+-- ["top"]
+--
+-- >>> gatherAnnotations ((Bot .// "bot") .|| (Top .// "top"))
+-- ["top"]
+--
+-- >>> gatherAnnotations (Top .// "top1" .&& Top .// "top2")
+-- ["top1","top2"]
+--
+-- >>> gatherAnnotations (Bot .// "bot" .&& Top .// "top")
+-- []
+--
+-- >>> gatherAnnotations (forall [1,2,3] (\i -> 0 .< i .// "positive"))
+-- ["positive","positive","positive"]
+--
+-- >>> gatherAnnotations (forall [0,1,2,3] (\i -> 0 .< i .// "positive"))
+-- []
+--
+-- >>> gatherAnnotations (exists [1,2,3] (\i -> 0 .< i .// "positive"))
+-- ["positive"]
+gatherAnnotations :: Logic -> [String]
+gatherAnnotations = go []
+  where
+    go _acc Bot = []
+    go acc  Top = acc
+    go acc (l :&& r) | boolean l && boolean r = go (go acc l) r
+                     | otherwise              = acc
+    go acc (l :|| r) | boolean l = go acc l
+                     | boolean r = go acc r
+                     | otherwise = acc
+    go acc (l :=> r) | boolean (l :=> r) = go (go acc l) r
+                     | otherwise         = acc
+    go acc (Not l) | not (boolean l) = go acc l
+                   | otherwise       = acc
+    go acc (Predicate _p) = acc
+    go acc (Forall xs p)
+      | boolean (Forall xs p) = acc ++ concat [ go [] (p x)
+                                              | x <- xs, boolean (p x)
+                                              ]
+      | otherwise             = acc
+    go acc (Exists xs p)
+      | boolean (Exists xs p) = acc ++ concat (take 1 [ go [] (p x)
+                                                      | x <- xs, boolean (p x)
+                                                      ])
+      | otherwise             = acc
+    go acc (Boolean _b)   = acc
+    go acc (Annotate s l) = go (acc ++ [s]) l
 
 ------------------------------------------------------------------------
 
