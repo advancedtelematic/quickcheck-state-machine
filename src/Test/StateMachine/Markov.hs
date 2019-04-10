@@ -58,7 +58,7 @@ coverTransitions ts =
 commandsToTransitions :: forall model state cmd cmd_ m resp.
                          StateMachine model cmd m resp
                       -> (model Symbolic -> state)
-                      -> (forall r. cmd r -> cmd_)
+                      -> (cmd Symbolic -> cmd_)
                       -> Commands cmd resp
                       -> [Transition state cmd_ ()]
 commandsToTransitions StateMachine { initModel, transition, mock } partition constructor =
@@ -94,7 +94,7 @@ transitionToString Transition {..} =
 tabulateMarkov :: (Show cmd_, Show state, Testable prop)
                => StateMachine model cmd m resp
                -> (model Symbolic -> state)
-               -> (forall r. cmd r -> cmd_)
+               -> (cmd Symbolic -> cmd_)
                -> Commands cmd resp
                -> prop
                -> Property
