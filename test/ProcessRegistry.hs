@@ -29,6 +29,7 @@
 
 module ProcessRegistry
   ( prop_processRegistry
+  , prop_processRegistry'
   , markovGood
   , markovDeadlock
   , markovNotStochastic1
@@ -66,7 +67,7 @@ import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, arbitrary, elements,
-                   (===))
+                   frequency, (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -159,8 +160,27 @@ data Action (r :: Type -> Type)
   | Register Name (Reference Pid r)
   | Unregister Name
   | WhereIs Name
+  | Exit
   deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable,
             CommandNames)
+
+data Action_
+  = Spawn_
+  | Kill_
+  | Register_
+  | Unregister_
+  | WhereIs_
+  | Exit_
+  deriving Show
+
+constructor :: Action r -> Action_
+constructor act = case act of
+  Spawn      {} -> Spawn_
+  Kill       {} -> Kill_
+  Register   {} -> Register_
+  Unregister {} -> Unregister_
+  WhereIs    {} -> WhereIs_
+  Exit       {} -> Exit_
 
 data Response (r :: Type -> Type)
   = Spawned (Reference Pid r)
@@ -168,19 +188,21 @@ data Response (r :: Type -> Type)
   | Registered
   | Unregistered
   | HereIs (Reference Pid r)
+  | Exited
   deriving (Show, Generic1, Rank2.Foldable)
 
 data Model (r :: Type -> Type) = Model
   { pids     :: [Reference Pid r]
   , registry :: Map Name (Reference Pid r)
   , killed   :: [Reference Pid r]
+  , stop     :: Bool
   }
   deriving (Show, Generic)
 
 instance ToExpr (Model Concrete)
 
 initModel :: Model r
-initModel = Model [] Map.empty []
+initModel = Model [] Map.empty [] False
 
 transition :: Model r -> Action r -> Response r -> Model r
 transition Model {..} act resp = case (act, resp) of
@@ -200,6 +222,9 @@ transition Model {..} act resp = case (act, resp) of
   (WhereIs _name, HereIs _pid) ->
     Model {..}
 
+  (Exit, Exited) ->
+    Model { stop = True, .. }
+
   (_, _) -> error "transition"
 
 precondition :: Model Symbolic -> Action Symbolic -> Logic
@@ -210,6 +235,7 @@ precondition Model {..} act = case act of
                    .&& name `notMember` Map.keys registry
   Unregister name   -> name `member` Map.keys registry
   WhereIs name      -> name `member` Map.keys registry
+  Exit              -> Top
 
 postcondition :: Model Concrete -> Action Concrete -> Response Concrete -> Logic
 postcondition Model {..} act resp = case (act, resp) of
@@ -218,6 +244,7 @@ postcondition Model {..} act resp = case (act, resp) of
   (Register _name _pid, Registered) -> Top
   (Unregister _name, Unregistered)  -> Top
   (WhereIs name, HereIs pid)        -> registry Map.! name .== pid
+  (Exit, Exited)                    -> Top
   (_, _)                            -> Bot
 
 semantics :: Action Concrete -> IO (Response Concrete)
@@ -226,6 +253,7 @@ semantics (Kill _pid)         = pure Killed
 semantics (Register name pid) = Registered <$ ioRegister name (concrete pid)
 semantics (Unregister name)   = Unregistered <$ ioUnregister name
 semantics (WhereIs name)      = HereIs . reference <$> ioWhereIs name
+semantics Exit                = return Exited
 
 data Fin2
   = Zero
@@ -234,6 +262,11 @@ data Fin2
   deriving (Enum, Bounded, Show, Eq, Read, Ord)
 
 type State = (Fin2, Fin2)
+
+partition :: Model r -> State
+partition Model {..} = ( toEnum (length pids - length killed)
+                       , toEnum (length (Map.keys registry))
+                       )
 
 initState :: State
 initState = (Zero, Zero)
@@ -270,6 +303,51 @@ markovGood = Markov f
                      , (50, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, Two))
                      ]
     f _            = []
+
+genSpawn, genKill, genRegister, genUnregister, genWhereIs, genExit
+  :: Model Symbolic -> Gen (Action Symbolic)
+
+genSpawn     _model = return Spawn
+genKill       model = Kill       <$> elements (pids model)
+genRegister   model = Register   <$> arbitrary <*> elements (pids model)
+genUnregister model = Unregister <$> elements (Map.keys (registry model))
+genWhereIs    model = WhereIs    <$> elements (Map.keys (registry model))
+genExit      _model = return Exit
+
+generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
+generator model
+  | stop model = Nothing
+  | otherwise  = Just $ case partition model of
+      (Zero, Zero) -> genSpawn model
+      (One,  Zero) -> frequency
+                        [ (40, genSpawn model)
+                        , (40, genRegister model)
+                        , (20, genKill model)
+                        ]
+      (One,  One)  -> frequency
+                        [ (50, genSpawn model)
+                        , (20, genUnregister model)
+                        , (30, genWhereIs model)
+                        ]
+      (Two, Zero)  -> frequency
+                        [ (80, genRegister model)
+                        , (20, genKill model)
+                        ]
+
+      (Two, One)   -> frequency
+                        [ (40, genRegister model)
+                        , (10, genKill model)
+                        , (20, genUnregister model)
+                        , (20, genWhereIs model)
+                        , (10, genExit model)
+                        ]
+      (Two, Two)   -> frequency
+                        [ (30, genExit model)
+                        , (20, genUnregister model)
+                        , (50, genWhereIs model)
+                        ]
+      _            -> error "generator: illegal state"
+
 
 markovDeadlock :: Markov Model State Action
 markovDeadlock = Markov f
@@ -325,13 +403,47 @@ mock _m act = case act of
   Register _name _pid -> pure Registered
   Unregister _name    -> pure Unregistered
   WhereIs _name       -> HereIs <$> genSym
+  Exit                -> pure Exited
 
 sm :: StateMachine Model Action IO Response
 sm = StateMachine initModel transition precondition postcondition
-       Nothing (const Nothing) shrinker semantics mock
+       Nothing generator shrinker semantics mock
 
 prop_processRegistry :: Markov Model State Action -> Property
 prop_processRegistry chain = forAllMarkov sm chain initState $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm cmds
   prettyCommands sm hist (checkCommandNames cmds (res === Ok))
+
+prop_processRegistry' :: Property
+prop_processRegistry' = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
+  liftIO ioReset
+  (hist, _model, res) <- runCommands sm cmds
+
+  prettyCommands sm hist
+    $ coverTransitions
+        [ (Zero, Zero) -< (Spawn_, 1) >- (One, Zero)
+
+        , (One,  Zero) -< (Spawn_,    0.4) >- (Two, Zero)
+        , (One,  Zero) -< (Register_, 0.4) >- (One, One)
+        , (One,  Zero) -< (Kill_,     0.2) >- (Zero, Zero)
+
+        , (One,  One)  -< (Spawn_,      0.5) >- (Two, One)
+        , (One,  One)  -< (Unregister_, 0.2) >- (One, Zero)
+        , (One,  One)  -< (WhereIs_,    0.3) >- (One, One)
+
+        , (Two, Zero)  -< (Register_, 0.8) >- (Two, One)
+        , (Two, Zero)  -< (Kill_,     0.2) >- (One, Zero)
+
+        , (Two, One)   -< (Register_,   0.4) >- (Two, Two)
+        , (Two, One)   -< (Kill_,       0.1) >- (One, One)
+        , (Two, One)   -< (Unregister_, 0.2) >- (Two, Zero)
+        , (Two, One)   -< (WhereIs_,    0.2) >- (Two, One)
+        , (Two, One)   -< (Exit_,       0.1) >- (Two, One)
+
+        , (Two, Two)   -< (Exit_,       0.3) >- (Two, Two)
+        , (Two, Two)   -< (Unregister_, 0.2) >- (Two, One)
+        , (Two, Two)   -< (WhereIs_,    0.5) >- (Two, Two)
+        ]
+    $ tabulateMarkov sm partition constructor cmds
+    $ res === Ok
