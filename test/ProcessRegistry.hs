@@ -29,12 +29,6 @@
 
 module ProcessRegistry
   ( prop_processRegistry
-  , prop_processRegistry'
-  , markovGood
-  , markovDeadlock
-  , markovNotStochastic1
-  , markovNotStochastic2
-  , markovNotStochastic3
   , sm
   , initState
   )
@@ -274,36 +268,6 @@ initState = (Zero, Zero)
 instance Arbitrary Name where
   arbitrary = elements (map Name ["A", "B", "C"])
 
-markovGood :: Markov Model State Action
-markovGood = Markov f
-  where
-    f :: State -> [(Int, Continue Model State Action)]
-    f (Zero, Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
-
-    f (One,  Zero) = [ (40,  Continue "Spawn" (const (pure Spawn)) (Two, Zero))
-                     , (40,  Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (One, One))
-                     , (20,  Continue "Kill" (\m -> Kill <$> elements (pids m)) (Zero, Zero))
-                     ]
-    f (One,  One)  = [ (50,  Continue "Spawn" (const (pure Spawn)) (Two, One))
-                     , (20,  Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (One, Zero))
-                     , (30,  Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (One, One))
-                     ]
-    f (Two, Zero)  = [ (80, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, One))
-                     , (20, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, Zero))
-                     ]
-
-    f (Two, One)   = [ (40, Continue "Register" (\m -> Register <$> arbitrary <*> elements (pids m)) (Two, Two))
-                     , (10, Continue "Kill" (\m -> Kill <$> elements (pids m)) (One, One))
-                     , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, Zero))
-                     , (20, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, One))
-                     , (10, Stop)
-                     ]
-    f (Two, Two)   = [ (30, Stop)
-                     , (20, Continue "Unregister" (\m -> Unregister <$> elements (Map.keys (registry m))) (Two, One))
-                     , (50, Continue "WhereIs" (\m -> WhereIs <$> elements (Map.keys (registry m))) (Two, Two))
-                     ]
-    f _            = []
-
 genSpawn, genKill, genRegister, genUnregister, genWhereIs, genExit
   :: Model Symbolic -> Gen (Action Symbolic)
 
@@ -348,51 +312,6 @@ generator model
                         ]
       _            -> error "generator: illegal state"
 
-
-markovDeadlock :: Markov Model State Action
-markovDeadlock = Markov f
-  where
-    nameGen :: Gen Name
-    nameGen = return (Name "A")
-
-    f :: State -> [(Int, Continue Model State Action)]
-    f (Zero, Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
-    f (One,  Zero) = [ (100, Continue "Spawn" (const (pure Spawn)) (Two, Zero)) ]
-    f (Two, Zero)  = [ (100, Continue "Register"
-                               (\m -> Register <$> nameGen
-                                               <*> elements (pids m)) (Two, One)) ]
-    f (Two, One)   = [ (100, Continue "Register"
-                               (\m -> Register <$> nameGen
-                                               <*> elements (pids m)) (Two, Two)) ]
-    f (Two, Two)   = [ (100, Stop) ]
-    f _            = []
-
-markovNotStochastic1 :: Markov Model State Action
-markovNotStochastic1 = Markov f
-  where
-    f (Zero, Zero) = [ (90, Continue "Spawn" (const (pure Spawn)) (One, Zero)) ]
-    f (One, Zero)  = [ (100, Stop) ]
-    f _            = []
-
-markovNotStochastic2 :: Markov Model State Action
-markovNotStochastic2 = Markov f
-  where
-    f (Zero, Zero) = [ (110, Continue "Spawn" (const (pure Spawn)) (One, Zero))
-                     , (-10, Stop)
-                     ]
-    f (One, Zero)  = [ (100, Stop) ]
-    f _            = []
-
-markovNotStochastic3 :: Markov Model State Action
-markovNotStochastic3 = Markov f
-  where
-    f (Zero, Zero) = [ (90, Continue "Spawn" (const (pure Spawn)) (One, Zero))
-                     , (10, Stop)
-                     ]
-    f (One, Zero)  = [ (100, Stop) ]
-    f (Two, Two)   = [ (90, Stop) ]
-    f _            = []
-
 shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
 shrinker _model _act = []
 
@@ -409,14 +328,8 @@ sm :: StateMachine Model Action IO Response
 sm = StateMachine initModel transition precondition postcondition
        Nothing generator shrinker semantics mock
 
-prop_processRegistry :: Markov Model State Action -> Property
-prop_processRegistry chain = forAllMarkov sm chain initState $ \cmds -> monadicIO $ do
-  liftIO ioReset
-  (hist, _model, res) <- runCommands sm cmds
-  prettyCommands sm hist (checkCommandNames cmds (res === Ok))
-
-prop_processRegistry' :: Property
-prop_processRegistry' = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
+prop_processRegistry :: Property
+prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm cmds
 

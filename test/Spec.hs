@@ -3,9 +3,7 @@
 module Main (main) where
 
 import           Control.Exception
-                   (ErrorCall(ErrorCall), Exception, catch)
-import           Data.List
-                   (isPrefixOf)
+                   (catch)
 import           Prelude
 import           System.Environment
                    (lookupEnv)
@@ -16,12 +14,10 @@ import           System.Process
                    waitForProcess, withCreateProcess)
 import           Test.DocTest
                    (doctest)
-import           Test.QuickCheck
-                   (sample)
 import           Test.Tasty
                    (TestTree, defaultMain, testGroup, withResource)
 import           Test.Tasty.HUnit
-                   (assertFailure, testCase)
+                   (testCase)
 import           Test.Tasty.QuickCheck
                    (expectFailure, testProperty, withMaxSuccess)
 
@@ -34,7 +30,6 @@ import           Hanoi
 import           MemoryReference
 import           ProcessRegistry
 import qualified ShrinkingProps
-import           Test.StateMachine.Markov
 import           TicketDispenser
 import qualified UnionFind
 
@@ -92,19 +87,7 @@ tests docker0 = testGroup "Tests"
           (expectFailure (prop_echoParallelOK True))
       ]
   , testGroup "ProcessRegistry"
-      [ testProperty "sequential" (prop_processRegistry markovGood)
-      , testCase "markovDeadlock"
-          (assertException (\(ErrorCall err) -> "\nA deadlock" `isPrefixOf` err)
-            (sample (generateMarkov sm markovDeadlock initState)))
-      , testCase "markovNotStochastic1"
-          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
-            (sample (generateMarkov sm markovNotStochastic1 initState)))
-      , testCase "markovNotStochastic2"
-          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
-            (sample (generateMarkov sm markovNotStochastic2 initState)))
-      , testCase "markovNotStochastic3"
-          (assertException (\(ErrorCall err) -> "The probabilities" `isPrefixOf` err)
-            (sample (generateMarkov sm markovNotStochastic3 initState)))
+      [ testProperty "sequential" prop_processRegistry
       ]
   , testGroup "UnionFind"
       [ testProperty "sequential" UnionFind.prop_unionFindSequential ]
@@ -114,13 +97,6 @@ tests docker0 = testGroup "Tests"
       | docker    = withResource (WS.setup bug WS.connectionString port) WS.cleanup
                      (const (testProperty test (prop port)))
       | otherwise = testCase ("No docker or running on CI, skipping: " ++ test) (return ())
-
-    assertException :: Exception e => (e -> Bool) -> IO a -> IO ()
-    assertException p io = do
-      r <- (io >> return False) `catch` (return . p)
-      if r
-      then return ()
-      else assertFailure "assertException: No or wrong exception thrown"
 
 ------------------------------------------------------------------------
 
