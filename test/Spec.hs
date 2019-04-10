@@ -7,8 +7,6 @@ import           Control.Exception
 import           Data.List
                    (isPrefixOf)
 import           Prelude
-import           System.Environment
-                   (lookupEnv)
 import           System.Exit
                    (ExitCode(..))
 import           System.Process
@@ -126,19 +124,13 @@ tests docker0 = testGroup "Tests"
 
 main :: IO ()
 main = do
-
   -- Check if docker is avaiable.
   ec <- rawSystemNoStdout "docker" ["version"]
           `catch` (\(_ :: IOError) -> return (ExitFailure 127))
   let docker = case ec of
                  ExitSuccess   -> True
                  ExitFailure _ -> False
-
-  -- Check if we are running on CI (this environment variable is set by Travis).
-  ci <- (== Just "true") <$> lookupEnv "CONTINUOUS_INTEGRATION"
-
-  -- Only run tests involving docker when we are not on CI, as they are flaky.
-  defaultMain (tests (docker && not ci))
+  defaultMain (tests docker)
     where
       rawSystemNoStdout cmd args =
         withCreateProcess

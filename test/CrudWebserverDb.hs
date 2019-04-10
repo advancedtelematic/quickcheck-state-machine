@@ -62,9 +62,7 @@ module CrudWebserverDb
 import           Control.Concurrent
                    (newEmptyMVar, putMVar, takeMVar, threadDelay)
 import           Control.Exception
-                   (IOException, bracket)
-import           Control.Exception
-                   (catch)
+                   (IOException, bracket, catch, onException)
 import           Control.Monad.Logger
                    (NoLoggingT, runNoLoggingT)
 import           Control.Monad.Reader
@@ -486,7 +484,7 @@ setupDb = do
     , "--format"
     , "'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'"
     ] ""
-  healthyDb ip
+  healthyDb pid ip `onException` callProcess "docker" [ "rm", "-f", "-v", pid ]
   return (pid, ip)
   where
     trim :: String -> String
@@ -494,13 +492,13 @@ setupDb = do
       where
         isGarbage = flip elem ['\'', '\n']
 
-    healthyDb :: String -> IO ()
-    healthyDb ip = do
+    healthyDb :: String -> String -> IO ()
+    healthyDb pid ip = do
       sock <- go 10
       close sock
       where
         go :: Int -> IO Socket
-        go 0 = error "healtyDb: db isn't healthy"
+        go 0 = error "healthyDb: db isn't healthy"
         go n = do
           let hints = defaultHints
                 { addrFlags      = [AI_NUMERICHOST , AI_NUMERICSERV]
@@ -508,7 +506,13 @@ setupDb = do
                 }
           addr : _ <- getAddrInfo (Just hints) (Just ip) (Just "5432")
           sock <- socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
-          (connect sock (addrAddress addr) >> return sock)
+          (connect sock (addrAddress addr) >>
+            readProcess "docker"
+              [ "exec"
+              , "-u", "postgres"
+              , pid
+              , "psql", "-U", "postgres", "-d", "postgres", "-c", "SELECT 1 + 1"
+              ] "" >> return sock)
             `catch` (\(_ :: IOException) -> do
                         threadDelay 1000000
                         go (n - 1))
@@ -516,5 +520,5 @@ setupDb = do
 
 cleanup :: (String, Async ()) -> IO ()
 cleanup (pid, aServer) = do
-  callProcess "docker" [ "rm", "-f", pid ]
+  callProcess "docker" [ "rm", "-f", "-v", pid ]
   cancel aServer
