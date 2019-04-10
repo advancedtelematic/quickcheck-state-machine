@@ -31,14 +31,12 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
-data TransitionF state cmd_ prob = Transition
+data Transition state cmd_ prob = Transition
   { from        :: state
   , command     :: cmd_
   , probability :: prob
   , to          :: state
   }
-
-type Transition state cmd_ = TransitionF state cmd_ (Maybe Double)
 
 infixl 5 -<
 infixl 5 >-
@@ -46,14 +44,14 @@ infixl 5 >-
 (-<) :: state -> (cmd_, prob) -> (state, (cmd_, prob))
 (-<) = (,)
 
-(>-) :: (state, (cmd_, prob)) -> state -> TransitionF state cmd_ prob
+(>-) :: (state, (cmd_, prob)) -> state -> Transition state cmd_ prob
 (from, (command, probability)) >- to = Transition {..}
 
 tableTag :: String
 tableTag = "Transitions"
 
 coverTransitions :: (Show state, Show cmd_, Testable prop)
-                 => [TransitionF state cmd_ Double] -> prop -> Property
+                 => [Transition state cmd_ Double] -> prop -> Property
 coverTransitions ts =
   coverTable tableTag (map (transitionToString &&& probability) ts)
 
@@ -62,12 +60,12 @@ commandsToTransitions :: forall model state cmd cmd_ m resp.
                       -> (model Symbolic -> state)
                       -> (forall r. cmd r -> cmd_)
                       -> Commands cmd resp
-                      -> [Transition state cmd_]
+                      -> [Transition state cmd_ ()]
 commandsToTransitions StateMachine { initModel, transition, mock } partition constructor =
   go initModel newCounter [] . unCommands
   where
-    go :: model Symbolic -> Counter -> [Transition state cmd_] -> [Command cmd resp]
-       -> [Transition state cmd_]
+    go :: model Symbolic -> Counter -> [Transition state cmd_ ()]
+       -> [Command cmd resp] -> [Transition state cmd_ ()]
     go _model _counter acc []           = acc
     go  model  counter acc (cmd : cmds) = go model' counter' (t : acc) cmds
       where
@@ -79,17 +77,17 @@ commandsToTransitions StateMachine { initModel, transition, mock } partition con
         t = Transition
               { from        = partition model
               , command     = constructor cmd'
-              , probability = Nothing
+              , probability = ()
               , to          = partition model'
               }
 
 tabulateTransitions :: (Show cmd_, Show state, Testable prop)
-                    => [Transition state cmd_]
+                    => [Transition state cmd_ prob]
                     -> prop
                     -> Property
 tabulateTransitions ts = newTabulate tableTag (map transitionToString ts)
 
-transitionToString :: (Show state, Show cmd_) => TransitionF state cmd_ prob -> String
+transitionToString :: (Show state, Show cmd_) => Transition state cmd_ prob -> String
 transitionToString Transition {..} =
   show from ++ " -< " ++ show command ++ " >- " ++ show to
 
