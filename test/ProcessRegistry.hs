@@ -335,28 +335,33 @@ prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
 
   prettyCommands sm hist
     $ coverTransitions
-        [ (Zero, Zero) -< (Spawn_, 100) >- (One, Zero)
+        [ (Zero, Zero) -< [ (Spawn_, 100) >- (One, Zero) ]
 
-        , (One,  Zero) -< (Spawn_,    40) >- (Two, Zero)
-        , (One,  Zero) -< (Register_, 40) >- (One, One)
-        , (One,  Zero) -< (Kill_,     20) >- (Zero, Zero)
+        , (One,  Zero) -< [ (Spawn_,    40) >- (Two, Zero)
+                          , (Register_, 40) >- (One, One)
+                          , (Kill_,     20) >- (Zero, Zero)
+                          ]
 
-        , (One,  One)  -< (Spawn_,      50) >- (Two, One)
-        , (One,  One)  -< (Unregister_, 20) >- (One, Zero)
-        , (One,  One)  -< (WhereIs_,    30) >- (One, One)
+        , (One,  One)  -< [ (Spawn_,      50) >- (Two, One)
+                          , (Unregister_, 20) >- (One, Zero)
+                          , (WhereIs_,    30) >- (One, One)
+                          ]
 
-        , (Two, Zero)  -< (Register_, 80) >- (Two, One)
-        , (Two, Zero)  -< (Kill_,     20) >- (One, Zero)
+        , (Two, Zero)  -< [ (Register_, 80) >- (Two, One)
+                          , (Kill_,     20) >- (One, Zero)
+                          ]
 
-        , (Two, One)   -< (Register_,   40) >- (Two, Two)
-        , (Two, One)   -< (Kill_,       10) >- (One, One)
-        , (Two, One)   -< (Unregister_, 20) >- (Two, Zero)
-        , (Two, One)   -< (WhereIs_,    20) >- (Two, One)
-        , (Two, One)   -< (Exit_,       10) >- (Two, One)
+        , (Two, One)   -< [ (Register_,   40) >- (Two, Two)
+                          , (Kill_,       10) >- (One, One)
+                          , (Unregister_, 20) >- (Two, Zero)
+                          , (WhereIs_,    20) >- (Two, One)
+                          , (Exit_,       10) >- (Two, One)
+                          ]
 
-        , (Two, Two)   -< (Exit_,       30) >- (Two, Two)
-        , (Two, Two)   -< (Unregister_, 20) >- (Two, One)
-        , (Two, Two)   -< (WhereIs_,    50) >- (Two, Two)
+        , (Two, Two)   -< [ (Exit_,       30) >- (Two, Two)
+                          , (Unregister_, 20) >- (Two, One)
+                          , (WhereIs_,    50) >- (Two, Two)
+                          ]
         ]
     $ tabulateMarkov sm partition constructor cmds
     $ res === Ok

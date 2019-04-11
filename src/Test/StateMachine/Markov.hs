@@ -36,15 +36,15 @@ data Transition state cmd_ prob = Transition
 infixl 5 -<
 infixl 5 >-
 
-(-<) :: state -> (cmd_, prob) -> (state, (cmd_, prob))
-(-<) = (,)
+(-<) :: state -> [((cmd_, prob), state)] -> [Transition state cmd_ prob]
+from -< xs = [ Transition {..} | ((command, probability), to) <- xs ]
 
-(>-) :: (state, (cmd_, prob)) -> state -> Transition state cmd_ prob
-(from, (command, probability)) >- to = Transition {..}
+(>-) :: (cmd_, prob) -> state -> ((cmd_, prob), state)
+(>-) = (,)
 
 coverTransitions :: (Show state, Show cmd_, Testable prop)
-                 => [Transition state cmd_ Double] -> prop -> Property
-coverTransitions ts prop = foldr go (property prop) ts
+                 => [[Transition state cmd_ Double]] -> prop -> Property
+coverTransitions tss prop = foldr go (property prop) (concat tss)
   where
     go Transition {..} ih = newCoverTable (show from)
                               [(toTransitionString command to, probability)] ih
