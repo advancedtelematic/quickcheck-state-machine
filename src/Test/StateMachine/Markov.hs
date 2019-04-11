@@ -1,7 +1,4 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -13,11 +10,9 @@ module Test.StateMachine.Markov
   )
   where
 
-import           Control.Arrow
-                   ((&&&))
 import           Prelude
 import           Test.QuickCheck
-                   (Property, Testable)
+                   (Property, Testable, property)
 
 import           Test.StateMachine.Types
                    (Command, Commands, Counter, StateMachine(..),
@@ -47,13 +42,12 @@ infixl 5 >-
 (>-) :: (state, (cmd_, prob)) -> state -> Transition state cmd_ prob
 (from, (command, probability)) >- to = Transition {..}
 
-tableTag :: String
-tableTag = "Transitions"
-
 coverTransitions :: (Show state, Show cmd_, Testable prop)
                  => [Transition state cmd_ Double] -> prop -> Property
-coverTransitions ts =
-  newCoverTable tableTag (map (transitionToString &&& probability) ts)
+coverTransitions ts prop = foldr go (property prop) ts
+  where
+    go Transition {..} ih = newCoverTable (show from)
+                              [(toTransitionString command to, probability)] ih
 
 commandsToTransitions :: forall model state cmd cmd_ m resp.
                          StateMachine model cmd m resp
@@ -85,11 +79,12 @@ tabulateTransitions :: (Show cmd_, Show state, Testable prop)
                     => [Transition state cmd_ prob]
                     -> prop
                     -> Property
-tabulateTransitions ts = newTabulate tableTag (map transitionToString ts)
+tabulateTransitions ts prop = foldr go (property prop) ts
+  where
+    go Transition {..} ih = newTabulate (show from) [ toTransitionString command to ] ih
 
-transitionToString :: (Show state, Show cmd_) => Transition state cmd_ prob -> String
-transitionToString Transition {..} =
-  show from ++ " -< " ++ show command ++ " >- " ++ show to
+toTransitionString :: (Show state, Show cmd_) => cmd_ -> state -> String
+toTransitionString cmd to = "-< " ++ show cmd ++ " >- " ++ show to
 
 tabulateMarkov :: (Show cmd_, Show state, Testable prop)
                => StateMachine model cmd m resp
