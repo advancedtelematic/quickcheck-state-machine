@@ -17,7 +17,7 @@ import           Control.Arrow
                    ((&&&))
 import           Prelude
 import           Test.QuickCheck
-                   (Property, Testable, coverTable)
+                   (Property, Testable)
 
 import           Test.StateMachine.Types
                    (Command, Commands, Counter, StateMachine(..),
@@ -27,7 +27,7 @@ import           Test.StateMachine.Types.GenSym
 import           Test.StateMachine.Types.References
                    (Symbolic)
 import           Test.StateMachine.Utils
-                   (newTabulate)
+                   (newTabulate, newCoverTable)
 
 ------------------------------------------------------------------------
 
@@ -53,7 +53,7 @@ tableTag = "Transitions"
 coverTransitions :: (Show state, Show cmd_, Testable prop)
                  => [Transition state cmd_ Double] -> prop -> Property
 coverTransitions ts =
-  coverTable tableTag (map (transitionToString &&& probability) ts)
+  newCoverTable tableTag (map (transitionToString &&& probability) ts)
 
 commandsToTransitions :: forall model state cmd cmd_ m resp.
                          StateMachine model cmd m resp
