@@ -9,6 +9,7 @@ module Test.StateMachine.Markov
   , coverMarkov
   , (-<)
   , (>-)
+  , (>>-)
   , markovGenerator
   )
   where
@@ -17,10 +18,12 @@ import           Control.Arrow
                    ((&&&))
 import           Data.Bifunctor
                    (bimap)
+import           Data.Either
+                   (partitionEithers)
 import           Data.Function
                    (on)
 import           Data.List
-                   (groupBy, sortBy)
+                   (genericLength, groupBy, sortBy)
 import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
@@ -55,11 +58,27 @@ data Transition state cmd_ prob = Transition
 infixl 5 -<
 infixl 5 >-
 
-(-<) :: state -> [((cmd_, prob), state)] -> [Transition state cmd_ prob]
-from -< xs = [ Transition {..} | ((command, probability), to) <- xs ]
+(-<) :: Fractional prob
+     => state -> [Either (cmd_, state) ((cmd_, prob), state)]
+     -> [Transition state cmd_ prob]
+from -< es = map go es
+  where
+    go (Left   (command,               to)) = Transition from command uniform to
+    go (Right ((command, probability), to)) = Transition {..}
 
-(>-) :: (cmd_, prob) -> state -> ((cmd_, prob), state)
-(>-) = (,)
+    (ls, rs) = partitionEithers es
+    uniform  = (100 - sum (map snd (map fst rs))) / genericLength ls
+    -- ^ Note: If `length ls == 0` then `uniform` is not used, so division by
+    -- zero doesn't happen.
+
+(.:) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+(.:) = (.) . (.)
+
+(>-) :: (cmd_, prob) -> state -> Either (cmd_, state) ((cmd_, prob), state)
+(>-) = Right .: (,)
+
+(>>-) :: cmd_ -> state -> Either (cmd_, state) ((cmd, prob), state)
+(>>-) = Left .: (,)
 
 coverMarkov :: (Show state, Show cmd_, Testable prop)
             => Markov state cmd_ Double -> prop -> Property

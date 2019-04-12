@@ -311,11 +311,11 @@ sm = StateMachine initModel transition precondition postcondition
 
 markov :: Markov State Action_ Double
 markov = Markov
-  [ (Zero, Zero) -< [ (Spawn_, 100) >- (One, Zero) ]
+  [ (Zero, Zero) -< [ Spawn_ >>- (One, Zero) ]
 
-  , (One,  Zero) -< [ (Spawn_,    40) >- (Two, Zero)
-                    , (Register_, 40) >- (One, One)
-                    , (Kill_,     20) >- (Zero, Zero)
+  , (One,  Zero) -< [ Spawn_      >>- (Two, Zero)
+                    , Register_   >>- (One, One)
+                    , (Kill_, 20) >-  (Zero, Zero)
                     ]
 
   , (One,  One)  -< [ (Spawn_,      50) >- (Two, One)
