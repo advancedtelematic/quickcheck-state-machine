@@ -3,16 +3,32 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Test.StateMachine.Markov
-  ( tabulateMarkov
-  , coverTransitions
+  ( Markov(..)
+  , Transition(..)
+  , tabulateMarkov
+  , coverMarkov
   , (-<)
   , (>-)
+  , markovGenerator
   )
   where
 
+import           Control.Arrow
+                   ((&&&))
+import           Data.Bifunctor
+                   (bimap)
+import           Data.Function
+                   (on)
+import           Data.List
+                   (groupBy, sortBy)
+import           Data.Map
+                   (Map)
+import qualified Data.Map                           as Map
+import           Data.Ord
+                   (comparing)
 import           Prelude
 import           Test.QuickCheck
-                   (Property, Testable, property)
+                   (Gen, Property, Testable, frequency, property)
 
 import           Test.StateMachine.Types
                    (Command, Commands, Counter, StateMachine(..),
@@ -22,9 +38,12 @@ import           Test.StateMachine.Types.GenSym
 import           Test.StateMachine.Types.References
                    (Symbolic)
 import           Test.StateMachine.Utils
-                   (newTabulate, newCoverTable)
+                   (newCoverTable, newTabulate)
 
 ------------------------------------------------------------------------
+
+newtype Markov state cmd_ prob = Markov
+  { unMarkov :: [[Transition state cmd_ prob]] }
 
 data Transition state cmd_ prob = Transition
   { from        :: state
@@ -42,9 +61,9 @@ from -< xs = [ Transition {..} | ((command, probability), to) <- xs ]
 (>-) :: (cmd_, prob) -> state -> ((cmd_, prob), state)
 (>-) = (,)
 
-coverTransitions :: (Show state, Show cmd_, Testable prop)
-                 => [[Transition state cmd_ Double]] -> prop -> Property
-coverTransitions tss prop = foldr go (property prop) (concat tss)
+coverMarkov :: (Show state, Show cmd_, Testable prop)
+            => Markov state cmd_ Double -> prop -> Property
+coverMarkov markov prop = foldr go (property prop) (concat (unMarkov markov))
   where
     go Transition {..} ih = newCoverTable (show from)
                               [(toTransitionString command to, probability)] ih
@@ -95,3 +114,32 @@ tabulateMarkov :: (Show cmd_, Show state, Testable prop)
                -> Property
 tabulateMarkov sm partition constructor cmds =
   tabulateTransitions (commandsToTransitions sm partition constructor cmds)
+
+------------------------------------------------------------------------
+
+availableCommands :: Ord state
+                  => state -> Markov state cmd_ Double -> Maybe [(Double, cmd_)]
+availableCommands state
+  = lookup state
+  . go
+  . groupBy ((==) `on` from)
+  . sortBy (comparing from)
+  . concat
+  . unMarkov
+  where
+    go :: [[Transition state cmd_ Double]] -> [(state, [(Double, cmd_)])]
+    go []                  = []
+    go ([]         : _xss) = error "Use NonEmpty?"
+    go (xs@(x : _) : xss)  = (from x, map (probability &&& command) xs) : go xss
+
+markovGenerator :: forall state cmd_ cmd model. (Ord state, Ord cmd_)
+                => Markov state cmd_ Double
+                -> Map cmd_ (model Symbolic -> Gen (cmd Symbolic))
+                -> (model Symbolic -> Maybe state)
+                -> (model Symbolic -> Maybe (Gen (cmd Symbolic)))
+markovGenerator markov gens partition model = fmap (frequency . go) (partition model)
+  where
+    go :: state -> [(Int, Gen (cmd Symbolic))]
+    go s = case availableCommands s markov of
+      Nothing  -> []  -- XXX: Is this a broken invariant?
+      Just dcs -> map (bimap round (\cmd_ -> (gens Map.! cmd_) model)) dcs

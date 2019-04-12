@@ -61,7 +61,7 @@ import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, arbitrary, elements,
-                   frequency, (===))
+                   (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -165,7 +165,7 @@ data Action_
   | Unregister_
   | WhereIs_
   | Exit_
-  deriving Show
+  deriving (Show, Eq, Ord)
 
 constructor :: Action r -> Action_
 constructor act = case act of
@@ -257,10 +257,12 @@ data Fin2
 
 type State = (Fin2, Fin2)
 
-partition :: Model r -> State
-partition Model {..} = ( toEnum (length pids - length killed)
-                       , toEnum (length (Map.keys registry))
-                       )
+partition :: Model r -> Maybe State
+partition Model {..}
+  | stop      = Nothing
+  | otherwise = Just ( toEnum (length pids - length killed)
+                     , toEnum (length (Map.keys registry))
+                     )
 
 initState :: State
 initState = (Zero, Zero)
@@ -278,39 +280,18 @@ genUnregister model = Unregister <$> elements (Map.keys (registry model))
 genWhereIs    model = WhereIs    <$> elements (Map.keys (registry model))
 genExit      _model = return Exit
 
-generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
-generator model
-  | stop model = Nothing
-  | otherwise  = Just $ case partition model of
-      (Zero, Zero) -> genSpawn model
-      (One,  Zero) -> frequency
-                        [ (40, genSpawn model)
-                        , (40, genRegister model)
-                        , (20, genKill model)
-                        ]
-      (One,  One)  -> frequency
-                        [ (50, genSpawn model)
-                        , (20, genUnregister model)
-                        , (30, genWhereIs model)
-                        ]
-      (Two, Zero)  -> frequency
-                        [ (80, genRegister model)
-                        , (20, genKill model)
-                        ]
+gens :: Map Action_ (Model Symbolic -> Gen (Action Symbolic))
+gens = Map.fromList
+  [ (Spawn_,      genSpawn)
+  , (Kill_,       genKill)
+  , (Register_,   genRegister)
+  , (Unregister_, genUnregister)
+  , (WhereIs_,    genWhereIs)
+  , (Exit_,       genExit)
+  ]
 
-      (Two, One)   -> frequency
-                        [ (40, genRegister model)
-                        , (10, genKill model)
-                        , (20, genUnregister model)
-                        , (20, genWhereIs model)
-                        , (10, genExit model)
-                        ]
-      (Two, Two)   -> frequency
-                        [ (30, genExit model)
-                        , (20, genUnregister model)
-                        , (50, genWhereIs model)
-                        ]
-      _            -> error "generator: illegal state"
+generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
+generator = markovGenerator markov gens partition
 
 shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
 shrinker _model _act = []
@@ -328,40 +309,43 @@ sm :: StateMachine Model Action IO Response
 sm = StateMachine initModel transition precondition postcondition
        Nothing generator shrinker semantics mock
 
+markov :: Markov State Action_ Double
+markov = Markov
+  [ (Zero, Zero) -< [ (Spawn_, 100) >- (One, Zero) ]
+
+  , (One,  Zero) -< [ (Spawn_,    40) >- (Two, Zero)
+                    , (Register_, 40) >- (One, One)
+                    , (Kill_,     20) >- (Zero, Zero)
+                    ]
+
+  , (One,  One)  -< [ (Spawn_,      50) >- (Two, One)
+                    , (Unregister_, 20) >- (One, Zero)
+                    , (WhereIs_,    30) >- (One, One)
+                    ]
+
+  , (Two, Zero)  -< [ (Register_, 80) >- (Two, One)
+                    , (Kill_,     20) >- (One, Zero)
+                    ]
+
+  , (Two, One)   -< [ (Register_,   40) >- (Two, Two)
+                    , (Kill_,       10) >- (One, One)
+                    , (Unregister_, 20) >- (Two, Zero)
+                    , (WhereIs_,    20) >- (Two, One)
+                    , (Exit_,       10) >- (Two, One)
+                    ]
+
+  , (Two, Two)   -< [ (Exit_,       30) >- (Two, Two)
+                    , (Unregister_, 20) >- (Two, One)
+                    , (WhereIs_,    50) >- (Two, Two)
+                    ]
+  ]
+
 prop_processRegistry :: Property
 prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm cmds
 
   prettyCommands sm hist
-    $ coverTransitions
-        [ (Zero, Zero) -< [ (Spawn_, 100) >- (One, Zero) ]
-
-        , (One,  Zero) -< [ (Spawn_,    40) >- (Two, Zero)
-                          , (Register_, 40) >- (One, One)
-                          , (Kill_,     20) >- (Zero, Zero)
-                          ]
-
-        , (One,  One)  -< [ (Spawn_,      50) >- (Two, One)
-                          , (Unregister_, 20) >- (One, Zero)
-                          , (WhereIs_,    30) >- (One, One)
-                          ]
-
-        , (Two, Zero)  -< [ (Register_, 80) >- (Two, One)
-                          , (Kill_,     20) >- (One, Zero)
-                          ]
-
-        , (Two, One)   -< [ (Register_,   40) >- (Two, Two)
-                          , (Kill_,       10) >- (One, One)
-                          , (Unregister_, 20) >- (Two, Zero)
-                          , (WhereIs_,    20) >- (Two, One)
-                          , (Exit_,       10) >- (Two, One)
-                          ]
-
-        , (Two, Two)   -< [ (Exit_,       30) >- (Two, Two)
-                          , (Unregister_, 20) >- (Two, One)
-                          , (WhereIs_,    50) >- (Two, Two)
-                          ]
-        ]
+    $ coverMarkov markov
     $ tabulateMarkov sm partition constructor cmds
     $ res === Ok
