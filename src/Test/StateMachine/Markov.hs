@@ -132,7 +132,7 @@ availableCommands state
     go ([]         : _xss) = error "Use NonEmpty?"
     go (xs@(x : _) : xss)  = (from x, map (probability &&& command) xs) : go xss
 
-markovGenerator :: forall state cmd_ cmd model. (Ord state, Ord cmd_)
+markovGenerator :: forall state cmd_ cmd model. (Show state, Ord state, Ord cmd_)
                 => Markov state cmd_ Double
                 -> Map cmd_ (model Symbolic -> Gen (cmd Symbolic))
                 -> (model Symbolic -> Maybe state)
@@ -141,5 +141,6 @@ markovGenerator markov gens partition model = fmap (frequency . go) (partition m
   where
     go :: state -> [(Int, Gen (cmd Symbolic))]
     go s = case availableCommands s markov of
-      Nothing  -> []  -- XXX: Is this a broken invariant?
+      Nothing  -> error ("markovGenerator: deadlock, no commands can be generated in given state:\n"
+                         ++ show s)
       Just dcs -> map (bimap round (\cmd_ -> (gens Map.! cmd_) model)) dcs
