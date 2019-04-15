@@ -1,173 +1,191 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE Rank2Types          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Test.StateMachine.Markov
-  ( Markov(..)
-  , runMarkov
-  , MarkovTable(..)
-  , Continue(..)
-  , markovTable
-  , checkStochastic
-  , forAllMarkov
-  , generateMarkov
-  , generateMarkovState
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Markov
+-- Copyright   :  (C) 2019, Stevan Andjelkovic
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- This module contains helper functions for testing using Markov chains.
+--
+-----------------------------------------------------------------------------
 
-  -- * Re-export
-  , FiniteEnum
-  , GBounded
-  , GEnum
+module Test.StateMachine.Markov
+  ( Markov
+  , makeMarkov
+  , (-<)
+  , (>-)
+  , (/-)
+  , markovGenerator
+  , coverMarkov
+  , tabulateMarkov
   )
   where
 
-import           Control.Monad.State.Strict
-                   (StateT, evalStateT, get, lift, put)
-import           Generic.Data
-                   (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
-                   gmaxBound, gminBound)
-import           GHC.Generics
-                   (Generic, Rep)
+import           Control.Arrow
+                   ((&&&))
+import           Data.Bifunctor
+                   (bimap)
+import           Data.Either
+                   (partitionEithers)
+import           Data.Function
+                   (on)
+import           Data.List
+                   (genericLength, groupBy, sortBy)
+import           Data.Map
+                   (Map)
+import qualified Data.Map                           as Map
+import           Data.Ord
+                   (comparing)
 import           Prelude
-import           System.Random
-                   (RandomGen, mkStdGen, randomR)
 import           Test.QuickCheck
-                   (Property, Testable)
-import           Test.QuickCheck.Gen
-                   (Gen, chooseAny)
-import           Text.Show.Pretty
-                   (ppShow)
+                   (Gen, Property, Testable, frequency, property)
 
-import           Test.StateMachine.Logic
-                   (boolean)
-import           Test.StateMachine.Sequential
-                   (deadlockError, getUsedVars, shrinkCommands)
 import           Test.StateMachine.Types
-                   (Command(Command), Commands(Commands), Counter,
-                   StateMachine(..), newCounter)
+                   (Command, Commands, Counter, StateMachine(..),
+                   getCommand, newCounter, unCommands)
 import           Test.StateMachine.Types.GenSym
                    (runGenSym)
-import qualified Test.StateMachine.Types.Rank2      as Rank2
 import           Test.StateMachine.Types.References
                    (Symbolic)
 import           Test.StateMachine.Utils
-                   (forAllShrinkShow, suchThatEither)
+                   (newCoverTable, newTabulate, (.:))
 
 ------------------------------------------------------------------------
 
-type ConstructorName = String
+-- | Markov chain.
+newtype Markov state cmd_ prob = Markov
+  { unMarkov :: [[Transition state cmd_ prob]] }
 
-data Continue model state cmd
-  = Stop
-  | Continue ConstructorName (model Symbolic -> Gen (cmd Symbolic)) state
+data Transition state cmd_ prob = Transition
+  { from        :: state
+  , command     :: cmd_
+  , probability :: prob
+  , to          :: state
+  }
 
-data Markov model state cmd = Markov
-  { unMarkov :: state -> [(Int, Continue model state cmd)] }
+-- | Constructor for 'Markov' chains.
+makeMarkov :: [[Transition state cmd_ prob]] -> Markov state cmd_ prob
+makeMarkov = Markov
 
-newtype MarkovTable model state cmd = MarkovTable
-  { unMarkovTable :: [(state, [(Int, Continue model state cmd)])] }
+infixl 5 -<
 
-markovTable :: (Generic s, GEnum FiniteEnum (Rep s), GBounded (Rep s))
-            => Markov m s a -> MarkovTable m s a
-markovTable (Markov f) = MarkovTable
-  [ (s, f s) | s <- gfiniteEnumFromTo gminBound gmaxBound ]
-
-checkStochastic :: MarkovTable model state cmd -> Bool
-checkStochastic = all (\is -> all (>= 0) is && sum is == 100)
-                . filter (not . null)
-                . map (map fst)
-                . map snd
-                . unMarkovTable
-
-runMarkov :: forall model state cmd. Generic state
-          => (GEnum FiniteEnum (Rep state), GBounded (Rep state))
-          => Markov model state cmd -> model Symbolic -> state
-          -> Gen (Maybe (cmd Symbolic, state))
-runMarkov markov m s
-  | checkStochastic (markovTable markov) = pickGen (unMarkov markov s)
-  | otherwise                            = error "The probabilities don't add up to 100."
+-- | Infix operator for starting to creating a transition in the 'Markov' chain,
+--   finish the transition with one of '(>-)' or '(/-)' depending on whether the
+--   transition has a specific or a uniform probability.
+(-<) :: Fractional prob
+     => state -> [Either (cmd_, state) ((cmd_, prob), state)]
+     -> [Transition state cmd_ prob]
+from -< es = map go es
   where
-    pickGen :: [(Int, Continue model state cmd)]
-            -> Gen (Maybe (cmd Symbolic, state))
-    pickGen gens = do
-      stdGen <- mkStdGen <$> chooseAny
-      frequencyR [ (prob, go gen) | (prob, gen) <- gens ] stdGen
-      where
-        go :: Continue model state cmd -> Gen (Maybe (cmd Symbolic, state))
-        go Stop               = return Nothing
-        go (Continue _c k s') = fmap (\x -> Just (x, s')) (k m)
+    go (Left   (command,               to)) = Transition from command uniform to
+    go (Right ((command, probability), to)) = Transition {..}
 
-    frequencyR :: RandomGen g => [(Int, b)] -> g -> b
-    frequencyR []  _ = error "There are paths in the Markov chain which contain no generators."
-    frequencyR xs0 g =
-      let
-        (n, _g') = randomR (1, 100) g
-      in
-        lookupRange n (makeRanges xs0)
-      where
-        makeRanges :: [(Int, b)] -> [((Int, Int), b)]
-        makeRanges = go 1
-          where
-            go _   []               = []
-            go low [(_, x)]         = [((low, 100), x)]
-            go low ((high, x) : xs) = ((low, low + high), x) : go (low + high) xs
+    (ls, rs) = partitionEithers es
+    uniform  = (100 - sum (map snd (map fst rs))) / genericLength ls
+    -- ^ Note: If `length ls == 0` then `uniform` is not used, so division by
+    -- zero doesn't happen.
 
-        lookupRange :: Int -> [((Int, Int), b)] -> b
-        lookupRange needle = go
-          where
-            go [] = error "lookupRange: number not in any range"
-            go (((low, high), x) : xs)
-              | low <= needle && needle <= high = x
-              | otherwise                       = go xs
+infixl 5 >-
+
+-- | Finish making a transition with a specified probability distribution.
+(>-) :: (cmd_, prob) -> state -> Either (cmd_, state) ((cmd_, prob), state)
+(>-) = Right .: (,)
+
+infixl 5 /-
+
+-- | Finish making a transition with an uniform probability distribution.
+(/-) :: cmd_ -> state -> Either (cmd_, state) ((cmd, prob), state)
+(/-) = Left .: (,)
 
 ------------------------------------------------------------------------
 
-forAllMarkov :: (Testable prop, Show state)
-             => (Show (cmd Symbolic), Show (resp Symbolic), Show (model Symbolic))
-             => (Rank2.Traversable cmd, Rank2.Foldable resp)
-             => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-             => StateMachine model cmd m resp
-             -> Markov model state cmd
-             -> state                           -- ^ Start state.
-             -> (Commands cmd resp -> prop)     -- ^ Predicate.
-             -> Property
-forAllMarkov sm markov start =
-  forAllShrinkShow (generateMarkov sm markov start) (shrinkCommands sm) ppShow
+-- | Create a generator from a 'Markov' chain.
+markovGenerator :: forall state cmd_ cmd model. (Show state, Ord state, Ord cmd_)
+                => Markov state cmd_ Double
+                -> Map cmd_ (model Symbolic -> Gen (cmd Symbolic))
+                -> (model Symbolic -> Maybe state)
+                -> (model Symbolic -> Maybe (Gen (cmd Symbolic)))
+markovGenerator markov gens partition model = fmap (frequency . go) (partition model)
+  where
+    go :: state -> [(Int, Gen (cmd Symbolic))]
+    go s = case availableCommands s markov of
+      Nothing  -> error ("markovGenerator: deadlock, no commands can be generated in given state:\n"
+                         ++ show s)
+      Just dcs -> map (bimap round (\cmd_ -> (gens Map.! cmd_) model)) dcs
 
-generateMarkov :: (Rank2.Foldable resp, Show (model Symbolic), Show state)
-               => (Show (cmd Symbolic), Show (resp Symbolic))
-               => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+    availableCommands :: state -> Markov state cmd_ Double -> Maybe [(Double, cmd_)]
+    availableCommands state
+      = lookup state
+      . go'
+      . groupBy ((==) `on` from) -- XXX: Perhaps we can enforce the sorted and
+                                 -- grouped structure by construction instead?
+      . sortBy (comparing from)
+      . concat
+      . unMarkov
+      where
+        go' :: [[Transition state cmd_ Double]] -> [(state, [(Double, cmd_)])]
+        go' []                  = []
+        go' ([]         : _xss) = error "Use NonEmpty?"
+        go' (xs@(x : _) : xss)  = (from x, map (probability &&& command) xs) : go' xss
+
+-- | Variant of QuickCheck's 'coverTable' which works on 'Markov' chains.
+coverMarkov :: (Show state, Show cmd_, Testable prop)
+            => Markov state cmd_ Double -> prop -> Property
+coverMarkov markov prop = foldr go (property prop) (concat (unMarkov markov))
+  where
+    go Transition {..} ih =
+      newCoverTable (show from)
+        [(toTransitionString command to, probability)] ih
+
+toTransitionString :: (Show state, Show cmd_) => cmd_ -> state -> String
+toTransitionString cmd to = "-< " ++ show cmd ++ " >- " ++ show to
+
+-- | Variant of QuickCheck's 'tabulate' which works for 'Markov' chains.
+tabulateMarkov :: forall model state cmd cmd_ m resp prop. Testable prop
+               => (Show state, Show cmd_)
                => StateMachine model cmd m resp
-               -> Markov model state cmd
-               -> state
-               -> Gen (Commands cmd resp)
-generateMarkov sm@StateMachine { initModel } markov start =
-  evalStateT (generateMarkovState sm markov start newCounter) initModel
-
-generateMarkovState :: forall model state cmd m resp. (Show state, Rank2.Foldable resp)
-                    => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
-                    => (Show (model Symbolic), Show (cmd Symbolic), Show (resp Symbolic))
-                    => StateMachine model cmd m resp
-                    -> Markov model state cmd
-                    -> state
-                    -> Counter
-                    -> StateT (model Symbolic) Gen (Commands cmd resp)
-generateMarkovState StateMachine { precondition, transition, mock } markov start counter0 =
-  go counter0 [] start
+               -> (model Symbolic -> state)
+               -> (cmd Symbolic -> cmd_)
+               -> Commands cmd resp
+               -> prop
+               -> Property
+tabulateMarkov sm partition constructor cmds0 =
+  tabulateTransitions (commandsToTransitions sm cmds0)
   where
-    go :: Counter -> [Command cmd resp] -> state
-       -> StateT (model Symbolic) Gen (Commands cmd resp)
-    go counter cmds state = do
-      model <- get
-      let gen = runMarkov markov model state
-      ecmd  <- lift (gen `suchThatEither` \case
-                       Nothing       -> True
-                       Just (cmd, _) -> boolean (precondition model cmd))
-      case ecmd of
-        Left ces                   -> deadlockError model (reverse cmds) (ppShow ces)
-        Right Nothing              -> return (Commands (reverse cmds))
-        Right (Just (cmd, state')) -> do
-          let (resp, counter') = runGenSym (mock model cmd) counter
-          put (transition model cmd resp)
-          go counter' (Command cmd resp (getUsedVars resp) : cmds) state'
+    tabulateTransitions :: [Transition state cmd_ prob]
+                        -> prop
+                        -> Property
+    tabulateTransitions ts prop = foldr go (property prop) ts
+      where
+        go Transition {..} ih =
+          newTabulate (show from) [ toTransitionString command to ] ih
+
+    commandsToTransitions :: StateMachine model cmd m resp
+                          -> Commands cmd resp
+                          -> [Transition state cmd_ ()]
+    commandsToTransitions StateMachine { initModel, transition, mock } =
+      go initModel newCounter [] . unCommands
+      where
+        go :: model Symbolic -> Counter -> [Transition state cmd_ ()]
+           -> [Command cmd resp] -> [Transition state cmd_ ()]
+        go _model _counter acc []           = acc
+        go  model  counter acc (cmd : cmds) = go model' counter' (t : acc) cmds
+          where
+            cmd'   = getCommand cmd
+            model' = transition model cmd' resp
+
+            (resp, counter') = runGenSym (mock model cmd') counter
+
+            t = Transition
+                  { from        = partition model
+                  , command     = constructor cmd'
+                  , probability = ()
+                  , to          = partition model'
+                  }

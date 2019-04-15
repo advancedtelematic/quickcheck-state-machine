@@ -1,9 +1,10 @@
-{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE KindSignatures     #-}
 {-# LANGUAGE PolyKinds          #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE FlexibleInstances  #-}
 
 ------------------------------------------------------------------------
 -- |
@@ -28,20 +29,22 @@ module Hanoi
   ( prop_hanoi
   ) where
 
-import Data.Kind
-         (Type)
-import Data.Array
-import Data.Maybe
-import Data.TreeDiff.Expr ()
-import GHC.Generics
-         (Generic, Generic1)
-import Prelude
-import Test.QuickCheck
-         (Gen, Property, (===), Arbitrary (arbitrary), choose, suchThat)
-import Test.QuickCheck.Monadic
-         (monadicIO)
+import           Data.Array
+import           Data.Kind
+                   (Type)
+import           Data.Maybe
+import           Data.TreeDiff.Expr
+                   ()
+import           GHC.Generics
+                   (Generic, Generic1)
+import           Prelude
+import           Test.QuickCheck
+                   (Arbitrary(arbitrary), Gen, Property, choose,
+                   suchThat, (===))
+import           Test.QuickCheck.Monadic
+                   (monadicIO)
 
-import Test.StateMachine
+import           Test.StateMachine
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 ------------------------------------------------------------------------
@@ -79,15 +82,16 @@ data Response (r :: Type -> Type) = Done
 ------------------------------------------------------------------------
 
 transitions :: Model r -> Command r -> Response r -> Model r
-transitions (Model pegs) (Move (from,to)) _ = case pegs ! from of
-  (x : xs) -> Model $ pegs // [(from, xs), (to, x:(pegs ! to))]
-  _ -> error "transition: impossible, due to preconditon"
+transitions (Model pegs) (Move (from_, to_)) _ = case pegs ! from_ of
+  (x : xs) -> Model $ pegs // [(from_, xs), (to_, x : pegs ! to_)]
+  _        -> error "transition: impossible, due to preconditon"
 
 preconditions :: Model Symbolic -> Command Symbolic -> Logic
-preconditions (Model pegs) (Move (from,to)) = (Boolean $ isJust x) :&& (x .<= y)
-  where x = listToMaybe $ pegs ! from
-        -- Any disc can be placed on empty peg, so no disc counts as largest disc
-        y = listToMaybe $ pegs ! to ++ [maxBound]
+preconditions (Model pegs) (Move (from_, to_)) = Boolean (isJust x) .&& x .<= y
+  where
+    x = listToMaybe (pegs ! from_)
+    -- Any disc can be placed on empty peg, so no disc counts as largest disc.
+    y = listToMaybe (pegs ! to_ ++ [maxBound])
 
 -- Check if all discs are at the last peg. The invariant states that this is not
 -- the case, so when it is not satisfied, we have a counter example that is a
@@ -95,8 +99,9 @@ preconditions (Model pegs) (Move (from,to)) = (Boolean $ isJust x) :&& (x .<= y)
 
 postconditions :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postconditions m c r = length lst ./= sum (fmap length pegs)
-  where lst = pegs ! (snd $ bounds pegs)
-        Model pegs = transitions m c r
+  where
+    lst = pegs ! (snd $ bounds pegs)
+    Model pegs = transitions m c r
 
 ------------------------------------------------------------------------
 

@@ -23,6 +23,7 @@
 module Test.StateMachine.Types
   ( StateMachine(..)
   , Command(..)
+  , getCommand
   , Commands(..)
   , lengthCommands
   , ParallelCommandsF(..)
@@ -69,6 +70,9 @@ data StateMachine model cmd m resp = StateMachine
 --
 -- Invariant: the variables must be the variables in the response.
 data Command cmd resp = Command !(cmd Symbolic) !(resp Symbolic) ![Var]
+
+getCommand :: Command cmd resp -> cmd Symbolic
+getCommand (Command cmd _resp _vars) = cmd
 
 deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Command cmd resp)
 deriving instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Command cmd resp)

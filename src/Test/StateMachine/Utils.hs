@@ -20,13 +20,15 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Utils
-  ( liftProperty
+  ( (.:)
+  , liftProperty
   , whenFailM
   , forAllShrinkShow
   , anyP
   , suchThatEither
   , oldCover
   , newTabulate
+  , newCoverTable
   , Shrunk(..)
   , shrinkS
   , shrinkListS
@@ -53,8 +55,13 @@ import           Test.QuickCheck.Property
 #endif
 #if MIN_VERSION_QuickCheck(2,12,0)
 import           Test.QuickCheck
-                   (tabulate)
+                   (tabulate, coverTable)
 #endif
+
+------------------------------------------------------------------------
+
+(.:) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+(.:) = (.) . (.)
 
 ------------------------------------------------------------------------
 
@@ -116,9 +123,19 @@ oldCover x n s p =
 newTabulate :: Testable prop => String -> [String] -> prop -> Property
 newTabulate =
 #if !MIN_VERSION_QuickCheck(2,12,0)
-  \_key _values p -> property p
+  \_key _values prop -> property prop
 #else
   tabulate
+#endif
+
+-- | The coverTable combinator was only introduced in QuickCheck-2.12.
+newCoverTable :: Testable prop
+              => String -> [(String, Double)] -> prop -> Property
+newCoverTable =
+#if !MIN_VERSION_QuickCheck(2,12,0)
+  \_table _xs prop -> property prop
+#else
+  coverTable
 #endif
 
 -----------------------------------------------------------------------------
