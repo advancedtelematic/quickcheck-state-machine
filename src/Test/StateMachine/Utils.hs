@@ -20,7 +20,8 @@
 -----------------------------------------------------------------------------
 
 module Test.StateMachine.Utils
-  ( liftProperty
+  ( (.:)
+  , liftProperty
   , whenFailM
   , forAllShrinkShow
   , anyP
@@ -56,6 +57,11 @@ import           Test.QuickCheck.Property
 import           Test.QuickCheck
                    (tabulate, coverTable)
 #endif
+
+------------------------------------------------------------------------
+
+(.:) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
+(.:) = (.) . (.)
 
 ------------------------------------------------------------------------
 

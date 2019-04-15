@@ -2,15 +2,29 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Test.StateMachine.Markov
+-- Copyright   :  (C) 2019, Stevan Andjelkovic
+-- License     :  BSD-style (see the file LICENSE)
+--
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>
+-- Stability   :  provisional
+-- Portability :  non-portable (GHC extensions)
+--
+-- This module contains helper functions for testing using Markov chains.
+--
+-----------------------------------------------------------------------------
+
 module Test.StateMachine.Markov
-  ( Markov(..)
-  , Transition(..)
-  , tabulateMarkov
-  , coverMarkov
+  ( Markov
+  , makeMarkov
   , (-<)
   , (>-)
-  , (>>-)
+  , (/-)
   , markovGenerator
+  , coverMarkov
+  , tabulateMarkov
   )
   where
 
@@ -41,10 +55,11 @@ import           Test.StateMachine.Types.GenSym
 import           Test.StateMachine.Types.References
                    (Symbolic)
 import           Test.StateMachine.Utils
-                   (newCoverTable, newTabulate)
+                   (newCoverTable, newTabulate, (.:))
 
 ------------------------------------------------------------------------
 
+-- | Markov chain.
 newtype Markov state cmd_ prob = Markov
   { unMarkov :: [[Transition state cmd_ prob]] }
 
@@ -55,9 +70,15 @@ data Transition state cmd_ prob = Transition
   , to          :: state
   }
 
-infixl 5 -<
-infixl 5 >-
+-- | Constructor for 'Markov' chains.
+makeMarkov :: [[Transition state cmd_ prob]] -> Markov state cmd_ prob
+makeMarkov = Markov
 
+infixl 5 -<
+
+-- | Infix operator for starting to creating a transition in the 'Markov' chain,
+--   finish the transition with one of '(>-)' or '(/-)' depending on whether the
+--   transition has a specific or a uniform probability.
 (-<) :: Fractional prob
      => state -> [Either (cmd_, state) ((cmd_, prob), state)]
      -> [Transition state cmd_ prob]
@@ -71,86 +92,21 @@ from -< es = map go es
     -- ^ Note: If `length ls == 0` then `uniform` is not used, so division by
     -- zero doesn't happen.
 
-(.:) :: (c -> d) -> (a -> b -> c) -> a -> b -> d
-(.:) = (.) . (.)
+infixl 5 >-
 
+-- | Finish making a transition with a specified probability distribution.
 (>-) :: (cmd_, prob) -> state -> Either (cmd_, state) ((cmd_, prob), state)
 (>-) = Right .: (,)
 
-(>>-) :: cmd_ -> state -> Either (cmd_, state) ((cmd, prob), state)
-(>>-) = Left .: (,)
+infixl 5 /-
 
-coverMarkov :: (Show state, Show cmd_, Testable prop)
-            => Markov state cmd_ Double -> prop -> Property
-coverMarkov markov prop = foldr go (property prop) (concat (unMarkov markov))
-  where
-    go Transition {..} ih = newCoverTable (show from)
-                              [(toTransitionString command to, probability)] ih
-
-commandsToTransitions :: forall model state cmd cmd_ m resp.
-                         StateMachine model cmd m resp
-                      -> (model Symbolic -> state)
-                      -> (cmd Symbolic -> cmd_)
-                      -> Commands cmd resp
-                      -> [Transition state cmd_ ()]
-commandsToTransitions StateMachine { initModel, transition, mock } partition constructor =
-  go initModel newCounter [] . unCommands
-  where
-    go :: model Symbolic -> Counter -> [Transition state cmd_ ()]
-       -> [Command cmd resp] -> [Transition state cmd_ ()]
-    go _model _counter acc []           = acc
-    go  model  counter acc (cmd : cmds) = go model' counter' (t : acc) cmds
-      where
-        cmd'   = getCommand cmd
-        model' = transition model cmd' resp
-
-        (resp, counter') = runGenSym (mock model cmd') counter
-
-        t = Transition
-              { from        = partition model
-              , command     = constructor cmd'
-              , probability = ()
-              , to          = partition model'
-              }
-
-tabulateTransitions :: (Show cmd_, Show state, Testable prop)
-                    => [Transition state cmd_ prob]
-                    -> prop
-                    -> Property
-tabulateTransitions ts prop = foldr go (property prop) ts
-  where
-    go Transition {..} ih = newTabulate (show from) [ toTransitionString command to ] ih
-
-toTransitionString :: (Show state, Show cmd_) => cmd_ -> state -> String
-toTransitionString cmd to = "-< " ++ show cmd ++ " >- " ++ show to
-
-tabulateMarkov :: (Show cmd_, Show state, Testable prop)
-               => StateMachine model cmd m resp
-               -> (model Symbolic -> state)
-               -> (cmd Symbolic -> cmd_)
-               -> Commands cmd resp
-               -> prop
-               -> Property
-tabulateMarkov sm partition constructor cmds =
-  tabulateTransitions (commandsToTransitions sm partition constructor cmds)
+-- | Finish making a transition with an uniform probability distribution.
+(/-) :: cmd_ -> state -> Either (cmd_, state) ((cmd, prob), state)
+(/-) = Left .: (,)
 
 ------------------------------------------------------------------------
 
-availableCommands :: Ord state
-                  => state -> Markov state cmd_ Double -> Maybe [(Double, cmd_)]
-availableCommands state
-  = lookup state
-  . go
-  . groupBy ((==) `on` from)
-  . sortBy (comparing from)
-  . concat
-  . unMarkov
-  where
-    go :: [[Transition state cmd_ Double]] -> [(state, [(Double, cmd_)])]
-    go []                  = []
-    go ([]         : _xss) = error "Use NonEmpty?"
-    go (xs@(x : _) : xss)  = (from x, map (probability &&& command) xs) : go xss
-
+-- | Create a generator from a 'Markov' chain.
 markovGenerator :: forall state cmd_ cmd model. (Show state, Ord state, Ord cmd_)
                 => Markov state cmd_ Double
                 -> Map cmd_ (model Symbolic -> Gen (cmd Symbolic))
@@ -163,3 +119,73 @@ markovGenerator markov gens partition model = fmap (frequency . go) (partition m
       Nothing  -> error ("markovGenerator: deadlock, no commands can be generated in given state:\n"
                          ++ show s)
       Just dcs -> map (bimap round (\cmd_ -> (gens Map.! cmd_) model)) dcs
+
+    availableCommands :: state -> Markov state cmd_ Double -> Maybe [(Double, cmd_)]
+    availableCommands state
+      = lookup state
+      . go'
+      . groupBy ((==) `on` from) -- XXX: Perhaps we can enforce the sorted and
+                                 -- grouped structure by construction instead?
+      . sortBy (comparing from)
+      . concat
+      . unMarkov
+      where
+        go' :: [[Transition state cmd_ Double]] -> [(state, [(Double, cmd_)])]
+        go' []                  = []
+        go' ([]         : _xss) = error "Use NonEmpty?"
+        go' (xs@(x : _) : xss)  = (from x, map (probability &&& command) xs) : go' xss
+
+-- | Variant of QuickCheck's 'coverTable' which works on 'Markov' chains.
+coverMarkov :: (Show state, Show cmd_, Testable prop)
+            => Markov state cmd_ Double -> prop -> Property
+coverMarkov markov prop = foldr go (property prop) (concat (unMarkov markov))
+  where
+    go Transition {..} ih =
+      newCoverTable (show from)
+        [(toTransitionString command to, probability)] ih
+
+toTransitionString :: (Show state, Show cmd_) => cmd_ -> state -> String
+toTransitionString cmd to = "-< " ++ show cmd ++ " >- " ++ show to
+
+-- | Variant of QuickCheck's 'tabulate' which works for 'Markov' chains.
+tabulateMarkov :: forall model state cmd cmd_ m resp prop. Testable prop
+               => (Show state, Show cmd_)
+               => StateMachine model cmd m resp
+               -> (model Symbolic -> state)
+               -> (cmd Symbolic -> cmd_)
+               -> Commands cmd resp
+               -> prop
+               -> Property
+tabulateMarkov sm partition constructor cmds0 =
+  tabulateTransitions (commandsToTransitions sm cmds0)
+  where
+    tabulateTransitions :: [Transition state cmd_ prob]
+                        -> prop
+                        -> Property
+    tabulateTransitions ts prop = foldr go (property prop) ts
+      where
+        go Transition {..} ih =
+          newTabulate (show from) [ toTransitionString command to ] ih
+
+    commandsToTransitions :: StateMachine model cmd m resp
+                          -> Commands cmd resp
+                          -> [Transition state cmd_ ()]
+    commandsToTransitions StateMachine { initModel, transition, mock } =
+      go initModel newCounter [] . unCommands
+      where
+        go :: model Symbolic -> Counter -> [Transition state cmd_ ()]
+           -> [Command cmd resp] -> [Transition state cmd_ ()]
+        go _model _counter acc []           = acc
+        go  model  counter acc (cmd : cmds) = go model' counter' (t : acc) cmds
+          where
+            cmd'   = getCommand cmd
+            model' = transition model cmd' resp
+
+            (resp, counter') = runGenSym (mock model cmd') counter
+
+            t = Transition
+                  { from        = partition model
+                  , command     = constructor cmd'
+                  , probability = ()
+                  , to          = partition model'
+                  }

@@ -310,12 +310,12 @@ sm = StateMachine initModel transition precondition postcondition
        Nothing generator shrinker semantics mock
 
 markov :: Markov State Action_ Double
-markov = Markov
-  [ (Zero, Zero) -< [ Spawn_ >>- (One, Zero) ]
+markov = makeMarkov
+  [ (Zero, Zero) -< [ Spawn_ /- (One, Zero) ]
 
-  , (One,  Zero) -< [ Spawn_      >>- (Two, Zero)
-                    , Register_   >>- (One, One)
-                    , (Kill_, 20) >-  (Zero, Zero)
+  , (One,  Zero) -< [ Spawn_      /- (Two, Zero)
+                    , Register_   /- (One, One)
+                    , (Kill_, 20) >- (Zero, Zero)
                     ]
 
   , (One,  One)  -< [ (Spawn_,      50) >- (Two, One)
