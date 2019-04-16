@@ -255,7 +255,8 @@ transitionMatrix markov = enumMatrix go
 
 ------------------------------------------------------------------------
 
-historyObservations :: forall model cmd m resp state cmd_ prob. Ord state
+historyObservations :: forall model cmd m resp state cmd_ prob. Eq cmd_
+                    => (Show cmd_, Show state, Ord state)
                     => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
                     => StateMachine model cmd m resp
                     -> Markov state cmd_ prob
@@ -268,9 +269,10 @@ historyObservations :: forall model cmd m resp state cmd_ prob. Ord state
 historyObservations StateMachine { initModel, transition, postcondition } markov partition constructor
   = go initModel Map.empty Map.empty . makeOperations . unHistory
   where
-    go _model ss fs [] = ( enumMatrix @state (fromMaybe 0 . flip Map.lookup ss)
-                         , enumMatrix @state (fromMaybe 0 . flip Map.lookup fs)
-                         )
+    go _model ss fs [] =
+      ( enumMatrix @state (fromMaybe 0 . flip Map.lookup ss)
+      , enumMatrix @state (fromMaybe 0 . flip Map.lookup fs)
+      )
     go  model ss fs (op : ops) = case op of
       Operation cmd resp _pid ->
         let
@@ -283,4 +285,28 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
           then go model' (incr ss) fs        ops
           else go model' ss        (incr fs) ops
 
-      Crash cmd _err _pid -> error "Not implemented yet"
+      Crash cmd _err _pid ->
+        let
+          state  = partition model
+          state' = nextState state (constructor cmd) markov
+          incr   = Map.insertWith (\_new old -> old + 1) (state, state') 1
+        in
+          go model ss (incr fs) ops
+
+    nextState :: state -> cmd_ -> Markov state cmd_ prob -> state
+    nextState state cmd
+      = fromMaybe (error ("historyObservations: impossible, command doesn't exist: " ++ show cmd))
+      . lookup cmd
+      . fromMaybe (error ("historyObservations: impossible, state doesn't exist: " ++ show state))
+      . lookup state
+      . go'
+      . groupBy ((==) `on` from) -- XXX: Perhaps we can enforce the sorted and
+                                 -- grouped structure by construction instead?
+      . sortBy (comparing from)
+      . concat
+      . unMarkov
+      where
+        go' :: [[Transition state cmd_ prob]] -> [(state, [(cmd_, state)])]
+        go' []                  = []
+        go' ([]         : _xss) = error "Use NonEmpty?"
+        go' (xs@(x : _) : xss)  = (from x, map (command &&& to) xs) : go' xss
