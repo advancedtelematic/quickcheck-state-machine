@@ -1,6 +1,8 @@
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -22,9 +24,12 @@ module Test.StateMachine.Markov
   , (-<)
   , (>-)
   , (/-)
+  , (@-)
   , markovGenerator
   , coverMarkov
   , tabulateMarkov
+  , transitionMatrix
+  , historyObservations
   )
   where
 
@@ -41,21 +46,38 @@ import           Data.List
 import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
+import           Data.Matrix
+                   (Matrix, fromLists, matrix, toLists)
+import           Data.Maybe
+                   (fromMaybe, maybeToList)
 import           Data.Ord
                    (comparing)
+import           Generic.Data
+                   (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
+                   gmaxBound, gminBound, gtoFiniteEnum)
+import           GHC.Generics
+                   (Generic, Rep)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, frequency, property)
+                   (Gen, Property, Testable, coverTable, frequency,
+                   property)
+import           Test.QuickCheck.Monadic
+                   (PropertyM)
+import           Text.Read
+                   (readMaybe)
 
+import           Test.StateMachine.Logic
+                   (boolean)
 import           Test.StateMachine.Types
-                   (Command, Commands, Counter, StateMachine(..),
-                   getCommand, newCounter, unCommands)
+                   (Command, Commands, Counter, History, Operation(..),
+                   StateMachine(..), getCommand, makeOperations,
+                   newCounter, unCommands, unHistory)
 import           Test.StateMachine.Types.GenSym
                    (runGenSym)
 import           Test.StateMachine.Types.References
-                   (Symbolic)
+                   (Concrete, Symbolic)
 import           Test.StateMachine.Utils
-                   (newCoverTable, newTabulate, (.:))
+                   (newCoverTable, newTabulate)
 
 ------------------------------------------------------------------------
 
@@ -67,7 +89,7 @@ data Transition state cmd_ prob = Transition
   { from        :: state
   , command     :: cmd_
   , probability :: prob
-  , to          :: state
+  , to          :: Maybe state
   }
 
 -- | Constructor for 'Markov' chains.
@@ -80,7 +102,7 @@ infixl 5 -<
 --   finish the transition with one of '(>-)' or '(/-)' depending on whether the
 --   transition has a specific or a uniform probability.
 (-<) :: Fractional prob
-     => state -> [Either (cmd_, state) ((cmd_, prob), state)]
+     => state -> [Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)]
      -> [Transition state cmd_ prob]
 from -< es = map go es
   where
@@ -95,14 +117,17 @@ from -< es = map go es
 infixl 5 >-
 
 -- | Finish making a transition with a specified probability distribution.
-(>-) :: (cmd_, prob) -> state -> Either (cmd_, state) ((cmd_, prob), state)
-(>-) = Right .: (,)
+(>-) :: (cmd_, prob) -> state -> Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)
+(cmd, prob) >- state = Right ((cmd, prob), Just state)
 
 infixl 5 /-
 
 -- | Finish making a transition with an uniform probability distribution.
-(/-) :: cmd_ -> state -> Either (cmd_, state) ((cmd, prob), state)
-(/-) = Left .: (,)
+(/-) :: cmd_ -> state -> Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)
+cmd /- state = Left (cmd, Just state)
+
+(@-) :: (cmd_, prob)-> () -> Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)
+(cmd, prob) @- () = Right ((cmd, prob), Nothing)
 
 ------------------------------------------------------------------------
 
@@ -151,7 +176,7 @@ toTransitionString cmd to = "-< " ++ show cmd ++ " >- " ++ show to
 tabulateMarkov :: forall model state cmd cmd_ m resp prop. Testable prop
                => (Show state, Show cmd_)
                => StateMachine model cmd m resp
-               -> (model Symbolic -> state)
+               -> (model Symbolic -> Maybe state)
                -> (cmd Symbolic -> cmd_)
                -> Commands cmd resp
                -> prop
@@ -184,8 +209,86 @@ tabulateMarkov sm partition constructor cmds0 =
             (resp, counter') = runGenSym (mock model cmd') counter
 
             t = Transition
-                  { from        = partition model
+                  { from        = fromMaybe (error "impossible, can't be a sink state") (partition model)
                   , command     = constructor cmd'
                   , probability = ()
                   , to          = partition model'
                   }
+
+------------------------------------------------------------------------
+
+enumMatrix :: forall e a. (Generic e, GEnum FiniteEnum (Rep e), GBounded (Rep e))
+           => ((e, Maybe e) -> a) -> Matrix a
+enumMatrix f = matrix dimension (dimension + 1) (f . bimap g h)
+  where
+    g :: Int -> e
+    g = gtoFiniteEnum . pred -- We need the predecessor because 'matrix' starts
+                             -- indexing from 1.
+
+    h :: Int -> Maybe e
+    h i | i == dimension + 1 = Nothing
+        | otherwise          = Just (gtoFiniteEnum (pred i))
+
+    dimension :: Int
+    dimension = length es
+
+    es :: [e]
+    es = gfiniteEnumFromTo gminBound gmaxBound
+
+transitionMatrix :: forall state cmd_. (Eq state, Ord state)
+                 => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+                 => Markov state cmd_ Double
+                 -> Matrix Double -- |state| x (|state| + 1)
+transitionMatrix markov = enumMatrix go
+  where
+    go :: (state, Maybe state) -> Double
+    go (state, state') = fromMaybe 0
+      (Map.lookup state' (availableStates state markov))
+
+    availableStates :: state -> Markov state cmd_ Double -> Map (Maybe state) Double
+    availableStates state
+      = maybe Map.empty Map.fromList
+      . lookup state
+      . go'
+      . groupBy ((==) `on` from) -- XXX: Perhaps we can enforce the sorted and
+                                 -- grouped structure by construction instead?
+      . sortBy (comparing from)
+      . concat
+      . unMarkov
+      where
+        go' :: [[Transition state cmd_ Double]] -> [(state, [(Maybe state, Double)])]
+        go' []                  = []
+        go' ([]         : _xss) = error "Use NonEmpty?"
+        go' (xs@(x : _) : xss)  = (from x, map (to &&& probability) xs) : go' xss
+
+------------------------------------------------------------------------
+
+historyObservations :: forall model cmd m resp state cmd_ prob. Ord state
+                    => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+                    => StateMachine model cmd m resp
+                    -> Markov state cmd_ prob
+                    -> (model Concrete -> Maybe state)
+                    -> (cmd Concrete -> cmd_)
+                    -> History cmd resp
+                    -> ( Matrix Double -- |state| x (|state| + 1)
+                       , Matrix Double -- |state| x (|state| + 1)
+                       )
+historyObservations StateMachine { initModel, transition, postcondition } markov partition constructor
+  = go initModel Map.empty Map.empty . makeOperations . unHistory
+  where
+    go _model ss fs []         = ( enumMatrix @state (fromMaybe 0 . flip Map.lookup ss)
+                                 , enumMatrix @state (fromMaybe 0 . flip Map.lookup fs)
+                                 )
+    go  model ss fs (op : ops) = case op of
+      Operation cmd resp _pid ->
+        let
+          state  = fromMaybe (error "impossible, this can't be a sink state") (partition model)
+          model' = transition model cmd resp
+          state' = partition model'
+          incr   = Map.insertWith (\_new old -> old + 1) (state, state') 1
+        in
+          if boolean (postcondition model cmd resp)
+          then go model' (incr ss) fs        ops
+          else go model' ss        (incr fs) ops
+
+      Crash cmd _err _pid -> error "Not implemented yet"

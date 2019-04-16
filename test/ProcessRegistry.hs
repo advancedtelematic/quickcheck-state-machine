@@ -331,10 +331,10 @@ markov = makeMarkov
                     , (Kill_,       10) >- (One, One)
                     , (Unregister_, 20) >- (Two, Zero)
                     , (WhereIs_,    20) >- (Two, One)
-                    , (Exit_,       10) >- (Two, One)
+                    , (Exit_,       10) @- ()
                     ]
 
-  , (Two, Two)   -< [ (Exit_,       30) >- (Two, Two)
+  , (Two, Two)   -< [ (Exit_,       30) @- ()
                     , (Unregister_, 20) >- (Two, One)
                     , (WhereIs_,    50) >- (Two, Two)
                     ]
