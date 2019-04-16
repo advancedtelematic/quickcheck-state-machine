@@ -24,7 +24,6 @@ module Test.StateMachine.Markov
   , (-<)
   , (>-)
   , (/-)
-  , (@-)
   , markovGenerator
   , coverMarkov
   , tabulateMarkov
@@ -47,9 +46,9 @@ import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
 import           Data.Matrix
-                   (Matrix, fromLists, matrix, toLists)
+                   (Matrix, matrix)
 import           Data.Maybe
-                   (fromMaybe, maybeToList)
+                   (fromMaybe)
 import           Data.Ord
                    (comparing)
 import           Generic.Data
@@ -59,12 +58,8 @@ import           GHC.Generics
                    (Generic, Rep)
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, coverTable, frequency,
+                   (Gen, Property, Testable, frequency,
                    property)
-import           Test.QuickCheck.Monadic
-                   (PropertyM)
-import           Text.Read
-                   (readMaybe)
 
 import           Test.StateMachine.Logic
                    (boolean)
@@ -89,7 +84,7 @@ data Transition state cmd_ prob = Transition
   { from        :: state
   , command     :: cmd_
   , probability :: prob
-  , to          :: Maybe state
+  , to          :: state
   }
 
 -- | Constructor for 'Markov' chains.
@@ -102,7 +97,7 @@ infixl 5 -<
 --   finish the transition with one of '(>-)' or '(/-)' depending on whether the
 --   transition has a specific or a uniform probability.
 (-<) :: Fractional prob
-     => state -> [Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)]
+     => state -> [Either (cmd_, state) ((cmd_, prob), state)]
      -> [Transition state cmd_ prob]
 from -< es = map go es
   where
@@ -117,17 +112,14 @@ from -< es = map go es
 infixl 5 >-
 
 -- | Finish making a transition with a specified probability distribution.
-(>-) :: (cmd_, prob) -> state -> Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)
-(cmd, prob) >- state = Right ((cmd, prob), Just state)
+(>-) :: (cmd_, prob) -> state -> Either (cmd_, state) ((cmd_, prob), state)
+(cmd, prob) >- state = Right ((cmd, prob), state)
 
 infixl 5 /-
 
 -- | Finish making a transition with an uniform probability distribution.
-(/-) :: cmd_ -> state -> Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)
-cmd /- state = Left (cmd, Just state)
-
-(@-) :: (cmd_, prob)-> () -> Either (cmd_, Maybe state) ((cmd_, prob), Maybe state)
-(cmd, prob) @- () = Right ((cmd, prob), Nothing)
+(/-) :: cmd_ -> state -> Either (cmd_, state) ((cmd_, prob), state)
+cmd /- state = Left (cmd, state)
 
 ------------------------------------------------------------------------
 
@@ -135,9 +127,12 @@ cmd /- state = Left (cmd, Just state)
 markovGenerator :: forall state cmd_ cmd model. (Show state, Ord state, Ord cmd_)
                 => Markov state cmd_ Double
                 -> Map cmd_ (model Symbolic -> Gen (cmd Symbolic))
-                -> (model Symbolic -> Maybe state)
+                -> (model Symbolic -> state)
+                -> (state -> Bool)
                 -> (model Symbolic -> Maybe (Gen (cmd Symbolic)))
-markovGenerator markov gens partition model = fmap (frequency . go) (partition model)
+markovGenerator markov gens partition isSink model
+  | isSink (partition model) = Nothing
+  | otherwise                = Just (frequency (go (partition model)))
   where
     go :: state -> [(Int, Gen (cmd Symbolic))]
     go s = case availableCommands s markov of
@@ -176,7 +171,7 @@ toTransitionString cmd to = "-< " ++ show cmd ++ " >- " ++ show to
 tabulateMarkov :: forall model state cmd cmd_ m resp prop. Testable prop
                => (Show state, Show cmd_)
                => StateMachine model cmd m resp
-               -> (model Symbolic -> Maybe state)
+               -> (model Symbolic -> state)
                -> (cmd Symbolic -> cmd_)
                -> Commands cmd resp
                -> prop
@@ -209,7 +204,7 @@ tabulateMarkov sm partition constructor cmds0 =
             (resp, counter') = runGenSym (mock model cmd') counter
 
             t = Transition
-                  { from        = fromMaybe (error "impossible, can't be a sink state") (partition model)
+                  { from        = partition model
                   , command     = constructor cmd'
                   , probability = ()
                   , to          = partition model'
@@ -218,16 +213,13 @@ tabulateMarkov sm partition constructor cmds0 =
 ------------------------------------------------------------------------
 
 enumMatrix :: forall e a. (Generic e, GEnum FiniteEnum (Rep e), GBounded (Rep e))
-           => ((e, Maybe e) -> a) -> Matrix a
-enumMatrix f = matrix dimension (dimension + 1) (f . bimap g h)
+           => ((e, e) -> a)
+           -> Matrix a -- |e| x |e|
+enumMatrix f = matrix dimension dimension (f . bimap g g)
   where
     g :: Int -> e
     g = gtoFiniteEnum . pred -- We need the predecessor because 'matrix' starts
                              -- indexing from 1.
-
-    h :: Int -> Maybe e
-    h i | i == dimension + 1 = Nothing
-        | otherwise          = Just (gtoFiniteEnum (pred i))
 
     dimension :: Int
     dimension = length es
@@ -235,17 +227,17 @@ enumMatrix f = matrix dimension (dimension + 1) (f . bimap g h)
     es :: [e]
     es = gfiniteEnumFromTo gminBound gmaxBound
 
-transitionMatrix :: forall state cmd_. (Eq state, Ord state)
+transitionMatrix :: forall state cmd_. Ord state
                  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
                  => Markov state cmd_ Double
-                 -> Matrix Double -- |state| x (|state| + 1)
+                 -> Matrix Double -- |state| x |state|
 transitionMatrix markov = enumMatrix go
   where
-    go :: (state, Maybe state) -> Double
+    go :: (state, state) -> Double
     go (state, state') = fromMaybe 0
       (Map.lookup state' (availableStates state markov))
 
-    availableStates :: state -> Markov state cmd_ Double -> Map (Maybe state) Double
+    availableStates :: state -> Markov state cmd_ Double -> Map state Double
     availableStates state
       = maybe Map.empty Map.fromList
       . lookup state
@@ -256,7 +248,7 @@ transitionMatrix markov = enumMatrix go
       . concat
       . unMarkov
       where
-        go' :: [[Transition state cmd_ Double]] -> [(state, [(Maybe state, Double)])]
+        go' :: [[Transition state cmd_ Double]] -> [(state, [(state, Double)])]
         go' []                  = []
         go' ([]         : _xss) = error "Use NonEmpty?"
         go' (xs@(x : _) : xss)  = (from x, map (to &&& probability) xs) : go' xss
@@ -267,22 +259,22 @@ historyObservations :: forall model cmd m resp state cmd_ prob. Ord state
                     => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
                     => StateMachine model cmd m resp
                     -> Markov state cmd_ prob
-                    -> (model Concrete -> Maybe state)
+                    -> (model Concrete -> state)
                     -> (cmd Concrete -> cmd_)
                     -> History cmd resp
-                    -> ( Matrix Double -- |state| x (|state| + 1)
-                       , Matrix Double -- |state| x (|state| + 1)
+                    -> ( Matrix Double -- |state| x |state|
+                       , Matrix Double -- |state| x |state|
                        )
 historyObservations StateMachine { initModel, transition, postcondition } markov partition constructor
   = go initModel Map.empty Map.empty . makeOperations . unHistory
   where
-    go _model ss fs []         = ( enumMatrix @state (fromMaybe 0 . flip Map.lookup ss)
-                                 , enumMatrix @state (fromMaybe 0 . flip Map.lookup fs)
-                                 )
+    go _model ss fs [] = ( enumMatrix @state (fromMaybe 0 . flip Map.lookup ss)
+                         , enumMatrix @state (fromMaybe 0 . flip Map.lookup fs)
+                         )
     go  model ss fs (op : ops) = case op of
       Operation cmd resp _pid ->
         let
-          state  = fromMaybe (error "impossible, this can't be a sink state") (partition model)
+          state  = partition model
           model' = transition model cmd resp
           state' = partition model'
           incr   = Map.insertWith (\_new old -> old + 1) (state, state') 1
