@@ -353,3 +353,4 @@ prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
     $ coverMarkov markov
     $ tabulateMarkov sm partition constructor cmds
     $ res === Ok
+
