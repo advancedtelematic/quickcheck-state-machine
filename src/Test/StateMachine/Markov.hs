@@ -38,10 +38,8 @@ import           Data.Bifunctor
                    (bimap)
 import           Data.Either
                    (partitionEithers)
-import           Data.Function
-                   (on)
 import           Data.List
-                   (genericLength, groupBy, sortBy)
+                   (genericLength)
 import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
@@ -49,8 +47,6 @@ import           Data.Matrix
                    (Matrix, matrix)
 import           Data.Maybe
                    (fromMaybe)
-import           Data.Ord
-                   (comparing)
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
                    gmaxBound, gminBound, gtoFiniteEnum)
@@ -78,18 +74,18 @@ import           Test.StateMachine.Utils
 
 -- | Markov chain.
 newtype Markov state cmd_ prob = Markov
-  { unMarkov :: [[Transition state cmd_ prob]] }
+  { unMarkov :: Map state [Transition state cmd_ prob] }
 
 data Transition state cmd_ prob = Transition
-  { from        :: state
-  , command     :: cmd_
+  { command     :: cmd_
   , probability :: prob
   , to          :: state
   }
 
 -- | Constructor for 'Markov' chains.
-makeMarkov :: [[Transition state cmd_ prob]] -> Markov state cmd_ prob
-makeMarkov = Markov
+makeMarkov :: Ord state
+           => [Map state [Transition state cmd_ prob]] -> Markov state cmd_ prob
+makeMarkov = Markov . Map.unions
 
 infixl 5 -<
 
@@ -98,10 +94,10 @@ infixl 5 -<
 --   transition has a specific or a uniform probability.
 (-<) :: Fractional prob
      => state -> [Either (cmd_, state) ((cmd_, prob), state)]
-     -> [Transition state cmd_ prob]
-from -< es = map go es
+     -> Map state [Transition state cmd_ prob]
+from -< es = Map.singleton from (map go es)
   where
-    go (Left   (command,               to)) = Transition from command uniform to
+    go (Left   (command,               to)) = Transition command uniform to
     go (Right ((command, probability), to)) = Transition {..}
 
     (ls, rs) = partitionEithers es
@@ -135,34 +131,26 @@ markovGenerator markov gens partition isSink model
   | otherwise                = Just (frequency (go (partition model)))
   where
     go :: state -> [(Int, Gen (cmd Symbolic))]
-    go s = case availableCommands s markov of
-      Nothing  -> error ("markovGenerator: deadlock, no commands can be generated in given state:\n"
-                         ++ show s)
-      Just dcs -> map (bimap round (\cmd_ -> (gens Map.! cmd_) model)) dcs
-
-    availableCommands :: state -> Markov state cmd_ Double -> Maybe [(Double, cmd_)]
-    availableCommands state
-      = lookup state
-      . go'
-      . groupBy ((==) `on` from) -- XXX: Perhaps we can enforce the sorted and
-                                 -- grouped structure by construction instead?
-      . sortBy (comparing from)
-      . concat
+    go state
+      = map (round . probability
+             &&& (\cmd_ -> (gens Map.! cmd_) model) . command)
+      . fromMaybe err
+      . Map.lookup state
       . unMarkov
+      $ markov
       where
-        go' :: [[Transition state cmd_ Double]] -> [(state, [(Double, cmd_)])]
-        go' []                  = []
-        go' ([]         : _xss) = error "Use NonEmpty?"
-        go' (xs@(x : _) : xss)  = (from x, map (probability &&& command) xs) : go' xss
+        err = error
+          ("markovGenerator: deadlock, no commands can be generated in given state: "
+          ++ show state)
 
 -- | Variant of QuickCheck's 'coverTable' which works on 'Markov' chains.
 coverMarkov :: (Show state, Show cmd_, Testable prop)
             => Markov state cmd_ Double -> prop -> Property
-coverMarkov markov prop = foldr go (property prop) (concat (unMarkov markov))
+coverMarkov markov prop = foldr go (property prop) (Map.toList (unMarkov markov))
   where
-    go Transition {..} ih =
+    go (from, ts) ih =
       newCoverTable (show from)
-        [(toTransitionString command to, probability)] ih
+        (map (\Transition{..} -> (toTransitionString command to, probability)) ts) ih
 
 toTransitionString :: (Show state, Show cmd_) => cmd_ -> state -> String
 toTransitionString cmd to = "-< " ++ show cmd ++ " >- " ++ show to
@@ -179,33 +167,33 @@ tabulateMarkov :: forall model state cmd cmd_ m resp prop. Testable prop
 tabulateMarkov sm partition constructor cmds0 =
   tabulateTransitions (commandsToTransitions sm cmds0)
   where
-    tabulateTransitions :: [Transition state cmd_ prob]
+    tabulateTransitions :: [(state, Transition state cmd_ prob)]
                         -> prop
                         -> Property
     tabulateTransitions ts prop = foldr go (property prop) ts
       where
-        go Transition {..} ih =
+        go (from, Transition {..}) ih =
           newTabulate (show from) [ toTransitionString command to ] ih
 
     commandsToTransitions :: StateMachine model cmd m resp
                           -> Commands cmd resp
-                          -> [Transition state cmd_ ()]
+                          -> [(state, Transition state cmd_ ())]
     commandsToTransitions StateMachine { initModel, transition, mock } =
       go initModel newCounter [] . unCommands
       where
-        go :: model Symbolic -> Counter -> [Transition state cmd_ ()]
-           -> [Command cmd resp] -> [Transition state cmd_ ()]
+        go :: model Symbolic -> Counter -> [(state, Transition state cmd_ ())]
+           -> [Command cmd resp] -> [(state, Transition state cmd_ ())]
         go _model _counter acc []           = acc
-        go  model  counter acc (cmd : cmds) = go model' counter' (t : acc) cmds
+        go  model  counter acc (cmd : cmds) = go model' counter' ((from, t) : acc) cmds
           where
+            from   = partition model
             cmd'   = getCommand cmd
             model' = transition model cmd' resp
 
             (resp, counter') = runGenSym (mock model cmd') counter
 
             t = Transition
-                  { from        = partition model
-                  , command     = constructor cmd'
+                  { command     = constructor cmd'
                   , probability = ()
                   , to          = partition model'
                   }
@@ -235,28 +223,18 @@ transitionMatrix markov = enumMatrix go
   where
     go :: (state, state) -> Double
     go (state, state') = fromMaybe 0
-      (Map.lookup state' (availableStates state markov))
+      (Map.lookup state' =<< Map.lookup state availableStates)
 
-    availableStates :: state -> Markov state cmd_ Double -> Map state Double
-    availableStates state
-      = maybe Map.empty Map.fromList
-      . lookup state
-      . go'
-      . groupBy ((==) `on` from) -- XXX: Perhaps we can enforce the sorted and
-                                 -- grouped structure by construction instead?
-      . sortBy (comparing from)
-      . concat
+    availableStates :: Map state (Map state Double)
+    availableStates
+      = fmap (Map.fromList . map (to &&& probability))
       . unMarkov
-      where
-        go' :: [[Transition state cmd_ Double]] -> [(state, [(state, Double)])]
-        go' []                  = []
-        go' ([]         : _xss) = error "Use NonEmpty?"
-        go' (xs@(x : _) : xss)  = (from x, map (to &&& probability) xs) : go' xss
+      $ markov
 
 ------------------------------------------------------------------------
 
-historyObservations :: forall model cmd m resp state cmd_ prob. Eq cmd_
-                    => (Show cmd_, Show state, Ord state)
+historyObservations :: forall model cmd m resp state cmd_ prob. Ord state
+                    => Ord cmd_
                     => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
                     => StateMachine model cmd m resp
                     -> Markov state cmd_ prob
@@ -288,25 +266,16 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
       Crash cmd _err _pid ->
         let
           state  = partition model
-          state' = nextState state (constructor cmd) markov
+          state' = fromMaybe err
+                     (Map.lookup (constructor cmd) =<< Map.lookup state nextState)
           incr   = Map.insertWith (\_new old -> old + 1) (state, state') 1
         in
           go model ss (incr fs) ops
+        where
+          err = error "historyObservations: impossible."
 
-    nextState :: state -> cmd_ -> Markov state cmd_ prob -> state
-    nextState state cmd
-      = fromMaybe (error ("historyObservations: impossible, command doesn't exist: " ++ show cmd))
-      . lookup cmd
-      . fromMaybe (error ("historyObservations: impossible, state doesn't exist: " ++ show state))
-      . lookup state
-      . go'
-      . groupBy ((==) `on` from) -- XXX: Perhaps we can enforce the sorted and
-                                 -- grouped structure by construction instead?
-      . sortBy (comparing from)
-      . concat
+    nextState :: Map state (Map cmd_ state)
+    nextState
+      = fmap (Map.fromList . map (command &&& to))
       . unMarkov
-      where
-        go' :: [[Transition state cmd_ prob]] -> [(state, [(cmd_, state)])]
-        go' []                  = []
-        go' ([]         : _xss) = error "Use NonEmpty?"
-        go' (xs@(x : _) : xss)  = (from x, map (command &&& to) xs) : go' xss
+      $ markov
