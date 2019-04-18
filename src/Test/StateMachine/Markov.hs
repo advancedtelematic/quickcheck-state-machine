@@ -202,7 +202,7 @@ tabulateMarkov sm partition constructor cmds0 =
 
 enumMatrix :: forall e a. (Generic e, GEnum FiniteEnum (Rep e), GBounded (Rep e))
            => ((e, e) -> a)
-           -> Matrix a -- |e| x |e|
+           -> Matrix a
 enumMatrix f = matrix dimension dimension (f . bimap g g)
   where
     g :: Int -> e
@@ -218,7 +218,7 @@ enumMatrix f = matrix dimension dimension (f . bimap g g)
 transitionMatrix :: forall state cmd_. Ord state
                  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
                  => Markov state cmd_ Double
-                 -> Matrix Double -- |state| x |state|
+                 -> Matrix Double
 transitionMatrix markov = enumMatrix go
   where
     go :: (state, state) -> Double
@@ -241,8 +241,8 @@ historyObservations :: forall model cmd m resp state cmd_ prob. Ord state
                     -> (model Concrete -> state)
                     -> (cmd Concrete -> cmd_)
                     -> History cmd resp
-                    -> ( Matrix Double -- |state| x |state|
-                       , Matrix Double -- |state| x |state|
+                    -> ( Matrix Double
+                       , Matrix Double
                        )
 historyObservations StateMachine { initModel, transition, postcondition } markov partition constructor
   = go initModel Map.empty Map.empty . makeOperations . unHistory
