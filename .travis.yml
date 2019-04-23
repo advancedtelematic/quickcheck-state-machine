@@ -222,10 +222,10 @@ script:
   set -ex
   case "$BUILD" in
     stack)
-      travis_wait 30 stack -j1 --no-terminal $ARGS test --fast --pedantic --bench --no-run-benchmarks --haddock --no-haddock-deps
+      stack -j1 --no-terminal $ARGS test --fast --pedantic --bench --no-run-benchmarks --haddock --no-haddock-deps
       ;;
     cabal)
-      travis_wait 30 cabal -j1 install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
+      cabal -j1 install --enable-tests --enable-benchmarks --force-reinstalls --ghc-options=-O0 --reorder-goals --max-backjumps=-1 $CABALARGS $PACKAGES
 
       ORIGDIR=$(pwd)
       for dir in $PACKAGES
@@ -241,9 +241,9 @@ script:
         cabal configure --enable-tests --ghc-options -O0
         cabal build
         if [ "$CABALVER" = "1.16" ] || [ "$CABALVER" = "1.18" ]; then
-          travis_wait 30 cabal test
+          cabal test
         else
-          travis_wait 30 cabal test --show-details=streaming --log=/dev/stdout
+          cabal test --show-details=streaming --log=/dev/stdout
         fi
         cd $ORIGDIR
       done

@@ -255,17 +255,21 @@ data Fin2
   | Two
   deriving (Enum, Bounded, Show, Eq, Read, Ord)
 
-type State = (Fin2, Fin2)
+data State = Fin2 :*: Fin2 | Stop
+  deriving (Show, Eq, Ord, Generic)
 
-partition :: Model r -> Maybe State
+partition :: Model r -> State
 partition Model {..}
-  | stop      = Nothing
-  | otherwise = Just ( toEnum (length pids - length killed)
-                     , toEnum (length (Map.keys registry))
-                     )
+  | stop      = Stop
+  | otherwise = (   toEnum (length pids - length killed)
+                :*: toEnum (length (Map.keys registry))
+                )
+
+sinkState :: State -> Bool
+sinkState = (== Stop)
 
 initState :: State
-initState = (Zero, Zero)
+initState = Zero :*: Zero
 
 instance Arbitrary Name where
   arbitrary = elements (map Name ["A", "B", "C"])
@@ -291,7 +295,7 @@ gens = Map.fromList
   ]
 
 generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
-generator = markovGenerator markov gens partition
+generator = markovGenerator markov gens partition sinkState
 
 shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
 shrinker _model _act = []
@@ -311,33 +315,33 @@ sm = StateMachine initModel transition precondition postcondition
 
 markov :: Markov State Action_ Double
 markov = makeMarkov
-  [ (Zero, Zero) -< [ Spawn_ /- (One, Zero) ]
+  [ Zero :*: Zero -< [ Spawn_ /- One :*: Zero ]
 
-  , (One,  Zero) -< [ Spawn_      /- (Two, Zero)
-                    , Register_   /- (One, One)
-                    , (Kill_, 20) >- (Zero, Zero)
+  , One :*: Zero -< [ Spawn_      /- Two  :*: Zero
+                    , Register_   /- One  :*: One
+                    , (Kill_, 20) >- Zero :*: Zero
                     ]
 
-  , (One,  One)  -< [ (Spawn_,      50) >- (Two, One)
-                    , (Unregister_, 20) >- (One, Zero)
-                    , (WhereIs_,    30) >- (One, One)
-                    ]
+  , (One :*: One)  -< [ (Spawn_,      50) >- Two :*: One
+                      , (Unregister_, 20) >- One :*: Zero
+                      , (WhereIs_,    30) >- One :*: One
+                      ]
 
-  , (Two, Zero)  -< [ (Register_, 80) >- (Two, One)
-                    , (Kill_,     20) >- (One, Zero)
-                    ]
+  , (Two :*: Zero)  -< [ (Register_, 80) >- Two :*: One
+                       , (Kill_,     20) >- One :*: Zero
+                       ]
 
-  , (Two, One)   -< [ (Register_,   40) >- (Two, Two)
-                    , (Kill_,       10) >- (One, One)
-                    , (Unregister_, 20) >- (Two, Zero)
-                    , (WhereIs_,    20) >- (Two, One)
-                    , (Exit_,       10) >- (Two, One)
-                    ]
+  , Two :*: One   -< [ (Register_,   40) >- Two :*: Two
+                     , (Kill_,       10) >- One :*: One
+                     , (Unregister_, 20) >- Two :*: Zero
+                     , (WhereIs_,    20) >- Two :*: One
+                     , (Exit_,       10) >- Stop
+                     ]
 
-  , (Two, Two)   -< [ (Exit_,       30) >- (Two, Two)
-                    , (Unregister_, 20) >- (Two, One)
-                    , (WhereIs_,    50) >- (Two, Two)
-                    ]
+  , Two :*: Two   -< [ (Exit_,       30) >- Stop
+                     , (Unregister_, 20) >- Two :*: One
+                     , (WhereIs_,    50) >- Two :*: Two
+                     ]
   ]
 
 prop_processRegistry :: Property
@@ -349,3 +353,4 @@ prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
     $ coverMarkov markov
     $ tabulateMarkov sm partition constructor cmds
     $ res === Ok
+
