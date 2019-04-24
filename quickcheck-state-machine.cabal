@@ -54,6 +54,7 @@ library
         exceptions >=0.8.3,
         filepath >=1.0,
         generic-data >=0.3.0.0,
+        markov-chain-usage-model,
         matrix >=0.3.5.0,
         mtl >=2.2.1,
         time >=1.7,

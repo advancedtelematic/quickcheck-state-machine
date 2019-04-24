@@ -29,6 +29,12 @@ module Test.StateMachine.Markov
   , tabulateMarkov
   , transitionMatrix
   , historyObservations
+  , StatsDb(..)
+  , fileStatsDb
+  , persistStats
+  , computeReliability
+  , printReliability
+  , quickCheckReliability
   )
   where
 
@@ -44,7 +50,8 @@ import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
 import           Data.Matrix
-                   (Matrix, matrix)
+                   (Matrix, elementwise, fromLists, matrix, ncols,
+                   nrows, submatrix, toLists, zero)
 import           Data.Maybe
                    (fromMaybe)
 import           Generic.Data
@@ -52,10 +59,22 @@ import           Generic.Data
                    gmaxBound, gminBound, gtoFiniteEnum)
 import           GHC.Generics
                    (Generic, Rep)
-import           Prelude
+import           Prelude                            hiding
+                   (readFile)
+import           System.IO
+                   (hGetContents, openFile, IOMode(ReadMode))
 import           Test.QuickCheck
-                   (Gen, Property, Testable, frequency,
-                   property)
+                   (Gen, Property, Testable, frequency, property,
+                   quickCheck)
+import           Test.QuickCheck.Monadic
+                   (PropertyM, run)
+import           Test.QuickCheck.Property
+                   (Callback(PostTest),
+                   CallbackKind(NotCounterexample), callback)
+import           Text.Read
+                   (readMaybe)
+
+import           MarkovChain
 
 import           Test.StateMachine.Logic
                    (boolean)
@@ -227,7 +246,7 @@ transitionMatrix markov = enumMatrix go
 
     availableStates :: Map state (Map state Double)
     availableStates
-      = fmap (Map.fromList . map (to &&& probability))
+      = fmap (Map.fromList . map (to &&& (/ 100) . probability))
       . unMarkov
       $ markov
 
@@ -279,3 +298,65 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
       = fmap (Map.fromList . map (command &&& to))
       . unMarkov
       $ markov
+
+------------------------------------------------------------------------
+
+data StatsDb m = StatsDb
+  { store :: (Matrix Double, Matrix Double) -> m ()
+  , load  :: m (Maybe [(Matrix Double, Matrix Double)])
+  }
+
+fileStatsDb :: FilePath -> StatsDb IO
+fileStatsDb fp = StatsDb
+  { store = store
+  , load  = load
+  }
+  where
+    store observed = do
+      appendFile fp (show (bimap toLists toLists observed) ++ "\n")
+
+    load = sequence
+         . map (fmap (bimap fromLists fromLists) . readMaybe)
+         . lines
+        <$> readFile' fp
+
+    readFile' file = hGetContents =<< openFile file ReadMode
+
+persistStats :: Monad m
+             => StatsDb m -> (Matrix Double, Matrix Double) -> PropertyM m ()
+persistStats StatsDb { store } = run . store
+
+computeReliability :: Monad m
+                   => StatsDb m -> Matrix Double -> (Matrix Double, Matrix Double)
+                   -> m Double
+computeReliability StatsDb { load } usage observed = do
+  mpriors <- load
+
+      -- XXX: The `max 1` to avoid getting NaN, this should be moved to the
+      -- markov-chain-usage-model library...
+  let sumElemMax1 :: [Matrix Double] -> Matrix Double
+      sumElemMax1 = fmap (max 1) . foldr1 (elementwise (+))
+
+      mpriors' :: Maybe (Matrix Double, Matrix Double)
+      mpriors' = fmap (bimap sumElemMax1 sumElemMax1 . unzip) mpriors
+
+  return (singleUseReliability (reduce usage) mpriors' (bimap reduce reduce observed))
+    where
+      n      = ncols usage
+      m      = pred n
+      reduce = submatrix 1 m 1 n
+
+printReliability :: Testable prop
+                 => StatsDb IO -> Matrix Double -> (Matrix Double, Matrix Double) -> prop -> Property
+printReliability sdb usage observed = callback $ PostTest NotCounterexample $ \_state _result ->
+  print =<< computeReliability sdb usage observed
+
+quickCheckReliability :: Testable prop
+                      => StatsDb IO -> Matrix Double -> prop -> IO ()
+quickCheckReliability sdb usage prop = do
+  quickCheck prop
+  print =<< computeReliability sdb usage observed
+    where
+      observed = ( zero (nrows usage) (ncols usage)
+                 , zero (nrows usage) (ncols usage)
+                 )
