@@ -22,7 +22,7 @@ module MemoryReference
 import           Control.Concurrent
                    (threadDelay)
 import           Data.Functor.Classes
-                   (Eq1)
+                   (Eq1, Show1)
 import           Data.IORef
                    (IORef, atomicModifyIORef', newIORef, readIORef,
                    writeIORef)
@@ -80,14 +80,14 @@ instance ToExpr (Model Concrete)
 initModel :: Model r
 initModel = Model empty
 
-transition :: Eq1 r => Model r -> Command r -> Response r -> Model r
+transition :: (Eq1 r, Show1 r) => Model r -> Command r -> Response r -> Model r
 transition m@(Model model) cmd resp = case (cmd, resp) of
   (Create, Created ref)        -> Model ((ref, 0) : model)
   (Read _, ReadValue _)        -> m
   (Write ref x, Written)       -> Model (update ref x model)
   (Increment ref, Incremented) -> case lookup ref model of
     Just i  -> Model (update ref (succ i) model)
-    Nothing -> error "transition: increment"
+    Nothing -> error ("transition: failed to lookup `" ++ show ref ++ " in `" ++ show model ++ "`")
   _                            -> error "transition: impossible."
 
 update :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
