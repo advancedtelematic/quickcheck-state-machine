@@ -120,7 +120,8 @@ cmd /- state = Left (cmd, state)
 ------------------------------------------------------------------------
 
 -- | Create a generator from a 'Markov' chain.
-markovGenerator :: forall state cmd_ cmd model. (Show state, Ord state, Ord cmd_)
+markovGenerator :: forall state cmd_ cmd model. (Show state, Show cmd_)
+                => (Ord state, Ord cmd_)
                 => Markov state cmd_ Double
                 -> Map cmd_ (model Symbolic -> Gen (cmd Symbolic))
                 -> (model Symbolic -> state)
@@ -133,15 +134,19 @@ markovGenerator markov gens partition isSink model
     go :: state -> [(Int, Gen (cmd Symbolic))]
     go state
       = map (round . probability
-             &&& (\cmd_ -> (gens Map.! cmd_) model) . command)
-      . fromMaybe err
+             &&& (\cmd_ -> fromMaybe (errMissing cmd_) (Map.lookup cmd_ gens) model) . command)
+      . fromMaybe errDeadlock
       . Map.lookup state
       . unMarkov
       $ markov
       where
-        err = error
+        errDeadlock = error
           ("markovGenerator: deadlock, no commands can be generated in given state: "
           ++ show state)
+
+        errMissing cmd_ = error
+          ("markovGenerator: don't know how to generate the command: "
+          ++ show cmd_)
 
 -- | Variant of QuickCheck's 'coverTable' which works on 'Markov' chains.
 coverMarkov :: (Show state, Show cmd_, Testable prop)
