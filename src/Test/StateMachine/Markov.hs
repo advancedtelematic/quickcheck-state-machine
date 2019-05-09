@@ -62,7 +62,7 @@ import           GHC.Generics
 import           Prelude                            hiding
                    (readFile)
 import           System.IO
-                   (hGetContents, openFile, IOMode(ReadMode))
+                   (IOMode(ReadMode), hGetContents, openFile)
 import           Test.QuickCheck
                    (Gen, Property, Testable, frequency, property,
                    quickCheck)
@@ -301,24 +301,26 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
 
 ------------------------------------------------------------------------
 
+type PropertyName = String
+
 data StatsDb m = StatsDb
   { store :: (Matrix Double, Matrix Double) -> m ()
   , load  :: m (Maybe [(Matrix Double, Matrix Double)])
   }
 
-fileStatsDb :: FilePath -> StatsDb IO
-fileStatsDb fp = StatsDb
+fileStatsDb :: FilePath -> PropertyName -> StatsDb IO
+fileStatsDb fp name = StatsDb
   { store = store
   , load  = load
   }
   where
     store observed = do
-      appendFile fp (show (bimap toLists toLists observed) ++ "\n")
+      appendFile (fp ++ "-" ++ name) (show (bimap toLists toLists observed) ++ "\n")
 
     load = sequence
          . map (fmap (bimap fromLists fromLists) . readMaybe)
          . lines
-        <$> readFile' fp
+        <$> readFile' (fp ++ "-" ++ name)
 
     readFile' file = hGetContents =<< openFile file ReadMode
 
@@ -347,7 +349,8 @@ computeReliability StatsDb { load } usage observed = do
       reduce = submatrix 1 m 1 n
 
 printReliability :: Testable prop
-                 => StatsDb IO -> Matrix Double -> (Matrix Double, Matrix Double) -> prop -> Property
+                 => StatsDb IO -> Matrix Double -> (Matrix Double, Matrix Double)
+                 -> prop -> Property
 printReliability sdb usage observed = callback $ PostTest NotCounterexample $ \_state _result ->
   print =<< computeReliability sdb usage observed
 

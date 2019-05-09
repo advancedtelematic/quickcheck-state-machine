@@ -344,18 +344,17 @@ markov = makeMarkov
                      ]
   ]
 
-prop_processRegistry :: Property
-prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
+prop_processRegistry :: StatsDb IO -> Property
+prop_processRegistry sdb = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm cmds
 
-  let statsDb  = fileStatsDb "/tmp/stats-db"
-      observed = historyObservations sm markov partition constructor hist
+  let observed = historyObservations sm markov partition constructor hist
 
-  persistStats statsDb observed
+  persistStats sdb observed
 
   prettyCommands sm hist
     $ coverMarkov markov
     $ tabulateMarkov sm partition constructor cmds
-    $ printReliability statsDb (transitionMatrix markov) observed
+    $ printReliability sdb (transitionMatrix markov) observed
     $ res === Ok
