@@ -30,6 +30,7 @@ module Test.StateMachine.Markov
   , transitionMatrix
   , historyObservations
   , StatsDb(..)
+  , PropertyName
   , fileStatsDb
   , persistStats
   , computeReliability
@@ -61,8 +62,10 @@ import           GHC.Generics
                    (Generic, Rep)
 import           Prelude                            hiding
                    (readFile)
+import           System.Directory
+                   (removeFile)
 import           System.IO
-                   (IOMode(ReadMode), hGetContents, openFile)
+                   (IOMode(ReadWriteMode), hGetContents, openFile)
 import           Test.QuickCheck
                    (Gen, Property, Testable, frequency, property,
                    quickCheck)
@@ -301,12 +304,12 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
 
 ------------------------------------------------------------------------
 
-type PropertyName = String
-
 data StatsDb m = StatsDb
   { store :: (Matrix Double, Matrix Double) -> m ()
-  , load  :: m (Maybe [(Matrix Double, Matrix Double)])
+  , load  :: m (Maybe (Matrix Double, Matrix Double))
   }
+
+type PropertyName = String
 
 fileStatsDb :: FilePath -> PropertyName -> StatsDb IO
 fileStatsDb fp name = StatsDb
@@ -314,15 +317,44 @@ fileStatsDb fp name = StatsDb
   , load  = load
   }
   where
+    store :: (Matrix Double, Matrix Double) -> IO ()
     store observed = do
       appendFile (fp ++ "-" ++ name) (show (bimap toLists toLists observed) ++ "\n")
 
-    load = sequence
-         . map (fmap (bimap fromLists fromLists) . readMaybe)
-         . lines
-        <$> readFile' (fp ++ "-" ++ name)
+    load :: IO (Maybe (Matrix Double, Matrix Double))
+    load = do
+      mprior <- parse     <$> readFile' (fp ++ "-" ++ name ++ "-cache")
+      mnew   <- parseMany <$> readFile' (fp ++ "-" ++ name)
 
-    readFile' file = hGetContents =<< openFile file ReadMode
+      let sumElem :: [Matrix Double] -> Matrix Double
+          sumElem = foldl1 (elementwise (+))
+
+      let mprior' = case (mprior, mnew) of
+            (Just (sprior, fprior), Just new) ->
+              Just (bimap sumElem sumElem (bimap (sprior :) (fprior :) (unzip new)))
+            (Nothing, Just new)   -> Just (bimap sumElem sumElem (unzip new))
+            (Just prior, Nothing) -> Just prior
+            (Nothing, Nothing)    -> Nothing
+
+      case mprior' of
+        Just prior' -> writeFile  (fp ++ "-" ++ name ++ "-cache") (show (bimap toLists toLists prior'))
+        Nothing     -> return ()
+
+      removeFile (fp ++ "-" ++ name)
+
+      return mprior'
+
+      where
+        parseMany :: String -> Maybe ([(Matrix Double, Matrix Double)])
+        parseMany = sequence
+                  . map parse
+                  . lines
+
+        parse :: String -> Maybe (Matrix Double, Matrix Double)
+        parse = fmap (bimap fromLists fromLists) . readMaybe
+
+    readFile' :: FilePath -> IO String
+    readFile' file = hGetContents =<< openFile file ReadWriteMode
 
 persistStats :: Monad m
              => StatsDb m -> (Matrix Double, Matrix Double) -> PropertyM m ()
@@ -330,19 +362,11 @@ persistStats StatsDb { store } = run . store
 
 computeReliability :: Monad m
                    => StatsDb m -> Matrix Double -> (Matrix Double, Matrix Double)
-                   -> m Double
+                   -> m (Double, Double)
 computeReliability StatsDb { load } usage observed = do
   mpriors <- load
 
-      -- XXX: The `max 1` to avoid getting NaN, this should be moved to the
-      -- markov-chain-usage-model library...
-  let sumElemMax1 :: [Matrix Double] -> Matrix Double
-      sumElemMax1 = fmap (max 1) . foldr1 (elementwise (+))
-
-      mpriors' :: Maybe (Matrix Double, Matrix Double)
-      mpriors' = fmap (bimap sumElemMax1 sumElemMax1 . unzip) mpriors
-
-  return (singleUseReliability (reduce usage) mpriors' (bimap reduce reduce observed))
+  return (singleUseReliability (reduce usage) mpriors (bimap reduce reduce observed))
     where
       n      = ncols usage
       m      = pred n
