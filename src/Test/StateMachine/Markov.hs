@@ -29,6 +29,8 @@ module Test.StateMachine.Markov
   , tabulateMarkov
   , transitionMatrix
   , historyObservations
+  , markovToDot
+  , markovToPs
   , StatsDb(..)
   , PropertyName
   , fileStatsDb
@@ -64,8 +66,12 @@ import           Prelude                            hiding
                    (readFile)
 import           System.Directory
                    (removeFile)
+import           System.FilePath.Posix
+                   (replaceExtension)
 import           System.IO
                    (IOMode(ReadWriteMode), hGetContents, openFile)
+import           System.Process
+                   (callProcess)
 import           Test.QuickCheck
                    (Gen, Property, Testable, frequency, property,
                    quickCheck)
@@ -301,6 +307,34 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
       = fmap (Map.fromList . map (command &&& to))
       . unMarkov
       $ markov
+
+------------------------------------------------------------------------
+
+markovToDot :: (Show state, Show cmd_, Show prob)
+            => Markov state cmd_ prob -> String
+markovToDot = go "digraph g {\n" . Map.toList . unMarkov
+  where
+    go acc []                   = acc ++ "}"
+    go acc ((from, via) : more) = go acc' more
+      where
+        acc' :: String
+        acc' = acc ++
+          unlines [ string (show from) ++
+                    " -> " ++
+                    string (show to) ++
+                    " [label=" ++ string (show cmd ++ "\\n(" ++ show prob ++ "%)") ++ "]"
+                  | Transition cmd prob to <- via
+                  ]
+
+        string :: String -> String
+        string s = "\"" ++ s ++ "\""
+
+markovToPs :: (Show state, Show cmd_, Show prob)
+           => Markov state cmd_ prob -> FilePath -> IO ()
+markovToPs markov out = do
+  let dotFile = replaceExtension out "dot"
+  writeFile dotFile (markovToDot markov)
+  callProcess "dot" ["-Tps", dotFile, "-o", out]
 
 ------------------------------------------------------------------------
 
