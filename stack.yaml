@@ -1,13 +1,10 @@
 resolver: lts-13.1
 packages:
   - location: '.'
-  - location:
-      git: https://github.com/advancedtelematic/markov-chain-usage-model
-      commit: 3567505313367f289b4e24bc6d410b3db22b769b
-    extra-dep: true
 extra-deps:
   - base-orphans-0.8@sha256:4885caa82ab94fa5cb841d6d06a43a97cdc7e835f346be4f11c1cc5707b886db
   - generic-data-0.3.0.0@sha256:86cac53570f45f5b1e5f54d8765d0a05f1674b3703e4dbb48a919f89c57b3cbc
+  - markov-chain-usage-model-0.0.0@sha256:1afa95faeb9213c4d960a669190078b41b89169462b8edd910472980671ba8c0
   - tree-diff-0.0.2@sha256:99d84e4639d8ebbd727f4223ab39b589eedeff7ed659db2f9b5b572fa33cd410
 nix:
   enable: false
