@@ -29,6 +29,15 @@ module Test.StateMachine.Markov
   , tabulateMarkov
   , transitionMatrix
   , historyObservations
+  , markovToDot
+  , markovToPs
+  , StatsDb(..)
+  , PropertyName
+  , fileStatsDb
+  , persistStats
+  , computeReliability
+  , printReliability
+  , quickCheckReliability
   )
   where
 
@@ -44,7 +53,8 @@ import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
 import           Data.Matrix
-                   (Matrix, matrix)
+                   (Matrix, elementwise, fromLists, matrix, ncols,
+                   nrows, submatrix, toLists, zero)
 import           Data.Maybe
                    (fromMaybe)
 import           Generic.Data
@@ -52,10 +62,28 @@ import           Generic.Data
                    gmaxBound, gminBound, gtoFiniteEnum)
 import           GHC.Generics
                    (Generic, Rep)
-import           Prelude
+import           Prelude                            hiding
+                   (readFile)
+import           System.Directory
+                   (removeFile)
+import           System.FilePath.Posix
+                   (replaceExtension)
+import           System.IO
+                   (IOMode(ReadWriteMode), hGetContents, openFile)
+import           System.Process
+                   (callProcess)
 import           Test.QuickCheck
-                   (Gen, Property, Testable, frequency,
-                   property)
+                   (Gen, Property, Testable, frequency, property,
+                   quickCheck)
+import           Test.QuickCheck.Monadic
+                   (PropertyM, run)
+import           Test.QuickCheck.Property
+                   (Callback(PostTest),
+                   CallbackKind(NotCounterexample), callback)
+import           Text.Read
+                   (readMaybe)
+
+import           MarkovChain
 
 import           Test.StateMachine.Logic
                    (boolean)
@@ -232,7 +260,7 @@ transitionMatrix markov = enumMatrix go
 
     availableStates :: Map state (Map state Double)
     availableStates
-      = fmap (Map.fromList . map (to &&& probability))
+      = fmap (Map.fromList . map (to &&& (/ 100) . probability))
       . unMarkov
       $ markov
 
@@ -284,3 +312,117 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
       = fmap (Map.fromList . map (command &&& to))
       . unMarkov
       $ markov
+
+------------------------------------------------------------------------
+
+markovToDot :: (Show state, Show cmd_, Show prob)
+            => Markov state cmd_ prob -> String
+markovToDot = go "digraph g {\n" . Map.toList . unMarkov
+  where
+    go acc []                   = acc ++ "}"
+    go acc ((from, via) : more) = go acc' more
+      where
+        acc' :: String
+        acc' = acc ++
+          unlines [ string (show from) ++
+                    " -> " ++
+                    string (show to) ++
+                    " [label=" ++ string (show cmd ++ "\\n(" ++ show prob ++ "%)") ++ "]"
+                  | Transition cmd prob to <- via
+                  ]
+
+        string :: String -> String
+        string s = "\"" ++ s ++ "\""
+
+markovToPs :: (Show state, Show cmd_, Show prob)
+           => Markov state cmd_ prob -> FilePath -> IO ()
+markovToPs markov out = do
+  let dotFile = replaceExtension out "dot"
+  writeFile dotFile (markovToDot markov)
+  callProcess "dot" ["-Tps", dotFile, "-o", out]
+
+------------------------------------------------------------------------
+
+data StatsDb m = StatsDb
+  { store :: (Matrix Double, Matrix Double) -> m ()
+  , load  :: m (Maybe (Matrix Double, Matrix Double))
+  }
+
+type PropertyName = String
+
+fileStatsDb :: FilePath -> PropertyName -> StatsDb IO
+fileStatsDb fp name = StatsDb
+  { store = store
+  , load  = load
+  }
+  where
+    store :: (Matrix Double, Matrix Double) -> IO ()
+    store observed = do
+      appendFile (fp ++ "-" ++ name) (show (bimap toLists toLists observed) ++ "\n")
+
+    load :: IO (Maybe (Matrix Double, Matrix Double))
+    load = do
+      mprior <- parse     <$> readFile' (fp ++ "-" ++ name ++ "-cache")
+      mnew   <- parseMany <$> readFile' (fp ++ "-" ++ name)
+
+      let sumElem :: [Matrix Double] -> Matrix Double
+          sumElem = foldl1 (elementwise (+))
+
+      let mprior' = case (mprior, mnew) of
+            (Just (sprior, fprior), Just new) ->
+              Just (bimap sumElem sumElem (bimap (sprior :) (fprior :) (unzip new)))
+            (Nothing, Just new)   -> Just (bimap sumElem sumElem (unzip new))
+            (Just prior, Nothing) -> Just prior
+            (Nothing, Nothing)    -> Nothing
+
+      case mprior' of
+        Just prior' -> writeFile  (fp ++ "-" ++ name ++ "-cache") (show (bimap toLists toLists prior'))
+        Nothing     -> return ()
+
+      removeFile (fp ++ "-" ++ name)
+
+      return mprior'
+
+      where
+        parseMany :: String -> Maybe ([(Matrix Double, Matrix Double)])
+        parseMany = sequence
+                  . map parse
+                  . lines
+
+        parse :: String -> Maybe (Matrix Double, Matrix Double)
+        parse = fmap (bimap fromLists fromLists) . readMaybe
+
+    readFile' :: FilePath -> IO String
+    readFile' file = hGetContents =<< openFile file ReadWriteMode
+
+persistStats :: Monad m
+             => StatsDb m -> (Matrix Double, Matrix Double) -> PropertyM m ()
+persistStats StatsDb { store } = run . store
+
+computeReliability :: Monad m
+                   => StatsDb m -> Matrix Double -> (Matrix Double, Matrix Double)
+                   -> m (Double, Double)
+computeReliability StatsDb { load } usage observed = do
+  mpriors <- load
+
+  return (singleUseReliability (reduce usage) mpriors (bimap reduce reduce observed))
+    where
+      n      = ncols usage
+      m      = pred n
+      reduce = submatrix 1 m 1 n
+
+printReliability :: Testable prop
+                 => StatsDb IO -> Matrix Double -> (Matrix Double, Matrix Double)
+                 -> prop -> Property
+printReliability sdb usage observed = callback $ PostTest NotCounterexample $ \_state _result ->
+  print =<< computeReliability sdb usage observed
+
+quickCheckReliability :: Testable prop
+                      => StatsDb IO -> Matrix Double -> prop -> IO ()
+quickCheckReliability sdb usage prop = do
+  quickCheck prop
+  print =<< computeReliability sdb usage observed
+    where
+      observed = ( zero (nrows usage) (ncols usage)
+                 , zero (nrows usage) (ncols usage)
+                 )

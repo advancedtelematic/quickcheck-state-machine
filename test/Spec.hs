@@ -28,6 +28,8 @@ import           Hanoi
 import           MemoryReference
 import           ProcessRegistry
 import qualified ShrinkingProps
+import           Test.StateMachine.Markov
+                   (PropertyName, StatsDb, fileStatsDb)
 import           TicketDispenser
 import qualified UnionFind
 
@@ -88,12 +90,15 @@ tests docker0 = testGroup "Tests"
           (expectFailure (prop_echoParallelOK True))
       ]
   , testGroup "ProcessRegistry"
-      [ testProperty "sequential" prop_processRegistry
+      [ testProperty "sequential" (prop_processRegistry (statsDb "processRegistry"))
       ]
   , testGroup "UnionFind"
       [ testProperty "sequential" UnionFind.prop_unionFindSequential ]
   ]
   where
+    statsDb :: PropertyName -> StatsDb IO
+    statsDb = fileStatsDb "/tmp/stats-db"
+
     webServer docker bug port test prop
       | docker    = withResource (WS.setup bug WS.connectionString port) WS.cleanup
                      (const (testProperty test (prop port)))

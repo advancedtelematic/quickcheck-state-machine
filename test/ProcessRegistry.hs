@@ -322,14 +322,14 @@ markov = makeMarkov
                     , (Kill_, 20) >- Zero :*: Zero
                     ]
 
-  , (One :*: One)  -< [ (Spawn_,      50) >- Two :*: One
-                      , (Unregister_, 20) >- One :*: Zero
-                      , (WhereIs_,    30) >- One :*: One
-                      ]
+  , One :*: One  -< [ (Spawn_,      50) >- Two :*: One
+                    , (Unregister_, 20) >- One :*: Zero
+                    , (WhereIs_,    30) >- One :*: One
+                    ]
 
-  , (Two :*: Zero)  -< [ (Register_, 80) >- Two :*: One
-                       , (Kill_,     20) >- One :*: Zero
-                       ]
+  , Two :*: Zero  -< [ (Register_, 80) >- Two :*: One
+                     , (Kill_,     20) >- One :*: Zero
+                     ]
 
   , Two :*: One   -< [ (Register_,   40) >- Two :*: Two
                      , (Kill_,       10) >- One :*: One
@@ -344,13 +344,17 @@ markov = makeMarkov
                      ]
   ]
 
-prop_processRegistry :: Property
-prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
+prop_processRegistry :: StatsDb IO -> Property
+prop_processRegistry sdb = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm cmds
+
+  let observed = historyObservations sm markov partition constructor hist
+
+  persistStats sdb observed
 
   prettyCommands sm hist
     $ coverMarkov markov
     $ tabulateMarkov sm partition constructor cmds
+    $ printReliability sdb (transitionMatrix markov) observed
     $ res === Ok
-
