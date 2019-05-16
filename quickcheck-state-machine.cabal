@@ -32,6 +32,7 @@ library
   exposed-modules:     Test.StateMachine
                      , Test.StateMachine.BoxDrawer
                      , Test.StateMachine.ConstructorName
+                     , Test.StateMachine.Labelling
                      , Test.StateMachine.Logic
                      , Test.StateMachine.Markov
                      , Test.StateMachine.Parallel
