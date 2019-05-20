@@ -29,32 +29,43 @@
 
 module ProcessRegistry
   ( prop_processRegistry
-  , sm
-  , initState
+  , printLabelledExamples
   )
   where
 
+import           Control.Exception
+                   (catch)
 import           Control.Monad
                    (when)
 import           Control.Monad.IO.Class
                    (MonadIO(..))
 import           Data.Foldable
                    (traverse_)
+import           Data.Hashable
+                   (Hashable)
 import qualified Data.HashTable.IO             as HashTable
 import           Data.IORef
                    (IORef)
 import qualified Data.IORef                    as IORef
 import           Data.Kind
                    (Type)
+import           Data.List
+                   ((\\))
 import           Data.Map
                    (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
                    (isJust, isNothing)
+import           Data.Set
+                   (Set)
+import qualified Data.Set                      as Set
+import           Data.Tuple
+                   (swap)
 import           GHC.Generics
                    (Generic, Generic1)
-import           Prelude                       hiding
-                   (elem, notElem)
+import           Prelude
+import           System.IO.Error
+                   (IOError, ioeGetErrorString)
 import           System.IO.Unsafe
                    (unsafePerformIO)
 import           System.Random
@@ -66,6 +77,7 @@ import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
+import qualified Test.StateMachine.Labelling   as Labelling
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 
@@ -86,7 +98,7 @@ newtype Name = Name String
 
 newtype Pid = Pid Int
   deriving newtype (Num)
-  deriving stock (Eq, Generic, Show)
+  deriving stock (Eq, Ord, Generic, Show)
   deriving anyclass (ToExpr)
 
 type ProcessTable = HashTable.CuckooHashTable String Int
@@ -101,11 +113,17 @@ procTable =
   unsafePerformIO $ HashTable.new
 {-# NOINLINE procTable #-}
 
+killedPidsRef :: IORef [Pid]
+killedPidsRef =
+  unsafePerformIO $ IORef.newIORef []
+{-# NOINLINE killedPidsRef #-}
+
 ioReset :: IO ()
 ioReset = do
   IORef.writeIORef pidRef 0
   ks <- fmap fst <$> HashTable.toList procTable
   traverse_ (HashTable.delete procTable) ks
+  IORef.writeIORef killedPidsRef []
 
 ioSpawn :: IO Pid
 ioSpawn = do
@@ -117,12 +135,36 @@ ioSpawn = do
   then error "ioSpawn"
   else pure pid
 
-ioRegister :: Name -> Pid -> IO ()
-ioRegister (Name name) (Pid pid) = do
-  m <- HashTable.lookup procTable name
+ioKill :: Pid -> IO ()
+ioKill pid = do
+  IORef.modifyIORef killedPidsRef (pid :)
 
-  when (isJust m) $
-    fail "ioRegister: already registered"
+reverseLookup :: (Eq k, Eq v, Hashable k, Hashable v)
+              => HashTable.CuckooHashTable k v -> v -> IO (Maybe k)
+reverseLookup tbl val = do
+  lbt <- swapTable tbl
+  HashTable.lookup lbt val
+  where
+    -- Swap the keys and values in a hashtable.
+    swapTable :: (Eq k, Eq v, Hashable k, Hashable v)
+              => HashTable.CuckooHashTable k v -> IO (HashTable.CuckooHashTable v k)
+    swapTable t = HashTable.fromList =<< fmap (map swap) (HashTable.toList t)
+
+ioRegister :: Name -> Pid -> IO ()
+ioRegister (Name name) pid'@(Pid pid) = do
+
+  mpid <- HashTable.lookup procTable name
+  when (isJust mpid) $
+    fail "ioRegister: name already registered"
+
+  mname <- reverseLookup procTable pid
+  when (isJust mname) $
+    fail "ioRegister: pid already registered"
+
+  killedPids <- IORef.readIORef killedPidsRef
+
+  when (pid' `elem` killedPids) $
+    fail "ioRegister: pid is dead"
 
   HashTable.insert procTable name pid
 
@@ -152,7 +194,9 @@ data Action (r :: Type -> Type)
   = Spawn
   | Kill (Reference Pid r)
   | Register Name (Reference Pid r)
+  | BadRegister Name (Reference Pid r)
   | Unregister Name
+  | BadUnregister Name
   | WhereIs Name
   | Exit
   deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable,
@@ -162,21 +206,30 @@ data Action_
   = Spawn_
   | Kill_
   | Register_
+  | BadRegister_
   | Unregister_
+  | BadUnregister_
   | WhereIs_
   | Exit_
   deriving (Show, Eq, Ord)
 
 constructor :: Action r -> Action_
 constructor act = case act of
-  Spawn      {} -> Spawn_
-  Kill       {} -> Kill_
-  Register   {} -> Register_
-  Unregister {} -> Unregister_
-  WhereIs    {} -> WhereIs_
-  Exit       {} -> Exit_
+  Spawn         {} -> Spawn_
+  Kill          {} -> Kill_
+  Register      {} -> Register_
+  BadRegister   {} -> BadRegister_
+  Unregister    {} -> Unregister_
+  BadUnregister {} -> BadUnregister_
+  WhereIs       {} -> WhereIs_
+  Exit          {} -> Exit_
 
-data Response (r :: Type -> Type)
+newtype Response (r :: Type -> Type) = Response
+  { getResponse :: Either Error (Success r) }
+  deriving stock (Show, Generic1)
+  deriving anyclass Rank2.Foldable
+
+data Success (r :: Type -> Type)
   = Spawned (Reference Pid r)
   | Killed
   | Registered
@@ -184,6 +237,20 @@ data Response (r :: Type -> Type)
   | HereIs (Reference Pid r)
   | Exited
   deriving (Show, Generic1, Rank2.Foldable)
+
+data Error
+  = NameAlreadyRegisteredError
+  | PidAlreadyRegisteredError
+  | PidDeadRegisterError
+  | NameNotRegisteredError
+  | UnknownError
+  deriving Show
+
+success :: Success r -> Response r
+success = Response . Right
+
+failure :: Error -> Response r
+failure = Response . Left
 
 data Model (r :: Type -> Type) = Model
   { pids     :: [Reference Pid r]
@@ -199,7 +266,11 @@ initModel :: Model r
 initModel = Model [] Map.empty [] False
 
 transition :: Model r -> Action r -> Response r -> Model r
-transition Model {..} act resp = case (act, resp) of
+transition m          act (Response (Left _err))  = case act of
+  BadRegister   {} -> m
+  BadUnregister {} -> m
+  _otherwise       -> error "transition: good command throws error"
+transition Model {..} act (Response (Right resp)) = case (act, resp) of
 
   (Spawn, Spawned pid) ->
     Model { pids = pids ++ [pid], .. }
@@ -210,8 +281,12 @@ transition Model {..} act resp = case (act, resp) of
   (Register name pid, Registered) ->
     Model { registry = Map.insert name pid registry, .. }
 
+  (BadRegister _name _pid, _) -> error "transition: BadRegister"
+
   (Unregister name, Unregistered) ->
     Model { registry = Map.delete name registry, .. }
+
+  (BadUnregister _name, _) -> error "transition: BadUnregister"
 
   (WhereIs _name, HereIs _pid) ->
     Model {..}
@@ -223,16 +298,25 @@ transition Model {..} act resp = case (act, resp) of
 
 precondition :: Model Symbolic -> Action Symbolic -> Logic
 precondition Model {..} act = case act of
-  Spawn             -> Top
-  Kill pid          -> pid `member` pids
-  Register name pid -> pid `member` pids
-                   .&& name `notMember` Map.keys registry
-  Unregister name   -> name `member` Map.keys registry
-  WhereIs name      -> name `member` Map.keys registry
-  Exit              -> Top
+  Spawn                -> Top
+  Kill pid             -> pid `member` pids
+  Register name pid    -> pid `member` pids
+                      .&& name `notMember` Map.keys  registry
+                      .&& pid  `notMember` Map.elems registry
+  BadRegister name pid -> pid `member` killed
+                      .|| name `member` Map.keys  registry
+                      .|| pid  `member` Map.elems registry
+  Unregister name      -> name `member` Map.keys registry
+  BadUnregister name   -> name `notMember` Map.keys registry
+  WhereIs name         -> name `member` Map.keys registry
+  Exit                 -> Top
 
 postcondition :: Model Concrete -> Action Concrete -> Response Concrete -> Logic
-postcondition Model {..} act resp = case (act, resp) of
+postcondition Model {..} act (Response (Left err))   = case act of
+  BadRegister _name _pid -> Top
+  BadUnregister _name    -> Top
+  _                      -> Bot .// show err
+postcondition Model {..} act (Response (Right resp)) = case (act, resp) of
   (Spawn, Spawned _pid)             -> Top
   (Kill _pid, Killed)               -> Top
   (Register _name _pid, Registered) -> Top
@@ -241,13 +325,28 @@ postcondition Model {..} act resp = case (act, resp) of
   (Exit, Exited)                    -> Top
   (_, _)                            -> Bot
 
+semantics' :: Action Concrete -> IO (Success Concrete)
+semantics' Spawn                  = Spawned . reference <$> ioSpawn
+semantics' (Kill pid)             = Killed <$ ioKill (concrete pid)
+semantics' (Register name pid)    = Registered <$ ioRegister name (concrete pid)
+semantics' (BadRegister name pid) = Registered <$ ioRegister name (concrete pid)
+semantics' (Unregister name)      = Unregistered <$ ioUnregister name
+semantics' (BadUnregister name)   = Unregistered <$ ioUnregister name
+semantics' (WhereIs name)         = HereIs . reference <$> ioWhereIs name
+semantics' Exit                   = return Exited
+
 semantics :: Action Concrete -> IO (Response Concrete)
-semantics Spawn               = Spawned . reference <$> ioSpawn
-semantics (Kill _pid)         = pure Killed
-semantics (Register name pid) = Registered <$ ioRegister name (concrete pid)
-semantics (Unregister name)   = Unregistered <$ ioUnregister name
-semantics (WhereIs name)      = HereIs . reference <$> ioWhereIs name
-semantics Exit                = return Exited
+semantics act = fmap success (semantics' act)
+                `catch`
+                  (return . failure . handler)
+  where
+    handler :: IOError -> Error
+    handler err = case ioeGetErrorString err of
+      "ioRegister: name already registered" -> NameAlreadyRegisteredError
+      "ioRegister: pid already registered"  -> PidAlreadyRegisteredError
+      "ioRegister: pid is dead"             -> PidDeadRegisterError
+      "ioUnregister: not registered"        -> NameNotRegisteredError
+      _ -> UnknownError
 
 data Fin2
   = Zero
@@ -268,30 +367,37 @@ partition Model {..}
 sinkState :: State -> Bool
 sinkState = (== Stop)
 
-initState :: State
-initState = Zero :*: Zero
+_initState :: State
+_initState = Zero :*: Zero
+
+allNames :: [Name]
+allNames = map Name ["A", "B", "C"]
 
 instance Arbitrary Name where
-  arbitrary = elements (map Name ["A", "B", "C"])
+  arbitrary = elements allNames
 
-genSpawn, genKill, genRegister, genUnregister, genWhereIs, genExit
-  :: Model Symbolic -> Gen (Action Symbolic)
+genSpawn, genKill, genRegister, genBadRegister, genUnregister, genBadUnregister,
+  genWhereIs, genExit :: Model Symbolic -> Gen (Action Symbolic)
 
-genSpawn     _model = return Spawn
-genKill       model = Kill       <$> elements (pids model)
-genRegister   model = Register   <$> arbitrary <*> elements (pids model)
-genUnregister model = Unregister <$> elements (Map.keys (registry model))
-genWhereIs    model = WhereIs    <$> elements (Map.keys (registry model))
-genExit      _model = return Exit
+genSpawn        _model = return Spawn
+genKill          model = Kill        <$> elements (pids model)
+genRegister      model = Register    <$> arbitrary <*> elements (pids model \\ killed model)
+genBadRegister   model = BadRegister <$> arbitrary <*> elements (pids model ++ killed model)
+genUnregister    model = Unregister  <$> elements (Map.keys (registry model))
+genBadUnregister model = BadUnregister <$> elements (allNames \\ Map.keys (registry model))
+genWhereIs       model = WhereIs       <$> elements (Map.keys (registry model))
+genExit         _model = return Exit
 
 gens :: Map Action_ (Model Symbolic -> Gen (Action Symbolic))
 gens = Map.fromList
-  [ (Spawn_,      genSpawn)
-  , (Kill_,       genKill)
-  , (Register_,   genRegister)
-  , (Unregister_, genUnregister)
-  , (WhereIs_,    genWhereIs)
-  , (Exit_,       genExit)
+  [ (Spawn_,         genSpawn)
+  , (Kill_,          genKill)
+  , (Register_,      genRegister)
+  , (BadRegister_,   genBadRegister)
+  , (Unregister_,    genUnregister)
+  , (BadUnregister_, genBadUnregister)
+  , (WhereIs_,       genWhereIs)
+  , (Exit_,          genExit)
   ]
 
 generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
@@ -301,13 +407,19 @@ shrinker :: Model Symbolic -> Action Symbolic -> [Action Symbolic]
 shrinker _model _act = []
 
 mock :: Model Symbolic -> Action Symbolic -> GenSym (Response Symbolic)
-mock _m act = case act of
-  Spawn               -> Spawned <$> genSym
-  Kill _pid           -> pure Killed
-  Register _name _pid -> pure Registered
-  Unregister _name    -> pure Unregistered
-  WhereIs _name       -> HereIs <$> genSym
-  Exit                -> pure Exited
+mock m act = case act of
+  Spawn                  -> success . Spawned <$> genSym
+  Kill _pid              -> pure (success Killed)
+  Register _name _pid    -> pure (success Registered)
+  BadRegister name pid
+    | name `elem` Map.keys  (registry m) -> pure (failure NameAlreadyRegisteredError)
+    | pid  `elem` Map.elems (registry m) -> pure (failure PidAlreadyRegisteredError)
+    | pid  `elem` killed m               -> pure (failure PidDeadRegisterError)
+    | otherwise                          -> error "mock: BadRegister"
+  Unregister _name       -> pure (success Unregistered)
+  BadUnregister _name    -> pure (failure NameNotRegisteredError)
+  WhereIs _name          -> success . HereIs <$> genSym
+  Exit                   -> pure (success Exited)
 
 sm :: StateMachine Model Action IO Response
 sm = StateMachine initModel transition precondition postcondition
@@ -317,25 +429,29 @@ markov :: Markov State Action_ Double
 markov = makeMarkov
   [ Zero :*: Zero -< [ Spawn_ /- One :*: Zero ]
 
-  , One :*: Zero -< [ Spawn_      /- Two  :*: Zero
-                    , Register_   /- One  :*: One
-                    , (Kill_, 20) >- Zero :*: Zero
+  , One :*: Zero -< [ Spawn_             /- Two :*: Zero
+                    , Register_          /- One :*: One
+                    , (BadRegister_, 10) >- One :*: Zero
+                    , (Kill_, 20)        >- Zero :*: Zero
                     ]
 
-  , One :*: One  -< [ (Spawn_,      50) >- Two :*: One
+  , One :*: One  -< [ (Spawn_,      40) >- Two :*: One
+                    , BadRegister_      /- One :*: One
                     , (Unregister_, 20) >- One :*: Zero
-                    , (WhereIs_,    30) >- One :*: One
+                    , BadUnregister_    /- One :*: One
+                    , (WhereIs_,    20) >- One :*: One
                     ]
 
   , Two :*: Zero  -< [ (Register_, 80) >- Two :*: One
                      , (Kill_,     20) >- One :*: Zero
                      ]
 
-  , Two :*: One   -< [ (Register_,   40) >- Two :*: Two
-                     , (Kill_,       10) >- One :*: One
-                     , (Unregister_, 20) >- Two :*: Zero
-                     , (WhereIs_,    20) >- Two :*: One
-                     , (Exit_,       10) >- Stop
+  , Two :*: One   -< [ (Register_,      30) >- Two :*: Two
+                     , (Kill_,          10) >- One :*: One
+                     , (Unregister_,    20) >- Two :*: Zero
+                     , (BadUnregister_, 10) >- Two :*: One
+                     , (WhereIs_,       20) >- Two :*: One
+                     , (Exit_,          10) >- Stop
                      ]
 
   , Two :*: Two   -< [ (Exit_,       30) >- Stop
@@ -343,6 +459,103 @@ markov = makeMarkov
                      , (WhereIs_,    50) >- Two :*: Two
                      ]
   ]
+
+------------------------------------------------------------------------
+
+-- Requirements from the paper "How well are your requirements tested?"
+-- (2016) by Arts and Hughes.
+data Req
+  = RegisterNewNameAndPid_REG001
+  | RegisterExistingName_REG002
+  | RegisterExistingPid_REG003
+  | RegisterDeadPid_REG004
+  | UnregisterRegisteredName_UNR001
+  | UnregisterNotRegisteredName_UNR002
+  | WHE001
+  | WHE002
+  | DIE001
+  deriving (Eq, Ord, Show)
+
+type Event     = Labelling.Event Model Action Response Symbolic
+type EventPred = Labelling.Predicate Event Req
+
+-- Convenience combinator for creating classifiers for successful commands.
+successful :: (Event -> Success Symbolic -> Either Req EventPred)
+           -> EventPred
+successful f = Labelling.predicate $ \ev ->
+                 case Labelling.eventResp ev of
+                   Response (Left  _ ) -> Right $ successful f
+                   Response (Right ok) -> f ev ok
+
+tag :: [Labelling.Event Model Action Response Symbolic] -> [Req]
+tag = Labelling.classify
+  [ tagRegisterNewNameAndPid
+  , tagRegisterExistingName Set.empty
+  , tagRegisterExistingPid  Set.empty
+  , tagRegisterDeadPid      Set.empty
+  , tagUnregisterRegisteredName    Set.empty
+  , tagUnregisterNotRegisteredName Set.empty
+  ]
+  where
+    tagRegisterNewNameAndPid :: EventPred
+    tagRegisterNewNameAndPid = successful $ \ev _ -> case Labelling.eventCmd ev of
+      Register _ _ -> Left RegisterNewNameAndPid_REG001
+      _otherwise   -> Right tagRegisterNewNameAndPid
+
+    tagRegisterExistingName :: Set Name -> EventPred
+    tagRegisterExistingName existingNames = Labelling.predicate $ \ev ->
+      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+        (Register name _pid, Response (Right Registered)) ->
+          Right (tagRegisterExistingName (Set.insert name existingNames))
+        (BadRegister name _pid, Response (Left NameAlreadyRegisteredError))
+          | name `Set.member` existingNames -> Left RegisterExistingName_REG002
+        _otherwise
+          -> Right (tagRegisterExistingName existingNames)
+
+    tagRegisterExistingPid :: Set (Reference Pid Symbolic) -> EventPred
+    tagRegisterExistingPid existingPids = Labelling.predicate $ \ev ->
+      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+        (Register _name pid, Response (Right Registered)) ->
+          Right (tagRegisterExistingPid (Set.insert pid existingPids))
+        (BadRegister _name pid, Response (Left PidAlreadyRegisteredError))
+          | pid `Set.member` existingPids -> Left RegisterExistingPid_REG003
+        _otherwise
+          -> Right (tagRegisterExistingPid existingPids)
+
+    tagRegisterDeadPid :: Set (Reference Pid Symbolic) -> EventPred
+    tagRegisterDeadPid killedPids = Labelling.predicate $ \ev ->
+      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+        (Kill pid, Response (Right Killed)) ->
+          Right (tagRegisterDeadPid (Set.insert pid killedPids))
+        (BadRegister _name pid, Response (Left PidDeadRegisterError))
+          | pid `Set.member` killedPids -> Left RegisterDeadPid_REG004
+        _otherwise
+          -> Right (tagRegisterDeadPid killedPids)
+
+    tagUnregisterRegisteredName :: Set Name -> EventPred
+    tagUnregisterRegisteredName registeredNames = successful $ \ev resp ->
+      case (Labelling.eventCmd ev, resp) of
+        (Register name _pid, Registered) ->
+          Right (tagUnregisterRegisteredName (Set.insert name registeredNames))
+        (Unregister name, Unregistered)
+          | name `Set.member` registeredNames -> Left UnregisterRegisteredName_UNR001
+        _otherwise
+          -> Right (tagUnregisterRegisteredName registeredNames)
+
+    tagUnregisterNotRegisteredName :: Set Name -> EventPred
+    tagUnregisterNotRegisteredName registeredNames = Labelling.predicate $ \ev ->
+      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+        (Register name _pid, Response (Right Registered)) ->
+          Right (tagUnregisterNotRegisteredName (Set.insert name registeredNames))
+        (BadUnregister name, Response (Left NameNotRegisteredError))
+          | name `Set.notMember` registeredNames -> Left UnregisterNotRegisteredName_UNR002
+        _otherwise
+          -> Right (tagUnregisterNotRegisteredName registeredNames)
+
+printLabelledExamples :: IO ()
+printLabelledExamples = Labelling.showLabelledExamples sm tag
+
+------------------------------------------------------------------------
 
 prop_processRegistry :: StatsDb IO -> Property
 prop_processRegistry sdb = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
