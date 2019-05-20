@@ -77,7 +77,7 @@ import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
-import qualified Test.StateMachine.Labelling   as Labelling
+import           Test.StateMachine.Labelling
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 
@@ -476,19 +476,18 @@ data Req
   | DIE001
   deriving (Eq, Ord, Show)
 
-type Event     = Labelling.Event Model Action Response Symbolic
-type EventPred = Labelling.Predicate Event Req
+type EventPred = Predicate (Event Model Action Response Symbolic) Req
 
 -- Convenience combinator for creating classifiers for successful commands.
-successful :: (Event -> Success Symbolic -> Either Req EventPred)
+successful :: (Event Model Action Response Symbolic -> Success Symbolic -> Either Req EventPred)
            -> EventPred
-successful f = Labelling.predicate $ \ev ->
-                 case Labelling.eventResp ev of
+successful f = predicate $ \ev ->
+                 case eventResp ev of
                    Response (Left  _ ) -> Right $ successful f
                    Response (Right ok) -> f ev ok
 
-tag :: [Labelling.Event Model Action Response Symbolic] -> [Req]
-tag = Labelling.classify
+tag :: [Event Model Action Response Symbolic] -> [Req]
+tag = classify
   [ tagRegisterNewNameAndPid
   , tagRegisterExistingName Set.empty
   , tagRegisterExistingPid  Set.empty
@@ -498,13 +497,13 @@ tag = Labelling.classify
   ]
   where
     tagRegisterNewNameAndPid :: EventPred
-    tagRegisterNewNameAndPid = successful $ \ev _ -> case Labelling.eventCmd ev of
+    tagRegisterNewNameAndPid = successful $ \ev _ -> case eventCmd ev of
       Register _ _ -> Left RegisterNewNameAndPid_REG001
       _otherwise   -> Right tagRegisterNewNameAndPid
 
     tagRegisterExistingName :: Set Name -> EventPred
-    tagRegisterExistingName existingNames = Labelling.predicate $ \ev ->
-      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+    tagRegisterExistingName existingNames = predicate $ \ev ->
+      case (eventCmd ev, eventResp ev) of
         (Register name _pid, Response (Right Registered)) ->
           Right (tagRegisterExistingName (Set.insert name existingNames))
         (BadRegister name _pid, Response (Left NameAlreadyRegisteredError))
@@ -513,8 +512,8 @@ tag = Labelling.classify
           -> Right (tagRegisterExistingName existingNames)
 
     tagRegisterExistingPid :: Set (Reference Pid Symbolic) -> EventPred
-    tagRegisterExistingPid existingPids = Labelling.predicate $ \ev ->
-      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+    tagRegisterExistingPid existingPids = predicate $ \ev ->
+      case (eventCmd ev, eventResp ev) of
         (Register _name pid, Response (Right Registered)) ->
           Right (tagRegisterExistingPid (Set.insert pid existingPids))
         (BadRegister _name pid, Response (Left PidAlreadyRegisteredError))
@@ -523,8 +522,8 @@ tag = Labelling.classify
           -> Right (tagRegisterExistingPid existingPids)
 
     tagRegisterDeadPid :: Set (Reference Pid Symbolic) -> EventPred
-    tagRegisterDeadPid killedPids = Labelling.predicate $ \ev ->
-      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+    tagRegisterDeadPid killedPids = predicate $ \ev ->
+      case (eventCmd ev, eventResp ev) of
         (Kill pid, Response (Right Killed)) ->
           Right (tagRegisterDeadPid (Set.insert pid killedPids))
         (BadRegister _name pid, Response (Left PidDeadRegisterError))
@@ -534,7 +533,7 @@ tag = Labelling.classify
 
     tagUnregisterRegisteredName :: Set Name -> EventPred
     tagUnregisterRegisteredName registeredNames = successful $ \ev resp ->
-      case (Labelling.eventCmd ev, resp) of
+      case (eventCmd ev, resp) of
         (Register name _pid, Registered) ->
           Right (tagUnregisterRegisteredName (Set.insert name registeredNames))
         (Unregister name, Unregistered)
@@ -543,8 +542,8 @@ tag = Labelling.classify
           -> Right (tagUnregisterRegisteredName registeredNames)
 
     tagUnregisterNotRegisteredName :: Set Name -> EventPred
-    tagUnregisterNotRegisteredName registeredNames = Labelling.predicate $ \ev ->
-      case (Labelling.eventCmd ev, Labelling.eventResp ev) of
+    tagUnregisterNotRegisteredName registeredNames = predicate $ \ev ->
+      case (eventCmd ev, eventResp ev) of
         (Register name _pid, Response (Right Registered)) ->
           Right (tagUnregisterNotRegisteredName (Set.insert name registeredNames))
         (BadUnregister name, Response (Left NameNotRegisteredError))
@@ -553,7 +552,7 @@ tag = Labelling.classify
           -> Right (tagUnregisterNotRegisteredName registeredNames)
 
 printLabelledExamples :: IO ()
-printLabelledExamples = Labelling.showLabelledExamples sm tag
+printLabelledExamples = showLabelledExamples sm tag
 
 ------------------------------------------------------------------------
 
