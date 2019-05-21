@@ -106,7 +106,7 @@ data Counterexample
   | EitherC Counterexample Counterexample
   | ImpliesC Counterexample
   | NotC Counterexample
-  | LogicPredicateC LogicPredicate
+  | PredicateC LogicPredicate
   | forall a. Show a => ForallC a Counterexample
   | forall a. Show a => ExistsC [a] [Counterexample]
   | BooleanC
@@ -176,7 +176,7 @@ evalLogicPredicate p0 = let b = go p0 in case p0 of
   where
     go :: LogicPredicate -> Bool -> Value
     go _ True  = VTrue
-    go p False = VFalse (LogicPredicateC (dual p))
+    go p False = VFalse (PredicateC (dual p))
 
 -- | Gather user annotations of a true logic expression.
 --
