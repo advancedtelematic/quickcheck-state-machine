@@ -21,6 +21,7 @@
 module Test.StateMachine.Markov
   ( Markov
   , makeMarkov
+  , toAdjacencyMap
   , (-<)
   , (>-)
   , (/-)
@@ -115,6 +116,16 @@ data Transition state cmd_ prob = Transition
 makeMarkov :: Ord state
            => [Map state [Transition state cmd_ prob]] -> Markov state cmd_ prob
 makeMarkov = Markov . Map.unions
+
+-- | Expose inner graph structure of markov chain
+toAdjacencyMap
+  :: Ord state
+  => Markov state cmd_ prob
+  -> Map state (Map state (cmd_, prob))
+toAdjacencyMap (Markov m) =
+  fmap (foldr f mempty) m
+  where
+    f Transition{..} = Map.insert to (command, probability)
 
 infixl 5 -<
 
