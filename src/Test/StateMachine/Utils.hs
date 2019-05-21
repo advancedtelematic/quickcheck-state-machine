@@ -1,6 +1,3 @@
-{-# OPTIONS_GHC -Wno-orphans #-}
-
-{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -22,12 +19,8 @@
 module Test.StateMachine.Utils
   ( liftProperty
   , whenFailM
-  , forAllShrinkShow
   , anyP
   , suchThatEither
-  , oldCover
-  , newTabulate
-  , newCoverTable
   , Shrunk(..)
   , shrinkS
   , shrinkListS
@@ -40,22 +33,12 @@ module Test.StateMachine.Utils
 import           Prelude
 
 import           Test.QuickCheck
-                   (Arbitrary, Gen, Property, Testable, again,
-                   counterexample, resize, shrink, shrinkList,
-                   shrinking, sized, whenFail)
+                   (Arbitrary, Gen, Property, resize, shrink,
+                   shrinkList, sized, whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
-                   (Property(MkProperty), cover, property, unProperty,
-                   (.&&.), (.||.))
-#if !MIN_VERSION_QuickCheck(2,10,0)
-import           Test.QuickCheck.Property
-                   (succeeded)
-#endif
-#if MIN_VERSION_QuickCheck(2,12,0)
-import           Test.QuickCheck
-                   (tabulate, coverTable)
-#endif
+                   (property, (.&&.), (.||.))
 
 ------------------------------------------------------------------------
 
@@ -67,29 +50,9 @@ liftProperty prop = MkPropertyM (\k -> fmap (prop .&&.) <$> k ())
 whenFailM :: Monad m => IO () -> Property -> PropertyM m ()
 whenFailM m prop = liftProperty (m `whenFail` prop)
 
--- | A variant of 'Test.QuickCheck.Monadic.forAllShrink' with an explicit show
---   function. This function was upstreamed and is part of QuickCheck >= 2.12.
-forAllShrinkShow
-  :: Testable prop
-  => Gen a -> (a -> [a]) -> (a -> String) -> (a -> prop) -> Property
-forAllShrinkShow gen shrinker shower pf =
-  again $
-  MkProperty $
-  gen >>= \x ->
-    unProperty $
-    shrinking shrinker x $ \x' ->
-      counterexample (shower x') (pf x')
-
 -- | Lifts 'Prelude.any' to properties.
 anyP :: (a -> Property) -> [a] -> Property
 anyP p = foldr (\x ih -> p x .||. ih) (property False)
-
-#if !MIN_VERSION_QuickCheck(2,10,0)
-instance Testable () where
-  property = property . liftUnit
-    where
-    liftUnit () = succeeded
-#endif
 
 suchThatEither :: forall a. Gen a -> (a -> Bool) -> Gen (Either [a] a)
 gen `suchThatEither` p = sized (try [] 0 . max 100)
@@ -101,36 +64,6 @@ gen `suchThatEither` p = sized (try [] 0 . max 100)
       if p x
       then return (Right x)
       else try (x : ces) (k + 1) (n - 1)
-
--- | Pre-QuickCheck-2.12 version of cover.
-oldCover :: Testable prop => Bool -> Int -> String -> prop -> Property
-oldCover x n s p =
-#if !MIN_VERSION_QuickCheck(2,12,0)
-  cover x n s p
-#else
-  -- QuickCheck-2.12 introduced a breaking change in the cover
-  -- combinator, see issue #248 for details.
-  cover (fromIntegral n) x s p
-#endif
-
--- | The tabulate combinator was only introduced in QuickCheck-2.12.
-newTabulate :: Testable prop => String -> [String] -> prop -> Property
-newTabulate =
-#if !MIN_VERSION_QuickCheck(2,12,0)
-  \_key _values prop -> property prop
-#else
-  tabulate
-#endif
-
--- | The coverTable combinator was only introduced in QuickCheck-2.12.
-newCoverTable :: Testable prop
-              => String -> [(String, Double)] -> prop -> Property
-newCoverTable =
-#if !MIN_VERSION_QuickCheck(2,12,0)
-  \_table _xs prop -> property prop
-#else
-  coverTable
-#endif
 
 -----------------------------------------------------------------------------
 

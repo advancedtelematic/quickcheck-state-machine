@@ -74,8 +74,8 @@ import           System.IO
 import           System.Process
                    (callProcess)
 import           Test.QuickCheck
-                   (Gen, Property, Testable, frequency, property,
-                   quickCheck)
+                   (Gen, Property, Testable, coverTable, frequency,
+                   property, quickCheck, tabulate)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Test.QuickCheck.Property
@@ -96,8 +96,6 @@ import           Test.StateMachine.Types.GenSym
                    (runGenSym)
 import           Test.StateMachine.Types.References
                    (Concrete, Symbolic)
-import           Test.StateMachine.Utils
-                   (newCoverTable, newTabulate)
 
 ------------------------------------------------------------------------
 
@@ -183,7 +181,7 @@ coverMarkov :: (Show state, Show cmd_, Testable prop)
 coverMarkov markov prop = foldr go (property prop) (Map.toList (unMarkov markov))
   where
     go (from, ts) ih =
-      newCoverTable (show from)
+      coverTable (show from)
         (map (\Transition{..} -> (toTransitionString command to, probability)) ts) ih
 
 toTransitionString :: (Show state, Show cmd_) => cmd_ -> state -> String
@@ -207,7 +205,7 @@ tabulateMarkov sm partition constructor cmds0 =
     tabulateTransitions ts prop = foldr go (property prop) ts
       where
         go (from, Transition {..}) ih =
-          newTabulate (show from) [ toTransitionString command to ] ih
+          tabulate (show from) [ toTransitionString command to ] ih
 
     commandsToTransitions :: StateMachine model cmd m resp
                           -> Commands cmd resp

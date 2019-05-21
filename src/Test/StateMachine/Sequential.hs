@@ -80,7 +80,7 @@ import           System.FilePath
                    ((</>))
 import           Test.QuickCheck
                    (Gen, Property, Testable, choose, collect, once,
-                   sized, whenFail)
+                   sized, whenFail, forAllShrinkShow, cover)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -488,7 +488,7 @@ checkCommandNames :: forall cmd resp. CommandNames cmd
                   => Commands cmd resp -> Property -> Property
 checkCommandNames cmds
   = collect names
-  . oldCover (length names == numOfConstructors) 1 "coverage"
+  . cover 1 (length names == numOfConstructors) "coverage"
   where
     names             = commandNames cmds
     numOfConstructors = length (cmdNames (Proxy :: Proxy (cmd Symbolic)))
