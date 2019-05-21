@@ -33,6 +33,7 @@ module Test.StateMachine.Markov
   , markovToPs
   , StatsDb(..)
   , PropertyName
+  , nullStatsDb
   , fileStatsDb
   , persistStats
   , computeReliability
@@ -349,6 +350,12 @@ data StatsDb m = StatsDb
   }
 
 type PropertyName = String
+
+nullStatsDb :: Monad m => StatsDb m
+nullStatsDb = StatsDb
+  { store = const (return ())
+  , load  = return Nothing
+  }
 
 fileStatsDb :: FilePath -> PropertyName -> StatsDb IO
 fileStatsDb fp name = StatsDb
