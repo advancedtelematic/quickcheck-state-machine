@@ -25,6 +25,7 @@ module Test.StateMachine.Labelling
   , classify
   , Event(..)
   , execCmds
+  , execHistory
   , showLabelledExamples'
   , showLabelledExamples
   )
@@ -34,8 +35,6 @@ import           Data.Either
                    (partitionEithers)
 import           Data.Kind
                    (Type)
-import           Data.List
-                   (foldl')
 import           Data.Maybe
                    (catMaybes)
 import           Prelude                       hiding
@@ -43,9 +42,8 @@ import           Prelude                       hiding
 import           System.Random
                    (getStdRandom, randomR)
 import           Test.QuickCheck
-                   (Property, collect, forAllShrinkShow,
-                   labelledExamplesWith, maxSuccess, property, replay,
-                   stdArgs)
+                   (forAllShrinkShow, labelledExamplesWith, maxSuccess,
+                   property, replay, stdArgs)
 import           Test.QuickCheck.Random
                    (mkQCGen)
 import           Text.Show.Pretty
@@ -54,9 +52,12 @@ import           Text.Show.Pretty
 import           Test.StateMachine.Sequential
                    (generateCommands, shrinkCommands)
 import           Test.StateMachine.Types
-                   (Command(..), Commands(..), StateMachine(..),
-                   Symbolic)
+                   (Command(..), Commands(..), Concrete, History,
+                   Operation(..), StateMachine(..), Symbolic,
+                   makeOperations, unHistory)
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.Utils
+                   (collects)
 
 ------------------------------------------------------------------------
 
@@ -121,12 +122,13 @@ data Event model cmd resp (r :: Type -> Type) = Event
 -- explicit set of variables).
 execCmd :: StateMachine model cmd m resp
         -> model Symbolic -> Command cmd resp -> Event model cmd resp Symbolic
-execCmd sm model (Command cmd resp _vars) = Event
-  { eventBefore = model
-  , eventCmd    = cmd
-  , eventAfter  = transition sm model cmd resp
-  , eventResp   = resp
-  }
+execCmd StateMachine { transition } model (Command cmd resp _vars) =
+  Event
+    { eventBefore = model
+    , eventCmd    = cmd
+    , eventAfter  = transition model cmd resp
+    , eventResp   = resp
+    }
 
 -- | 'execCmds' is just the repeated form of 'execCmd'.
 execCmds :: forall model cmd m resp. StateMachine model cmd m resp
@@ -136,6 +138,29 @@ execCmds sm@StateMachine { initModel } = go initModel . unCommands
     go :: model Symbolic -> [Command cmd resp] -> [Event model cmd resp Symbolic]
     go _ []       = []
     go m (c : cs) = let ev = execCmd sm m c in ev : go (eventAfter ev) cs
+
+execOp :: StateMachine model cmd m resp -> model Concrete -> Operation cmd resp
+       -> Maybe (Event model cmd resp Concrete)
+execOp _sm                        _model (Crash _cmd _err _pid)    = Nothing
+execOp StateMachine { transition } model (Operation cmd resp _pid) = Just $
+  Event
+    { eventBefore = model
+    , eventCmd    = cmd
+    , eventAfter  = transition model cmd resp
+    , eventResp   = resp
+    }
+
+execHistory :: forall model cmd m resp. StateMachine model cmd m resp
+            -> History cmd resp -> [Event model cmd resp Concrete]
+execHistory sm@StateMachine { initModel } = go initModel . makeOperations . unHistory
+  where
+    go :: model Concrete -> [Operation cmd resp] -> [Event model cmd resp Concrete]
+    go _ []       = []
+    go m (o : os) = let mev = execOp sm m o in
+      case (mev, os) of
+        (Nothing, []) -> []
+        (Nothing, _)  -> error "execHistory: impossible, there are no more ops after a crash."
+        (Just ev, _)  -> ev : go (eventAfter ev) os
 
 -- | Show minimal examples for each of the generated tags.
 showLabelledExamples' :: (Show tag, Show (model Symbolic))
@@ -165,12 +190,6 @@ showLabelledExamples' sm mReplay numTests tag focus = do
           property True
 
     putStrLn $ "Used replaySeed " ++ show replaySeed
-  where
-    collects :: Show a => [a] -> Property -> Property
-    collects = repeatedly collect
-      where
-        repeatedly :: (a -> b -> b) -> ([a] -> b -> b)
-        repeatedly = flip . foldl' . flip
 
 showLabelledExamples :: (Show tag, Show (model Symbolic))
                      => (Show (cmd Symbolic), Show (resp Symbolic))
