@@ -60,16 +60,15 @@ import           Test.QuickCheck.Monadic
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
                    (Arbitrary(..), Gen, Property, conjoin,
-                   counterexample, elements, getNonNegative, getSmall,
-                   oneof, property, testProperty, (===))
+                   counterexample, elements, forAllShrinkShow,
+                   getNonNegative, getSmall, oneof, property,
+                   testProperty, (===))
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Parallel    as QSM
 import qualified Test.StateMachine.Sequential  as QSM
 import qualified Test.StateMachine.Types       as QSM
 import qualified Test.StateMachine.Types.Rank2 as Rank2
-import           Test.StateMachine.Utils
-                   (forAllShrinkShow)
 
 tests :: TestTree
 tests = testGroup "Shrinking properties" [

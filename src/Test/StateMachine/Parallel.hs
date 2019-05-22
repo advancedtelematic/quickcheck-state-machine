@@ -54,7 +54,7 @@ import           Data.Tree
                    (Tree(Node))
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, property, sized)
+                   (Gen, Property, Testable, choose, property, sized, forAllShrinkShow)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
