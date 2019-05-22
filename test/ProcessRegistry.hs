@@ -225,7 +225,7 @@ constructor act = case act of
   Exit          {} -> Exit_
 
 newtype Response (r :: Type -> Type) = Response
-  { getResponse :: Either Error (Success r) }
+  { _getResponse :: Either Error (Success r) }
   deriving stock (Show, Generic1)
   deriving anyclass Rank2.Foldable
 
