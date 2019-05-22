@@ -18,14 +18,14 @@
 
 module Test.StateMachine.Logic
   ( Logic(..)
-  , Predicate(..)
+  , LogicPredicate(..)
   , dual
   , strongNeg
   , Counterexample(..)
   , Value(..)
   , boolean
   , logic
-  , predicate
+  , evalLogicPredicate
   , gatherAnnotations
   , (.==)
   , (./=)
@@ -55,13 +55,13 @@ data Logic
   | Logic :|| Logic
   | Logic :=> Logic
   | Not Logic
-  | Predicate Predicate
+  | LogicPredicate LogicPredicate
   | forall a. Show a => Forall [a] (a -> Logic)
   | forall a. Show a => Exists [a] (a -> Logic)
   | Boolean Bool
   | Annotate String Logic
 
-data Predicate
+data LogicPredicate
   = forall a. (Eq  a, Show a) => a :== a
   | forall a. (Eq  a, Show a) => a :/= a
   | forall a. (Ord a, Show a) => a :<  a
@@ -71,9 +71,9 @@ data Predicate
   | forall t a. (Foldable t, Eq a, Show a, Show (t a)) => Member    a (t a)
   | forall t a. (Foldable t, Eq a, Show a, Show (t a)) => NotMember a (t a)
 
-deriving instance Show Predicate
+deriving instance Show LogicPredicate
 
-dual :: Predicate -> Predicate
+dual :: LogicPredicate -> LogicPredicate
 dual p = case p of
   x :== y          -> x :/= y
   x :/= y          -> x :== y
@@ -87,17 +87,17 @@ dual p = case p of
 -- See Yuri Gurevich's "Intuitionistic logic with strong negation" (1977).
 strongNeg :: Logic -> Logic
 strongNeg l0 = case l0 of
-  Bot          -> Top
-  Top          -> Bot
-  l :&& r      -> strongNeg l :|| strongNeg r
-  l :|| r      -> strongNeg l :&& strongNeg r
-  l :=> r      ->           l :&& strongNeg r
-  Not l        -> l
-  Predicate p  -> Predicate (dual p)
-  Forall xs p  -> Exists xs (strongNeg . p)
-  Exists xs p  -> Forall xs (strongNeg . p)
-  Boolean b    -> Boolean (not b)
-  Annotate s l -> Annotate s (strongNeg l)
+  Bot              -> Top
+  Top              -> Bot
+  l :&& r          -> strongNeg l :|| strongNeg r
+  l :|| r          -> strongNeg l :&& strongNeg r
+  l :=> r          ->           l :&& strongNeg r
+  Not l            -> l
+  LogicPredicate p -> LogicPredicate (dual p)
+  Forall xs p      -> Exists xs (strongNeg . p)
+  Exists xs p      -> Forall xs (strongNeg . p)
+  Boolean b        -> Boolean (not b)
+  Annotate s l     -> Annotate s (strongNeg l)
 
 data Counterexample
   = BotC
@@ -106,7 +106,7 @@ data Counterexample
   | EitherC Counterexample Counterexample
   | ImpliesC Counterexample
   | NotC Counterexample
-  | PredicateC Predicate
+  | PredicateC LogicPredicate
   | forall a. Show a => ForallC a Counterexample
   | forall a. Show a => ExistsC [a] [Counterexample]
   | BooleanC
@@ -145,7 +145,7 @@ logic (l :=> r)      = case logic l of
 logic (Not l)        = case logic (strongNeg l) of
   VTrue     -> VTrue
   VFalse ce -> VFalse (NotC ce)
-logic (Predicate p)  = predicate p
+logic (LogicPredicate p) = evalLogicPredicate p
 logic (Forall xs0 p) = go xs0
   where
     go []       = VTrue
@@ -163,8 +163,8 @@ logic (Annotate s l) = case logic l of
   VTrue     -> VTrue
   VFalse ce -> VFalse (AnnotateC s ce)
 
-predicate :: Predicate -> Value
-predicate p0 = let b = go p0 in case p0 of
+evalLogicPredicate :: LogicPredicate -> Value
+evalLogicPredicate p0 = let b = go p0 in case p0 of
   x :== y          -> b (x == y)
   x :/= y          -> b (x /= y)
   x :<  y          -> b (x <  y)
@@ -174,7 +174,7 @@ predicate p0 = let b = go p0 in case p0 of
   x `Member`    xs -> b (x `elem`    xs)
   x `NotMember` xs -> b (x `notElem` xs)
   where
-    go :: Predicate -> Bool -> Value
+    go :: LogicPredicate -> Bool -> Value
     go _ True  = VTrue
     go p False = VFalse (PredicateC (dual p))
 
@@ -214,7 +214,7 @@ gatherAnnotations = go []
                      | otherwise         = acc
     go acc (Not l) | not (boolean l) = go acc l
                    | otherwise       = acc
-    go acc (Predicate _p) = acc
+    go acc (LogicPredicate _p) = acc
     go acc (Forall xs p)
       | boolean (Forall xs p) = acc ++ concat [ go [] (p x)
                                               | x <- xs, boolean (p x)
@@ -244,28 +244,28 @@ infixr 2 .||
 infixr 1 .=>
 
 (.==) :: (Eq a, Show a) => a -> a -> Logic
-x .== y = Predicate (x :== y)
+x .== y = LogicPredicate (x :== y)
 
 (./=) :: (Eq a, Show a) => a -> a -> Logic
-x ./= y = Predicate (x :/= y)
+x ./= y = LogicPredicate (x :/= y)
 
 (.<) :: (Ord a, Show a) => a -> a -> Logic
-x .< y = Predicate (x :< y)
+x .< y = LogicPredicate (x :< y)
 
 (.<=) :: (Ord a, Show a) => a -> a -> Logic
-x .<= y = Predicate (x :<= y)
+x .<= y = LogicPredicate (x :<= y)
 
 (.>) :: (Ord a, Show a) => a -> a -> Logic
-x .> y = Predicate (x :> y)
+x .> y = LogicPredicate (x :> y)
 
 (.>=) :: (Ord a, Show a) => a -> a -> Logic
-x .>= y = Predicate (x :>= y)
+x .>= y = LogicPredicate (x :>= y)
 
 member :: (Foldable t, Eq a, Show a, Show (t a)) => a -> t a -> Logic
-member x xs = Predicate (Member x xs)
+member x xs = LogicPredicate (Member x xs)
 
 notMember :: (Foldable t, Eq a, Show a, Show (t a)) => a -> t a -> Logic
-notMember x xs = Predicate (NotMember x xs)
+notMember x xs = LogicPredicate (NotMember x xs)
 
 (.//) :: Logic -> String -> Logic
 l .// s = Annotate s l
