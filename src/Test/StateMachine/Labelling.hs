@@ -26,8 +26,6 @@ module Test.StateMachine.Labelling
   , Event(..)
   , execCmds
   , execHistory
-  , showLabelledExamples'
-  , showLabelledExamples
   )
   where
 
@@ -39,25 +37,11 @@ import           Data.Maybe
                    (catMaybes)
 import           Prelude                       hiding
                    (maximum)
-import           System.Random
-                   (getStdRandom, randomR)
-import           Test.QuickCheck
-                   (forAllShrinkShow, labelledExamplesWith, maxSuccess,
-                   property, replay, stdArgs)
-import           Test.QuickCheck.Random
-                   (mkQCGen)
-import           Text.Show.Pretty
-                   (ppShow)
 
-import           Test.StateMachine.Sequential
-                   (generateCommands, shrinkCommands)
 import           Test.StateMachine.Types
                    (Command(..), Commands(..), Concrete, History,
                    Operation(..), StateMachine(..), Symbolic,
                    makeOperations, unHistory)
-import qualified Test.StateMachine.Types.Rank2 as Rank2
-import           Test.StateMachine.Utils
-                   (collects)
 
 ------------------------------------------------------------------------
 
@@ -116,7 +100,7 @@ data Event model cmd resp (r :: Type -> Type) = Event
   , eventAfter  :: model r
   , eventResp   :: resp  r
   }
-  deriving (Show)
+  deriving Show
 
 -- | Step the model using a 'Command' (i.e., a command associated with an
 -- explicit set of variables).
@@ -161,40 +145,3 @@ execHistory sm@StateMachine { initModel } = go initModel . makeOperations . unHi
         (Nothing, []) -> []
         (Nothing, _)  -> error "execHistory: impossible, there are no more ops after a crash."
         (Just ev, _)  -> ev : go (eventAfter ev) os
-
--- | Show minimal examples for each of the generated tags.
-showLabelledExamples' :: (Show tag, Show (model Symbolic))
-                      => (Show (cmd Symbolic), Show (resp Symbolic))
-                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                      => StateMachine model cmd m resp
-                      -> Maybe Int
-                      -- ^ Seed
-                      -> Int
-                      -- ^ Number of tests to run to find examples
-                      -> ([Event model cmd resp Symbolic] -> [tag])
-                      -> (tag -> Bool)
-                      -- ^ Tag filter (can be @const True@)
-                      -> IO ()
-showLabelledExamples' sm mReplay numTests tag focus = do
-    replaySeed <- case mReplay of
-      Nothing   -> getStdRandom (randomR (1, 999999))
-      Just seed -> return seed
-
-    labelledExamplesWith (stdArgs { replay     = Just (mkQCGen replaySeed, 0)
-                                  , maxSuccess = numTests
-                                  }) $
-      forAllShrinkShow (generateCommands sm Nothing)
-                       (shrinkCommands   sm)
-                       ppShow $ \cmds ->
-        collects (filter focus . tag . execCmds sm $ cmds) $
-          property True
-
-    putStrLn $ "Used replaySeed " ++ show replaySeed
-
-showLabelledExamples :: (Show tag, Show (model Symbolic))
-                     => (Show (cmd Symbolic), Show (resp Symbolic))
-                     => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                     => StateMachine model cmd m resp
-                     -> ([Event model cmd resp Symbolic] -> [tag])
-                     -> IO ()
-showLabelledExamples sm tag = showLabelledExamples' sm Nothing 1000 tag (const True)
