@@ -41,6 +41,8 @@ import           Control.Monad.IO.Class
                    (MonadIO(..))
 import           Data.Foldable
                    (traverse_)
+import           Data.Functor.Classes
+                   (Ord1)
 import           Data.Hashable
                    (Hashable)
 import qualified Data.HashTable.IO             as HashTable
@@ -72,7 +74,7 @@ import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, arbitrary, elements,
-                   (===))
+                   tabulate, (.&&.), (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
 
@@ -476,17 +478,17 @@ data Req
   | DIE001
   deriving (Eq, Ord, Show)
 
-type EventPred = Predicate (Event Model Action Response Symbolic) Req
+type EventPred r = Predicate (Event Model Action Response r) Req
 
 -- Convenience combinator for creating classifiers for successful commands.
-successful :: (Event Model Action Response Symbolic -> Success Symbolic -> Either Req EventPred)
-           -> EventPred
+successful :: (Event Model Action Response r -> Success r -> Either Req (EventPred r))
+           -> EventPred r
 successful f = predicate $ \ev ->
                  case eventResp ev of
                    Response (Left  _ ) -> Right $ successful f
                    Response (Right ok) -> f ev ok
 
-tag :: [Event Model Action Response Symbolic] -> [Req]
+tag :: forall r. Ord1 r => [Event Model Action Response r] -> [Req]
 tag = classify
   [ tagRegisterNewNameAndPid
   , tagRegisterExistingName Set.empty
@@ -496,12 +498,12 @@ tag = classify
   , tagUnregisterNotRegisteredName Set.empty
   ]
   where
-    tagRegisterNewNameAndPid :: EventPred
+    tagRegisterNewNameAndPid :: EventPred r
     tagRegisterNewNameAndPid = successful $ \ev _ -> case eventCmd ev of
       Register _ _ -> Left RegisterNewNameAndPid_REG001
       _otherwise   -> Right tagRegisterNewNameAndPid
 
-    tagRegisterExistingName :: Set Name -> EventPred
+    tagRegisterExistingName :: Set Name -> EventPred r
     tagRegisterExistingName existingNames = predicate $ \ev ->
       case (eventCmd ev, eventResp ev) of
         (Register name _pid, Response (Right Registered)) ->
@@ -511,7 +513,7 @@ tag = classify
         _otherwise
           -> Right (tagRegisterExistingName existingNames)
 
-    tagRegisterExistingPid :: Set (Reference Pid Symbolic) -> EventPred
+    tagRegisterExistingPid :: Set (Reference Pid r) -> EventPred r
     tagRegisterExistingPid existingPids = predicate $ \ev ->
       case (eventCmd ev, eventResp ev) of
         (Register _name pid, Response (Right Registered)) ->
@@ -521,7 +523,7 @@ tag = classify
         _otherwise
           -> Right (tagRegisterExistingPid existingPids)
 
-    tagRegisterDeadPid :: Set (Reference Pid Symbolic) -> EventPred
+    tagRegisterDeadPid :: Set (Reference Pid r) -> EventPred r
     tagRegisterDeadPid killedPids = predicate $ \ev ->
       case (eventCmd ev, eventResp ev) of
         (Kill pid, Response (Right Killed)) ->
@@ -531,7 +533,7 @@ tag = classify
         _otherwise
           -> Right (tagRegisterDeadPid killedPids)
 
-    tagUnregisterRegisteredName :: Set Name -> EventPred
+    tagUnregisterRegisteredName :: Set Name -> EventPred r
     tagUnregisterRegisteredName registeredNames = successful $ \ev resp ->
       case (eventCmd ev, resp) of
         (Register name _pid, Registered) ->
@@ -541,7 +543,7 @@ tag = classify
         _otherwise
           -> Right (tagUnregisterRegisteredName registeredNames)
 
-    tagUnregisterNotRegisteredName :: Set Name -> EventPred
+    tagUnregisterNotRegisteredName :: Set Name -> EventPred r
     tagUnregisterNotRegisteredName registeredNames = predicate $ \ev ->
       case (eventCmd ev, eventResp ev) of
         (Register name _pid, Response (Right Registered)) ->
@@ -562,11 +564,13 @@ prop_processRegistry sdb = forAllCommands sm (Just 100000) $ \cmds -> monadicIO 
   (hist, _model, res) <- runCommands sm cmds
 
   let observed = historyObservations sm markov partition constructor hist
+      reqs     = tag (execCmds sm cmds)
 
   persistStats sdb observed
 
   prettyCommands sm hist
+    $ tabulate "_Requirements" (map show reqs)
     $ coverMarkov markov
     $ tabulateMarkov sm partition constructor cmds
     $ printReliability sdb (transitionMatrix markov) observed
-    $ res === Ok
+    $ res === Ok .&&. reqs === tag (execHistory sm hist)

@@ -21,6 +21,7 @@ module Test.StateMachine.Utils
   , whenFailM
   , anyP
   , suchThatEither
+  , collects
   , Shrunk(..)
   , shrinkS
   , shrinkListS
@@ -32,9 +33,11 @@ module Test.StateMachine.Utils
 
 import           Prelude
 
+import           Data.List
+                   (foldl')
 import           Test.QuickCheck
                    (Arbitrary, Gen, Property, resize, shrink,
-                   shrinkList, sized, whenFail)
+                   shrinkList, sized, whenFail, collect)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
@@ -64,6 +67,12 @@ gen `suchThatEither` p = sized (try [] 0 . max 100)
       if p x
       then return (Right x)
       else try (x : ces) (k + 1) (n - 1)
+
+collects :: Show a => [a] -> Property -> Property
+collects = repeatedly collect
+  where
+    repeatedly :: (a -> b -> b) -> ([a] -> b -> b)
+    repeatedly = flip . foldl' . flip
 
 -----------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 -- NOTE: Make sure NOT to use DeriveAnyClass, or persistent-template
 -- will do the wrong thing.
@@ -102,7 +103,7 @@ import           GHC.Generics
 import           Network.HTTP.Client
                    (Manager, defaultManagerSettings, newManager)
 import           Network.Socket
-                   (AddrInfoFlag(AI_NUMERICSERV, AI_NUMERICHOST),
+                   (AddrInfoFlag(AI_NUMERICHOST, AI_NUMERICSERV),
                    Socket, SocketType(Stream), addrAddress, addrFamily,
                    addrFlags, addrProtocol, addrSocketType, close,
                    connect, defaultHints, getAddrInfo, socket)

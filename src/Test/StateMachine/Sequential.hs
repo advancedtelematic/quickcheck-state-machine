@@ -414,7 +414,7 @@ prettyPrintHistory StateMachine { initModel, transition }
   . unHistory
   where
     go :: model Concrete -> Maybe (model Concrete) -> [Operation cmd resp] -> Doc
-    go current previous []                             =
+    go current previous [] =
       PP.line <> modelDiff current previous <> PP.line <> PP.line
     go current previous [Crash cmd err pid] =
       mconcat
