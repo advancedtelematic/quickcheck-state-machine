@@ -20,11 +20,14 @@ module Test.StateMachine
   , existsCommands
   , runCommands
   , prettyCommands
+  , prettyCommands'
   , checkCommandNames
   , commandNames
   , commandNamesInOrder
   , saveCommands
   , runSavedCommands
+  , showLabelledExamples
+  , showLabelledExamples'
 
   -- * Parallel property combinators
   , forAllParallelCommands

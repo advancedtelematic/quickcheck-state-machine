@@ -38,12 +38,16 @@ module Test.StateMachine.Sequential
   , getChanContents
   , executeCommands
   , prettyPrintHistory
+  , prettyPrintHistory'
   , prettyCommands
+  , prettyCommands'
   , saveCommands
   , runSavedCommands
   , commandNames
   , commandNamesInOrder
   , checkCommandNames
+  , showLabelledExamples
+  , showLabelledExamples'
   )
   where
 
@@ -59,6 +63,8 @@ import           Data.Dynamic
                    (Dynamic, toDyn)
 import           Data.Either
                    (fromRight)
+import           Data.List
+                   (inits)
 import qualified Data.Map                          as M
 import           Data.Map.Strict
                    (Map)
@@ -78,11 +84,16 @@ import           System.Directory
                    (createDirectoryIfMissing)
 import           System.FilePath
                    ((</>))
+import           System.Random
+                   (getStdRandom, randomR)
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, collect, once,
-                   sized, whenFail, forAllShrinkShow, cover)
+                   (Gen, Property, Testable, choose, collect, cover,
+                   forAllShrinkShow, labelledExamplesWith, maxSuccess,
+                   once, property, replay, sized, stdArgs, whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
+import           Test.QuickCheck.Random
+                   (mkQCGen)
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 import qualified Text.PrettyPrint.ANSI.Leijen      as PP
@@ -93,6 +104,8 @@ import           UnliftIO
                    tryReadTChan, writeTChan)
 
 import           Test.StateMachine.ConstructorName
+import           Test.StateMachine.Labelling
+                   (Event(..), execCmds)
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types.Rank2     as Rank2
@@ -455,6 +468,76 @@ prettyCommands :: (MonadIO m, ToExpr (model Concrete))
                -> PropertyM m ()
 prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 
+prettyPrintHistory' :: forall model cmd m resp tag. ToExpr (model Concrete)
+                    => (Show (cmd Concrete), Show (resp Concrete), ToExpr tag)
+                    => StateMachine model cmd m resp
+                    -> ([Event model cmd resp Symbolic] -> [tag])
+                    -> Commands cmd resp
+                    -> History cmd resp
+                    -> IO ()
+prettyPrintHistory' sm@StateMachine { initModel, transition } tag cmds
+  = PP.putDoc
+  . go initModel Nothing [] (map tag (drop 1 (inits (execCmds sm cmds))))
+  . makeOperations
+  . unHistory
+  where
+    tagsDiff :: [tag] -> [tag] -> Doc
+    tagsDiff old new = ansiWlBgEditExprCompact (ediff old new)
+
+    go :: model Concrete -> Maybe (model Concrete) -> [tag] -> [[tag]]
+       -> [Operation cmd resp] -> Doc
+    go current previous _seen _tags [] =
+      PP.line <> modelDiff current previous <> PP.line <> PP.line
+    go current previous seen (tags : _) [Crash cmd err pid] =
+      mconcat
+        [ PP.line
+        , modelDiff current previous
+        , PP.line, PP.line
+        , PP.string "   == "
+        , PP.string (ppShow cmd)
+        , PP.string " ==> "
+        , PP.string err
+        , PP.string " [ "
+        , PP.int (unPid pid)
+        , PP.string " ]"
+        , PP.line
+        , if not (null tags)
+          then PP.line <> PP.string "   " <> tagsDiff seen tags <> PP.line
+          else PP.empty
+        ]
+    go current previous seen (tags : tagss) (Operation cmd resp pid : ops) =
+      mconcat
+        [ PP.line
+        , modelDiff current previous
+        , PP.line, PP.line
+        , PP.string "   == "
+        , PP.string (ppShow cmd)
+        , PP.string " ==> "
+        , PP.string (ppShow resp)
+        , PP.string " [ "
+        , PP.int (unPid pid)
+        , PP.string " ]"
+        , PP.line
+        , if not (null tags)
+          then PP.line <> PP.string "   " <> tagsDiff seen tags <> PP.line
+          else PP.empty
+        , go (transition current cmd resp) (Just current) tags tagss ops
+        ]
+    go _ _ _ _ _ = error "prettyPrintHistory': impossible."
+
+-- | Variant of 'prettyCommands' that also prints the @tag@s covered by each
+-- command.
+prettyCommands' :: (MonadIO m, ToExpr (model Concrete), ToExpr tag)
+                => (Show (cmd Concrete), Show (resp Concrete))
+                => StateMachine model cmd m resp
+                -> ([Event model cmd resp Symbolic] -> [tag])
+                -> Commands cmd resp
+                -> History cmd resp
+                -> Property
+                -> PropertyM m ()
+prettyCommands' sm tag cmds hist prop =
+  prettyPrintHistory' sm tag cmds hist `whenFailM` prop
+
 saveCommands :: (Show (cmd Symbolic), Show (resp Symbolic))
              => FilePath -> Commands cmd resp -> Property -> Property
 saveCommands dir cmds prop = go `whenFail` prop
@@ -506,3 +589,42 @@ commandNamesInOrder = reverse . foldl go [] . unCommands
   where
     go :: [String] -> Command cmd resp -> [String]
     go ih cmd = commandName cmd : ih
+
+------------------------------------------------------------------------
+
+-- | Show minimal examples for each of the generated tags.
+showLabelledExamples' :: (Show tag, Show (model Symbolic))
+                      => (Show (cmd Symbolic), Show (resp Symbolic))
+                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
+                      => StateMachine model cmd m resp
+                      -> Maybe Int
+                      -- ^ Seed
+                      -> Int
+                      -- ^ Number of tests to run to find examples
+                      -> ([Event model cmd resp Symbolic] -> [tag])
+                      -> (tag -> Bool)
+                      -- ^ Tag filter (can be @const True@)
+                      -> IO ()
+showLabelledExamples' sm mReplay numTests tag focus = do
+    replaySeed <- case mReplay of
+      Nothing   -> getStdRandom (randomR (1, 999999))
+      Just seed -> return seed
+
+    labelledExamplesWith (stdArgs { replay     = Just (mkQCGen replaySeed, 0)
+                                  , maxSuccess = numTests
+                                  }) $
+      forAllShrinkShow (generateCommands sm Nothing)
+                       (shrinkCommands   sm)
+                       ppShow $ \cmds ->
+        collects (filter focus . tag . execCmds sm $ cmds) $
+          property True
+
+    putStrLn $ "Used replaySeed " ++ show replaySeed
+
+showLabelledExamples :: (Show tag, Show (model Symbolic))
+                     => (Show (cmd Symbolic), Show (resp Symbolic))
+                     => (Rank2.Traversable cmd, Rank2.Foldable resp)
+                     => StateMachine model cmd m resp
+                     -> ([Event model cmd resp Symbolic] -> [tag])
+                     -> IO ()
+showLabelledExamples sm tag = showLabelledExamples' sm Nothing 1000 tag (const True)

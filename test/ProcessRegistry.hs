@@ -476,7 +476,7 @@ data Req
   | WHE001
   | WHE002
   | DIE001
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, ToExpr)
 
 type EventPred r = Predicate (Event Model Action Response r) Req
 
@@ -568,7 +568,7 @@ prop_processRegistry sdb = forAllCommands sm (Just 100000) $ \cmds -> monadicIO 
 
   persistStats sdb observed
 
-  prettyCommands sm hist
+  prettyCommands' sm tag cmds hist
     $ tabulate "_Requirements" (map show reqs)
     $ coverMarkov markov
     $ tabulateMarkov sm partition constructor cmds
