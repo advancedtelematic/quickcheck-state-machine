@@ -32,7 +32,9 @@ module Test.StateMachine
   -- * Parallel property combinators
   , forAllParallelCommands
   , runParallelCommands
+  , runParallelCommands'
   , runParallelCommandsNTimes
+  , runParallelCommandsNTimes'
   , prettyParallelCommands
 
     -- * Types
