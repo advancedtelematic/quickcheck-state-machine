@@ -426,7 +426,18 @@ Here are some more examples to get you started:
     using [Servant](https://github.com/haskell-servant/servant). Creating a user
     will return a unique id, which subsequent reads, updates, and deletes need
     to use. In this example, unlike in the last one, the server is setup and
-    torn down once per property rather than generate program.
+    torn down once per property rather than generate program;
+
+  * Process registry
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/ProcessRegistry.hs)
+    -- an example often featured in the Erlang QuickCheck papers. This example
+    shows how one can tag the specification with which requirements are covered
+    and then generate (minimal) examples of test cases that cover each
+    requirement, as shown in the *How well are your requirements tested?*
+    [[PDF](https://publications.lib.chalmers.se/records/fulltext/232552/local_232552.pdf)]
+    and *Understanding Formal Specifications through Good Examples*
+    [[PDF](https://doi.org/10.1145/3239332.3242763),
+    [video](https://www.youtube.com/watch?v=w2fin2V83e8)] papers.
 
 All properties from the examples can be found in the
 [`Spec`](https://github.com/advancedtelematic/quickcheck-state-machine/tree/master/test/Spec.hs)
