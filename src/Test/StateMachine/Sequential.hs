@@ -313,7 +313,8 @@ shrinkAndValidate StateMachine { precondition, transition, mock, shrinker } =
     remapVars :: Map Var Var -> Symbolic a -> Maybe (Symbolic a)
     remapVars scope (Symbolic v) = Symbolic <$> M.lookup v scope
 
-runCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
+runCommands :: (Show (cmd Concrete), Show (resp Concrete))
+            => (Rank2.Traversable cmd, Rank2.Foldable resp)
             => (MonadCatch m, MonadIO m)
             => StateMachine model cmd m resp
             -> Commands cmd resp
@@ -337,7 +338,8 @@ getChanContents chan = reverse <$> atomically (go' [])
         Just x  -> go' (x : acc)
         Nothing -> return acc
 
-executeCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
+executeCommands :: (Show (cmd Concrete), Show (resp Concrete))
+                => (Rank2.Traversable cmd, Rank2.Foldable resp)
                 => (MonadCatch m, MonadIO m)
                 => StateMachine model cmd m resp
                 -> TChan (Pid, HistoryEvent cmd resp)
@@ -367,7 +369,7 @@ executeCommands StateMachine {..} hchan pid check =
               let cvars = getUsedConcrete cresp
               if length vars /= length cvars
               then do
-                let err = mockSemanticsMismatchError (show ccmd) (show vars) (show cvars)
+                let err = mockSemanticsMismatchError (ppShow ccmd) (ppShow vars) (ppShow cresp) (ppShow cvars)
                 atomically (writeTChan hchan (pid, Exception err))
                 return MockSemanticsMismatch
               else do
@@ -385,8 +387,8 @@ executeCommands StateMachine {..} hchan pid check =
                                                )
                                            go cmds
 
-    mockSemanticsMismatchError :: String -> String -> String -> String
-    mockSemanticsMismatchError cmd svars cvars = unlines
+    mockSemanticsMismatchError :: String -> String -> String -> String -> String
+    mockSemanticsMismatchError cmd svars cresp cvars = unlines
       [ ""
       , "Mismatch between `mock` and `semantics`."
       , ""
@@ -398,7 +400,11 @@ executeCommands StateMachine {..} hchan pid check =
       , ""
       , "    ", svars
       , ""
-      , "while the response from `semantics` returns the following references:"
+      , "while the response from `semantics`:"
+      , ""
+      , "    ", cresp
+      , ""
+      , "returns the following references:"
       , ""
       , "    ", cvars
       , ""
@@ -551,7 +557,8 @@ saveCommands dir cmds prop = go `whenFail` prop
       putStrLn ("Saved counterexample in: " ++ fp)
       putStrLn ""
 
-runSavedCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
+runSavedCommands :: (Show (cmd Concrete), Show (resp Concrete))
+                 => (Rank2.Traversable cmd, Rank2.Foldable resp)
                  => (MonadCatch m, MonadIO m)
                  => (Read (cmd Symbolic), Read (resp Symbolic))
                  => StateMachine model cmd m resp

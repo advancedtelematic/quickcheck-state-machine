@@ -321,7 +321,8 @@ runParallelCommandsNTimes n sm cmds =
     (hist, _reason) <- run (executeParallelCommands sm cmds)
     return (hist, linearise sm hist)
 
-executeParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
+executeParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
+                        => (Rank2.Traversable cmd, Rank2.Foldable resp)
                         => (MonadCatch m, MonadUnliftIO m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd resp
