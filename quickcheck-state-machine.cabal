@@ -85,7 +85,7 @@ test-suite quickcheck-state-machine-test
                        monad-logger,
                        mtl,
                        network,
-                       persistent,
+                       persistent >=2.8.2 && <2.10.0,
                        persistent-postgresql,
                        persistent-template,
                        pretty-show,
