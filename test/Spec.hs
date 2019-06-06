@@ -42,9 +42,9 @@ tests docker0 = testGroup "Tests"
                , "src/Test/StateMachine/Logic.hs"
                ])
   , ShrinkingProps.tests
-  , testProperty "Towers of Hanoi"
+  , testProperty "TowersOfHanoi"
       (expectFailure (prop_hanoi 3))
-  , testProperty "Die Hard"
+  , testProperty "DieHard"
       (expectFailure (withMaxSuccess 2000 prop_dieHard))
   , testGroup "MemoryReference"
       [ testProperty "NoBug"                            (prop_sequential None)
@@ -55,20 +55,20 @@ tests docker0 = testGroup "Tests"
       , testProperty "ExistsCommands"     prop_existsCommands
       ]
   , testGroup "ErrorEncountered"
-      [ testProperty "sequential" prop_error_sequential
-      , testProperty "parallel"   prop_error_parallel
+      [ testProperty "Sequential" prop_error_sequential
+      , testProperty "Parallel"   prop_error_parallel
       ]
-  , testGroup "Crud webserver"
-      [ webServer docker0 WS.None  8800 "No bug"                       WS.prop_crudWebserverDb
-      , webServer docker0 WS.Logic 8801 "Logic bug"   (expectFailure . WS.prop_crudWebserverDb)
-      , webServer docker0 WS.Race  8802 "No race bug"                  WS.prop_crudWebserverDb
-      , webServer docker0 WS.Race  8803 "Race bug"    (expectFailure . WS.prop_crudWebserverDbParallel)
+  , testGroup "CrudWebserver"
+      [ webServer docker0 WS.None  8800 "NoBug"                       WS.prop_crudWebserverDb
+      , webServer docker0 WS.Logic 8801 "LogicBug"   (expectFailure . WS.prop_crudWebserverDb)
+      , webServer docker0 WS.Race  8802 "NoRaceBug"                   WS.prop_crudWebserverDb
+      , webServer docker0 WS.Race  8803 "RaceBug"    (expectFailure . WS.prop_crudWebserverDbParallel)
       ]
-  , testGroup "Ticket dispenser"
-      [ testProperty "sequential"                   prop_ticketDispenser
-      , testProperty "parallel with exclusive lock" (withMaxSuccess 30
+  , testGroup "TicketDispenser"
+      [ testProperty "Sequential"                       prop_ticketDispenser
+      , testProperty "ParallelWithExclusiveLock" (withMaxSuccess 30
                                                         prop_ticketDispenserParallelOK)
-      , testProperty "parallel with shared lock"    (expectFailure
+      , testProperty "ParallelWithSharedLock"    (expectFailure
                                                         prop_ticketDispenserParallelBad)
       ]
   , testGroup "CircularBuffer"
@@ -84,16 +84,16 @@ tests docker0 = testGroup "Tests"
           prop_circularBuffer
       ]
   , testGroup "Echo"
-      [ testProperty "sequential" prop_echoOK
-      , testProperty "parallel ok" (prop_echoParallelOK False)
-      , testProperty "parallel bad, see issue #218"
+      [ testProperty "Sequential" prop_echoOK
+      , testProperty "ParallelOk" (prop_echoParallelOK False)
+      , testProperty "ParallelBad" -- See issue #218.
           (expectFailure (prop_echoParallelOK True))
       ]
   , testGroup "ProcessRegistry"
-      [ testProperty "sequential" (prop_processRegistry (statsDb "processRegistry"))
+      [ testProperty "Sequential" (prop_processRegistry (statsDb "processRegistry"))
       ]
   , testGroup "UnionFind"
-      [ testProperty "sequential" UnionFind.prop_unionFindSequential ]
+      [ testProperty "Sequential" UnionFind.prop_unionFindSequential ]
   ]
   where
     statsDb :: PropertyName -> StatsDb IO
