@@ -264,7 +264,7 @@ data ShouldShrink = MustShrink | DontShrink
 --
 -- > [    -- outermost list recording all the shrink possibilities
 -- >     [A', B1', C', D', E' , F', G', H']   -- B shrunk to B1
--- >   , [A', B1', C', D', E' , F', G', H']   -- B shrunk to B2
+-- >   , [A', B2', C', D', E' , F', G', H']   -- B shrunk to B2
 -- >   , [A', B' , C', D', E1', F', G', H']   -- E shrunk to E1
 -- >   , [A', B' , C', D', E2', F', G', H']   -- E shrunk to E2
 -- >   , [A', B' , C', D', E3', F', G', H']   -- E shrunk to E3
