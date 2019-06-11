@@ -197,8 +197,7 @@ shrinkParallelCommands
   => Rank2.Foldable resp
   => StateMachine model cmd m resp
   -> (ParallelCommands cmd resp -> [ParallelCommands cmd resp])
-shrinkParallelCommands sm@StateMachine { initModel }
-                       (ParallelCommands prefix suffixes)
+shrinkParallelCommands sm (ParallelCommands prefix suffixes)
   = concatMap go
       [ Shrunk s (ParallelCommands prefix' (map toPair suffixes'))
       | Shrunk s (prefix', suffixes') <- shrinkPairS shrinkCommands' shrinkSuffixes
@@ -211,7 +210,6 @@ shrinkParallelCommands sm@StateMachine { initModel }
     go (Shrunk shrunk cmds) =
         shrinkAndValidateParallel sm
                                   (if shrunk then DontShrink else MustShrink)
-                                  (initValidateEnv initModel)
                                   cmds
 
     shrinkCommands' :: Commands cmd resp -> [Shrunk (Commands cmd resp)]
@@ -250,15 +248,15 @@ shrinkParallelCommands sm@StateMachine { initModel }
 shrinkAndValidateParallel :: forall model cmd m resp. (Rank2.Traversable cmd, Rank2.Foldable resp)
                           => StateMachine model cmd m resp
                           -> ShouldShrink
-                          -> ValidateEnv model
                           -> ParallelCommands cmd resp
                           -> [ParallelCommands cmd resp]
-shrinkAndValidateParallel sm = \shouldShrink env (ParallelCommands prefix suffixes) ->
-    let go' shouldShrink' (env', prefix') = go prefix' env' shouldShrink' suffixes in
+shrinkAndValidateParallel sm@StateMachine { initModel } = \shouldShrink (ParallelCommands prefix suffixes) ->
+    let env = initValidateEnv initModel
+        curryGo shouldShrink' (env', prefix') = go prefix' env' shouldShrink' suffixes in
     case shouldShrink of
-      DontShrink -> concatMap (go' DontShrink) (shrinkAndValidate sm DontShrink env prefix)
-      MustShrink -> concatMap (go' DontShrink) (shrinkAndValidate sm MustShrink env prefix)
-                 ++ concatMap (go' MustShrink) (shrinkAndValidate sm DontShrink env prefix)
+      DontShrink -> concatMap (curryGo DontShrink) (shrinkAndValidate sm DontShrink env prefix)
+      MustShrink -> concatMap (curryGo DontShrink) (shrinkAndValidate sm MustShrink env prefix)
+                 ++ concatMap (curryGo MustShrink) (shrinkAndValidate sm DontShrink env prefix)
   where
     withCounterFrom :: ValidateEnv model -> ValidateEnv model -> ValidateEnv model
     e `withCounterFrom` e' = e { veCounter = veCounter e' }
@@ -277,16 +275,15 @@ shrinkAndValidateParallel sm = \shouldShrink env (ParallelCommands prefix suffix
             -> [ParallelCommands cmd resp]
         go' _   _   MustShrink [] = [] -- Failed to shrink something
         go' acc _   DontShrink [] = [ParallelCommands prefix' (reverse acc)]
-        go' acc env shouldShrink (Pair l r : suffixes) =
-            flip concatMap shrinkOpts $ \((shrinkL, shrinkR), shrinkRest) -> concat
-              [ go' (Pair l' r' : acc) (combineEnv envL envR) shrinkRest suffixes
-              | (envL, l') <- shrinkAndValidate sm shrinkL  env                         l
-              , (envR, r') <- shrinkAndValidate sm shrinkR (env `withCounterFrom` envL) r
-              ]
+        go' acc env shouldShrink (Pair l r : suffixes) = do
+            ((shrinkL, shrinkR), shrinkRest) <- shrinkOpts
+            (envL, l') <- shrinkAndValidate sm shrinkL  env                         l
+            (envR, r') <- shrinkAndValidate sm shrinkR (env `withCounterFrom` envL) r
+            go' (Pair l' r' : acc) (combineEnv envL envR r') shrinkRest suffixes
           where
-            combineEnv :: ValidateEnv model -> ValidateEnv model -> ValidateEnv model
-            combineEnv envL envR = ValidateEnv {
-                  veModel   = advanceModel sm (veModel envL) r
+            combineEnv :: ValidateEnv model -> ValidateEnv model -> Commands cmd resp -> ValidateEnv model
+            combineEnv envL envR cmds = ValidateEnv {
+                  veModel   = advanceModel sm (veModel envL) cmds
                 , veScope   = Map.union (veScope envL) (veScope envR)
                 , veCounter = veCounter envR
                 }
