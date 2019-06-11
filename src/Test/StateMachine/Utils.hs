@@ -26,13 +26,19 @@ module Test.StateMachine.Utils
   , shrinkS
   , shrinkListS
   , shrinkListS'
+  , shrinkListS''
   , shrinkPairS
   , shrinkPairS'
+  , pickOneReturnRest
+  , pickOneReturnRest2
+  , pickOneReturnRestL
   )
   where
 
 import           Prelude
 
+import           Control.Arrow
+                   ((***))
 import           Data.List
                    (foldl')
 import           Test.QuickCheck
@@ -102,7 +108,7 @@ collects = repeatedly collect
 -- >    , Shrunk False [(1,3),(2,4)]  -- the original unchanged list
 -- >    ]
 data Shrunk a = Shrunk { wasShrunk :: Bool, shrunk :: a }
-  deriving (Show, Functor)
+  deriving (Eq, Show, Functor)
 
 shrinkS :: Arbitrary a => a -> [Shrunk a]
 shrinkS a = map (Shrunk True) (shrink a) ++ [Shrunk False a]
@@ -119,9 +125,16 @@ shrinkListS f = \xs -> concat [
     shrinkOne (x:xs) = [Shrunk True (x' : xs) | Shrunk True x'  <- f x]
                     ++ [Shrunk True (x : xs') | Shrunk True xs' <- shrinkOne xs]
 
--- | Shrink list without shrinking elements
+-- | Shrink list without shrinking elements.
 shrinkListS' :: [a] -> [Shrunk [a]]
 shrinkListS' = shrinkListS (\a -> [Shrunk False a])
+
+-- | Shrink list by only shrinking elements.
+shrinkListS'' :: forall a. (a -> [Shrunk a]) -> [a] -> [Shrunk [a]]
+shrinkListS'' f xs =
+  let shr = shrinkListS f xs
+      len = length xs
+  in filter (\s -> length (shrunk s) == len) shr
 
 shrinkPairS :: (a -> [Shrunk a])
             -> (b -> [Shrunk b])
@@ -133,3 +146,40 @@ shrinkPairS f g (a, b) =
 
 shrinkPairS' :: (a -> [Shrunk a]) -> (a, a) -> [Shrunk (a, a)]
 shrinkPairS' f = shrinkPairS f f
+
+-- >    pickOneReturnRest2 ([], []) == []
+-- >    pickOneReturnRest2 ([1,2], [3,4])
+-- > == [ (1,([2],[3,4])), (2,([1],[3,4])), (3,([1,2],[4])), (4,([1,2],[3])) ]
+pickOneReturnRest2 :: ([a], [a]) -> [(a, ([a],[a]))]
+pickOneReturnRest2 (xs, ys) =
+  map (id *** flip (,) ys) (pickOneReturnRest xs) ++
+  map (id ***      (,) xs) (pickOneReturnRest ys)
+
+-- >    pickOneReturnRest []     == []
+-- >    pickOneReturnRest [1]    == [ (1,[]) ]
+-- >    pickOneReturnRest [1..3] == [ (1,[2,3]), (2,[1,3]), (3,[1,2]) ]
+pickOneReturnRest :: [a] -> [(a, [a])]
+pickOneReturnRest []       = []
+pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
+
+-- >    pickOneReturnRestL [[]] == []
+-- >    pickOneReturnRestL [[1]] == [(1,[[]])]
+-- >    pickOneReturnRestL [[1],[],[]] == [(1,[[],[],[]])]
+-- >    pickOneReturnRestL [[1,2]] == [(1,[[2]]), (2,[[1]])]
+-- >    pickOneReturnRestL [[1,2], [3,4]]
+-- > == [ (1,[[2],[3,4]]), (2,[[1],[3,4]]), (3,[[1,2],[4]]), (4,[[1,2],[3]]) ]
+pickOneReturnRestL :: [[a]] -> [(a, [[a]])]
+pickOneReturnRestL ls = concatMap
+  (\(prev, as, next) -> fmap (\(a, rest) -> (a, prev ++ [rest] ++ next)) $ pickOneReturnRest as)
+  $ splitEach ls
+    where
+      splitEach :: [a] -> [([a], a, [a])]
+      splitEach []       = []
+      splitEach (a : as) = fmap (\(prev, a', next) -> (prev, a', next)) $
+        go' [([], a, as)] ([], a, as)
+          where
+            go' :: [([a], a, [a])] -> ([a], a, [a]) -> [([a], a, [a])]
+            go' acc (_, _, []) = reverse acc
+            go' acc (prev, a', b : next) =
+              let newElem = (a' : prev, b, next)
+              in go' (newElem : acc) newElem

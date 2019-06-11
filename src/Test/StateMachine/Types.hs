@@ -25,12 +25,15 @@ module Test.StateMachine.Types
   , Command(..)
   , getCommand
   , Commands(..)
+  , NParallelCommands
   , lengthCommands
   , ParallelCommandsF(..)
   , ParallelCommands
   , Pair(..)
   , fromPair
   , toPair
+  , fromPair'
+  , toPairUnsafe'
   , Reason(..)
   , module Test.StateMachine.Types.Environment
   , module Test.StateMachine.Types.GenSym
@@ -76,6 +79,7 @@ getCommand (Command cmd _resp _vars) = cmd
 
 deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Command cmd resp)
 deriving instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Command cmd resp)
+deriving instance ((Eq (cmd Symbolic)), (Eq (resp Symbolic))) => Eq (Command cmd resp)
 
 newtype Commands cmd resp = Commands
   { unCommands :: [Command cmd resp] }
@@ -83,6 +87,7 @@ newtype Commands cmd resp = Commands
 
 deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Commands cmd resp)
 deriving instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Commands cmd resp)
+deriving instance ((Eq (cmd Symbolic)), (Eq (resp Symbolic))) => Eq (Commands cmd resp)
 
 lengthCommands :: Commands cmd resp -> Int
 lengthCommands = length . unCommands
@@ -101,8 +106,11 @@ data ParallelCommandsF t cmd resp = ParallelCommands
   , suffixes :: [t (Commands cmd resp)]
   }
 
-deriving instance (Show (cmd Symbolic), Show (resp Symbolic), Show (t (Commands cmd resp))) =>
-  Show (ParallelCommandsF t cmd resp)
+deriving instance (Eq (cmd Symbolic), Eq (resp Symbolic), Eq (t (Commands cmd resp)))
+  => Eq (ParallelCommandsF t cmd resp)
+
+deriving instance (Show (cmd Symbolic), Show (resp Symbolic), Show (t (Commands cmd resp)))
+  => Show (ParallelCommandsF t cmd resp)
 
 data Pair a = Pair
   { proj1 :: !a
@@ -117,3 +125,14 @@ toPair :: (a, a) -> Pair a
 toPair (x, y) = Pair x y
 
 type ParallelCommands = ParallelCommandsF Pair
+
+type NParallelCommands = ParallelCommandsF []
+
+fromPair' :: ParallelCommandsF Pair cmd resp -> ParallelCommandsF [] cmd resp
+fromPair' p = p { suffixes = (\(Pair l r) -> [l, r]) <$> suffixes p}
+
+toPairUnsafe' :: ParallelCommandsF [] cmd resp -> ParallelCommandsF Pair cmd resp
+toPairUnsafe' p = p { suffixes = unsafePair <$> suffixes p}
+    where
+      unsafePair [a,b] = Pair a b
+      unsafePair _ = error "invariant violation! Shrunk list should always have 2 elements."
