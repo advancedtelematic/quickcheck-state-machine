@@ -13,9 +13,13 @@ module MemoryReference
   ( prop_sequential
   , prop_runSavedCommands
   , prop_parallel
+  , prop_nparallel
   , prop_precondition
   , prop_existsCommands
   , Bug(..)
+  , prop_pairs_shrink_parallel_equivalence
+  , prop_pairs_shrinkAndValidate_equivalence
+  , prop_pairs_shrink_parallel
   )
   where
 
@@ -40,11 +44,18 @@ import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
+import           Test.StateMachine.Parallel
+                   (shrinkAndValidateNParallel, shrinkAndValidateParallel,
+                   shrinkCommands', shrinkNParallelCommands, shrinkParallelCommands)
+import           Test.StateMachine.Sequential (ShouldShrink (..))
 import           Test.StateMachine.Types
                    (Commands(Commands), Reference(..), Symbolic(..),
                    Var(Var))
 import qualified Test.StateMachine.Types       as Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.Utils
+                   (Shrunk(..), shrinkListS, shrinkListS'', shrinkPairS,
+                   shrinkPairS' )
 import           Test.StateMachine.Z
 
 ------------------------------------------------------------------------
@@ -65,7 +76,7 @@ data Response r
   | ReadValue Int
   | Written
   | Incremented
-  deriving (Generic1, Rank2.Foldable)
+  deriving (Eq, Generic1, Rank2.Foldable)
 
 deriving instance Show (Response Symbolic)
 deriving instance Read (Response Symbolic)
@@ -187,6 +198,12 @@ prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
     where
       sm' = sm bug
 
+prop_nparallel :: Bug -> Int -> Property
+prop_nparallel bug np = forAllNParallelCommands sm' np $ \cmds -> monadicIO $ do
+  prettyNParallelCommands cmds =<< runNParallelCommands sm' cmds
+    where
+      sm' = sm bug
+
 prop_precondition :: Property
 prop_precondition = once $ monadicIO $ do
   (hist, _model, res) <- runCommands sm' cmds
@@ -209,3 +226,39 @@ prop_existsCommands = existsCommands sm' gens $ \cmds -> monadicIO $ do
       , genIncr
       , genRead
       ]
+
+{-------------------------------------------------------------------------------
+  Meta properties which test the testing framework.
+-------------------------------------------------------------------------------}
+
+prop_pairs_shrink_parallel_equivalence :: Property
+prop_pairs_shrink_parallel_equivalence =
+    forAllParallelCommands (sm None) $ \pairCmds ->
+      let pairShrunk = shrinkParallelCommands (sm None) pairCmds
+          listCmds = Types.fromPair' pairCmds
+          listShrunk = shrinkNParallelCommands (sm None) listCmds
+          listShrunkPair = Types.toPairUnsafe' <$> listShrunk
+      in listShrunkPair === pairShrunk
+
+prop_pairs_shrinkAndValidate_equivalence :: Property
+prop_pairs_shrinkAndValidate_equivalence =
+    forAllParallelCommands (sm None) $ \pairCmds ->
+      let pairShrunk' = shrinkAndValidateParallel (sm None) DontShrink pairCmds
+          listCmds = Types.fromPair' pairCmds
+          listShrunk' = shrinkAndValidateNParallel (sm None) DontShrink listCmds
+          listShrunkPair' = Types.toPairUnsafe' <$> listShrunk'
+      in listShrunkPair' === pairShrunk'
+
+prop_pairs_shrink_parallel :: Property
+prop_pairs_shrink_parallel =
+    forAllParallelCommands (sm None) $ \cmds@(Types.ParallelCommands prefix suffixes) ->
+      let pair =
+            [ Shrunk s (Types.ParallelCommands prefix' (map Types.toPair suffixes'))
+            | Shrunk s (prefix', suffixes') <- shrinkPairS shrinkCommands' (shrinkListS (shrinkPairS' shrinkCommands'))
+                (prefix, map Types.fromPair suffixes)]
+          (Types.ParallelCommands _ listSuffixes) = Types.fromPair' cmds
+          list =
+            [ Shrunk s $ Types.toPairUnsafe' (Types.ParallelCommands prefix' suffixes')
+            | Shrunk s (prefix', suffixes') <- shrinkPairS shrinkCommands' (shrinkListS (shrinkListS'' shrinkCommands'))
+                (prefix, listSuffixes)]
+      in list == pair

@@ -53,10 +53,24 @@ tests docker0 = testGroup "Tests"
       , testProperty "RaceBugParallel"   (expectFailure (prop_parallel   Race))
       , testProperty "PreconditionFailed" prop_precondition
       , testProperty "ExistsCommands"     prop_existsCommands
+      , testProperty "NoBug 1 thread"            (prop_nparallel None 1)
+      , testProperty "NoBug 2 threads"           (prop_nparallel None 2)
+      , testProperty "NoBug 3 threads"           (withMaxSuccess 80 $ prop_nparallel None 3)
+      , testProperty "NoBug 4 threads"           (withMaxSuccess 40 $ prop_nparallel None 4)
+      , testProperty "RaceBugParallel 1 thread"  (prop_nparallel Race 1)
+      , testProperty "RaceBugParallel 2 threads" (expectFailure (prop_nparallel   Race 2))
+      , testProperty "RaceBugParallel 3 threads" (expectFailure (prop_nparallel   Race 3))
+      , testProperty "RaceBugParallel 4 threads" (expectFailure (prop_nparallel   Race 4))
+      , testProperty "ShrinkParallelEquivalence" prop_pairs_shrink_parallel_equivalence
+      , testProperty "ShrinkAndValidateParallelEquivalence" prop_pairs_shrinkAndValidate_equivalence
+      , testProperty "ShrinkPairsEquialence"     prop_pairs_shrink_parallel
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
       , testProperty "Parallel"   prop_error_parallel
+      , testProperty "2-Parallel" $ prop_error_nparallel 2
+      , testProperty "3-Parallel" $ prop_error_nparallel 3
+      , testProperty "4-Parallel" $ prop_error_nparallel 4
       ]
   , testGroup "CrudWebserver"
       [ webServer docker0 WS.None  8800 "NoBug"                       WS.prop_crudWebserverDb
@@ -70,6 +84,11 @@ tests docker0 = testGroup "Tests"
                                                         prop_ticketDispenserParallelOK)
       , testProperty "ParallelWithSharedLock"    (expectFailure
                                                         prop_ticketDispenserParallelBad)
+      , testProperty "2-ParallelWithExclusiveLock" (prop_ticketDispenserNParallelOK 2)
+      , testProperty "3-ParallelWithExclusiveLock" (prop_ticketDispenserNParallelOK 3)
+      , testProperty "4-ParallelWithExclusiveLock" (prop_ticketDispenserNParallelOK 4)
+      , testProperty "3-ParallelWithSharedLock" (expectFailure $
+                                                    prop_ticketDispenserNParallelBad 3)
       ]
   , testGroup "CircularBuffer"
       [ testProperty "unpropNoSizeCheck"
@@ -88,6 +107,12 @@ tests docker0 = testGroup "Tests"
       , testProperty "ParallelOk" (prop_echoParallelOK False)
       , testProperty "ParallelBad" -- See issue #218.
           (expectFailure (prop_echoParallelOK True))
+      , testProperty "2-Parallel" (prop_echoNParallelOK 2 False)
+      , testProperty "3-Parallel" (prop_echoNParallelOK 3 False)
+      , testProperty "Parallel bad, 2 threads, see issue #218"
+          (expectFailure (prop_echoNParallelOK 2 True))
+      , testProperty "Parallel bad, 3 threads, see issue #218"
+          (expectFailure (prop_echoNParallelOK 3 True))
       ]
   , testGroup "ProcessRegistry"
       [ testProperty "Sequential" (prop_processRegistry (statsDb "processRegistry"))
