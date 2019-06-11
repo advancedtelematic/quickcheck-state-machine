@@ -24,7 +24,7 @@ module ShrinkingProps (
 import           Prelude
 
 import           Control.Monad
-                   (replicateM)
+                   (forM_, replicateM)
 import           Control.Monad.Except
                    (Except, runExcept, throwError)
 import           Control.Monad.State
@@ -35,6 +35,7 @@ import           Data.Foldable
                    (toList)
 import           Data.Functor.Classes
                    (Eq1, Show1)
+import           Data.List.Split (chunksOf)
 import           Data.Map.Strict
                    (Map)
 import qualified Data.Map.Strict               as Map
@@ -62,23 +63,33 @@ import           Test.Tasty.QuickCheck
                    (Arbitrary(..), Gen, Property, conjoin,
                    counterexample, elements, forAllShrinkShow,
                    getNonNegative, getSmall, oneof, property,
-                   testProperty, (===))
+                   testProperty, (===), withMaxSuccess)
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Parallel    as QSM
 import qualified Test.StateMachine.Sequential  as QSM
 import qualified Test.StateMachine.Types       as QSM
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.Utils
+                   (Shrunk(..), shrinkListS',
+                   shrinkListS', shrinkListS'', shrinkPairS')
 
 tests :: TestTree
 tests = testGroup "Shrinking properties" [
-      testProperty "Sanity check: standard sequential test"        prop_sequential
-    , testProperty "Sanity check: standard parallel test"          prop_parallel
-    , testProperty "Correct references after sequential shrinking" prop_sequential_subprog
-    , testProperty "Correct references after parallel shrinking"   prop_parallel_subprog
-    , testProperty "Correct references after parallel shrinking (buggyShrinkCmds)"   (prop_parallel_subprog' buggyShrinkCmds)
-    , testProperty "Sequential shrinker provides correct model"    prop_sequential_model
-    , testProperty "Parallel shrinker provides correct model"      prop_parallel_model
+        testProperty "Sanity check: standard sequential test"        prop_sequential
+      , testProperty "Sanity check: standard parallel test"          prop_parallel
+      , testProperty "Sanity check: standard 3-parallel test"        $ withMaxSuccess 50 prop_3parallel
+      , testProperty "Correct references after sequential shrinking" prop_sequential_subprog
+      , testProperty "Correct references after parallel shrinking"   prop_parallel_subprog
+      , testProperty "Correct references after 3-parallel shrinking" $ withMaxSuccess 50 prop_nparallel_subprog
+      , testProperty "Correct references after parallel shrinking (buggyShrinkCmds)"   (prop_parallel_subprog' buggyShrinkCmds)
+      , testProperty "Sequential shrinker provides correct model"    prop_sequential_model
+      , testProperty "Parallel shrinker provides correct model"      $ withMaxSuccess 70 $ prop_parallel_model
+      , testProperty "2-Parallel shrinker provides correct model"    $ prop_nparallel_model 2
+      , testProperty "3-Parallel shrinker provides correct model"    $ withMaxSuccess 60 $ prop_nparallel_model 3
+      , testProperty "1-Parallel is equivalent to sequential"        prop_one_thread
+      , testProperty "2 Threads equivalence"                         $ withMaxSuccess 40 prop_pairs_round_trip
+      , testProperty "shrink round trips"                            prop_shrink_round_trip
     ]
 
 {-------------------------------------------------------------------------------
@@ -337,6 +348,9 @@ sm = QSM.StateMachine {
   The type class instances required by QSM
 -------------------------------------------------------------------------------}
 
+deriving instance Eq1 r => Eq (Cmd  :@ r)
+deriving instance Eq1 r => Eq (Resp :@ r)
+
 deriving instance Show1 r => Show (Cmd  :@ r)
 deriving instance Show1 r => Show (Resp :@ r)
 deriving instance Show1 r => Show (Model   r)
@@ -365,6 +379,10 @@ prop_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
 prop_parallel :: Property
 prop_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $
     prettyParallelCommands cmds =<< runParallelCommands sm cmds
+
+prop_3parallel :: Property
+prop_3parallel = forAllNParallelCommands sm 3 $ \cmds -> monadicIO $
+  prettyNParallelCommands cmds =<< runNParallelCommands sm cmds
 
 {-------------------------------------------------------------------------------
   Test that shrinking does not mess up references
@@ -455,13 +473,15 @@ prop_sequential_subprog =
   walk over all commands in 'ParallelCommands'
 -------------------------------------------------------------------------------}
 
-data ShrinkParFailure = SPF {
-      spfOrig     :: QSM.ParallelCommands (At Cmd) (At Resp)
-    , spfShrunk   :: QSM.ParallelCommands (At Cmd) (At Resp)
+data ShrinkParFailure t = SPF {
+      spfOrig     :: QSM.ParallelCommandsF t (At Cmd) (At Resp)
+    , spfShrunk   :: QSM.ParallelCommandsF t (At Cmd) (At Resp)
     , spfTrOrig   :: RefGraph
     , spfTrShrunk :: RefGraph
     }
-  deriving (Show)
+
+deriving instance Show (ShrinkParFailure QSM.Pair)
+deriving instance Show (ShrinkParFailure [])
 
 -- | Compute reference graph for a parallel program
 --
@@ -471,6 +491,10 @@ data ShrinkParFailure = SPF {
 refGraph' :: HasCallStack => QSM.ParallelCommands (At Cmd) (At Resp) -> RefGraph
 refGraph' (QSM.ParallelCommands prefix suffixes) =
     refGraph (prefix <> mconcat (map (\(QSM.Pair l r) -> l `mappend` r) suffixes))
+
+refGraph'' :: HasCallStack => QSM.NParallelCommands (At Cmd) (At Resp) -> RefGraph
+refGraph'' (QSM.ParallelCommands prefix suffixes) =
+    refGraph (prefix <> mconcat (mconcat suffixes))
 
 prop_parallel_subprog :: Property
 prop_parallel_subprog =
@@ -489,6 +513,41 @@ prop_parallel_subprog' cmds =
             ]
   where
     cmds' = refGraph' cmds
+
+prop_shrink_round_trip :: ([Int], [Int]) -> Property
+prop_shrink_round_trip (ls1, ls2) =
+  let
+    ex = shrinkPairS' shrinkListS' (ls1, ls2)
+    f (Shrunk wasShrunk [x,y]) = Shrunk wasShrunk (x,y)
+    f (Shrunk _ _) = error "invariant violated! shrunk list should have length 2"
+    val = f <$> shrinkListS'' shrinkListS' [ls1, ls2]
+  in
+    val === ex
+
+prop_pairs_round_trip :: Property
+prop_pairs_round_trip = forAllParallelCommands sm $ \pairCmds ->
+  let
+    pairShrunk = QSM.shrinkParallelCommands sm pairCmds
+    listCmds = QSM.fromPair' pairCmds
+    listShrunk = QSM.shrinkNParallelCommands sm listCmds
+    listShrunkPair = QSM.toPairUnsafe' <$> listShrunk
+  in
+    listShrunkPair === pairShrunk
+
+prop_nparallel_subprog :: Property
+prop_nparallel_subprog =
+    forAllShrinkShow (QSM.generateNParallelCommands sm 3) (const []) ppShow $
+      prop_nparallel_subprog'
+
+prop_nparallel_subprog' :: QSM.NParallelCommands (At Cmd) (At Resp) -> Property
+prop_nparallel_subprog' cmds =
+    conjoin [ let shrunk' = refGraph'' shrunk in
+              counterexample (ppShow (SPF cmds shrunk cmds' shrunk')) $
+                shrunk' `isSubGraphOf` cmds'
+            | shrunk <- QSM.shrinkNParallelCommands sm cmds
+            ]
+  where
+    cmds' = refGraph'' cmds
 
 -- A set of valid commands to resulted in an invalid shrink
 buggyShrinkCmds :: QSM.ParallelCommands (At Cmd) (At Resp)
@@ -566,6 +625,33 @@ prop_sequential_model =
   suffix separately
 -------------------------------------------------------------------------------}
 
+checkCorrectModelNParallel :: QSM.NParallelCommands (At Cmd) (At Resp) -> Property
+checkCorrectModelNParallel = \(QSM.ParallelCommands prefix suffixes) ->
+    case runExcept (go prefix suffixes) of
+      Left err -> counterexample err $ property False
+      Right () -> property True
+  where
+    go :: QSM.Commands (At Cmd) (At Resp)
+       -> [[(QSM.Commands (At Cmd) (At Resp))]]
+       -> Except String ()
+    go prefix suffixes = do
+        modelAfterPrefix <- checkCorrectModel' initModel prefix
+        go' modelAfterPrefix suffixes
+
+    go' :: Model Symbolic
+        -> [[(QSM.Commands (At Cmd) (At Resp))]]
+        -> Except String ()
+    go' _ []                        = return ()
+    go' m ([] : suffixes) =
+        go' m suffixes
+    go' m ((headThread : suffix) : suffixes) = do
+        modelAfterHead <- checkCorrectModel' m headThread
+        -- The starting model for the right part is the /initial/ model:
+        -- it should not be affected by the left part
+        _ <- forM_ suffix $ checkCorrectModel' m
+        -- But when we check the /next/ suffix, /both/ parts have been executed
+        go' (foldl (\m' r -> QSM.advanceModel sm m' r) modelAfterHead suffix) suffixes
+
 checkCorrectModelParallel :: QSM.ParallelCommands (At Cmd) (At Resp) -> Property
 checkCorrectModelParallel = \(QSM.ParallelCommands prefix suffixes) ->
     case runExcept (go prefix suffixes) of
@@ -597,3 +683,67 @@ prop_parallel_model =
       conjoin [ checkCorrectModelParallel shrunk
               | shrunk <- QSM.shrinkParallelCommands sm cmds
               ]
+
+prop_nparallel_model :: Int -> Property
+prop_nparallel_model n =
+    forAllShrinkShow (QSM.generateNParallelCommands sm n) (const []) ppShow $ \cmds ->
+      conjoin [ checkCorrectModelNParallel shrunk
+              | shrunk <- QSM.shrinkNParallelCommands sm cmds
+              ]
+
+prop_one_thread :: Int -> Property
+prop_one_thread n = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+      let n' = 1 + (n `mod` 10)
+      (hist, _model, _res) <- runCommands sm cmds
+      let cmdsList = QSM.unCommands cmds
+          (px, sx) = splitAt (div (length cmdsList) 3) cmdsList
+          cmdsChucks = chunksOf n' sx
+          sfxs = (\c -> [c]) . QSM.Commands <$> cmdsChucks
+          nParallelCmd = QSM.ParallelCommands {prefix = QSM.Commands px, suffixes = sfxs}
+      res <- runNParallelCommandsNTimes 1 sm $ nParallelCmd
+      let (hist', _ret) = unzip res
+      let events = snd <$> (QSM.unHistory hist)
+          events' = snd <$> (concat (QSM.unHistory <$> hist'))
+      return $ cmpList equalH events' events
+
+{-------------------------------------------------------------------------------
+  Testing equality between histories of different executions has to be
+  different from the default equality check. This is because different
+  executions will create different references, so we have to check them
+  only by value.
+-------------------------------------------------------------------------------}
+
+type Hist = QSM.HistoryEvent (At Cmd) (At Resp)
+
+equalH :: Hist -> Hist -> Bool
+equalH (QSM.Invocation c sv) (QSM.Invocation c' sv') = equalCmd c c' && sv == sv'
+equalH (QSM.Response r) (QSM.Response r') = equalResp r r'
+equalH (QSM.Exception s) (QSM.Exception s') = s == s'
+equalH _ _ = False
+
+equalCmd :: Cmd :@ Concrete -> Cmd :@ Concrete -> Bool
+equalCmd (At (CreateRef c m n)) (At (CreateRef c' m' n'))
+    = c == c' && m == m' && n == n'
+equalCmd (At (Incr c m vs)) (At (Incr c' m' vs'))
+    = c == c' && m == m' && eqVars vs vs'
+equalCmd (At (Read c m vs)) (At (Read c' m' vs'))
+    = c == c' && m == m' && eqVars vs vs'
+equalCmd _ _ = False
+
+equalResp :: Resp :@ Concrete -> Resp :@ Concrete -> Bool
+equalResp (At (Refs vs)) (At (Refs vs')) = eqVars vs vs'
+equalResp (At (Unit ())) (At (Unit ())) = True
+equalResp (At (Vals ns)) (At (Vals ns')) = ns == ns'
+equalResp _ _ = False
+
+cmpList :: (a -> a -> Bool) -> [a] -> [a] -> Bool
+cmpList _cmp [] [] = True
+cmpList cmp (a : as) (b : bs) =
+  cmp a b && cmpList cmp as bs
+cmpList _ _ _ = False
+
+eqVars :: [Reference IOVar Concrete] -> [Reference IOVar Concrete] -> Bool
+eqVars vs vs' = cmpList equalVar (concrete <$> vs) (concrete <$> vs')
+
+equalVar :: IOVar -> IOVar -> Bool
+equalVar (IOVar s _) (IOVar s' _) = s == s'
