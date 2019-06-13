@@ -403,6 +403,7 @@ prettyParallelCommands cmds =
         = error "prettyParallelCommands: impossible, because `boolean l` was False."
 
       simplify :: Counterexample -> Counterexample
+      simplify (ExistsC [] [])            = BotC
       simplify (ExistsC _ [Fst ce])       = ce
       simplify (ExistsC x (Fst ce : ces)) = ce `EitherC` simplify (ExistsC x ces)
       simplify (ExistsC _ (Snd ce : _))   = simplify ce
