@@ -52,7 +52,9 @@ module Test.StateMachine.Sequential
   where
 
 import           Control.Exception
-                   (SomeException, displayException)
+                   (SomeException, SomeAsyncException (..), displayException,
+                   fromException)
+import           Control.Monad (when)
 import           Control.Monad.Catch
                    (MonadCatch, catch)
 import           Control.Monad.State.Strict
@@ -102,6 +104,7 @@ import           Text.Show.Pretty
 import           UnliftIO
                    (MonadIO, TChan, atomically, liftIO, newTChanIO,
                    tryReadTChan, writeTChan)
+import           UnliftIO.Exception (throwIO)
 
 import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.Labelling
@@ -358,9 +361,10 @@ executeCommands StateMachine {..} hchan pid check =
         _                 -> do
           let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
           atomically (writeTChan hchan (pid, Invocation ccmd (S.fromList vars)))
-          !ecresp <- lift (fmap Right (semantics ccmd))
-                       `catch` (\(err :: SomeException) ->
-                                   return (Left (displayException err)))
+          !ecresp <- lift $ (fmap Right (semantics ccmd)) `catch`
+                            \(err :: SomeException) -> do
+                              when (isSomeAsyncException err) (liftIO (putStrLn $ displayException err) >> throwIO err)
+                              return (Left (displayException err))
           case ecresp of
             Left err    -> do
               atomically (writeTChan hchan (pid, Exception err))
@@ -386,6 +390,11 @@ executeCommands StateMachine {..} hchan pid check =
                                                , transition cmodel ccmd cresp
                                                )
                                            go cmds
+
+    isSomeAsyncException :: SomeException -> Bool
+    isSomeAsyncException se = case fromException se of
+      Just (SomeAsyncException _) -> True
+      _                           -> False
 
     mockSemanticsMismatchError :: String -> String -> String -> String -> String
     mockSemanticsMismatchError cmd svars cresp cvars = unlines
