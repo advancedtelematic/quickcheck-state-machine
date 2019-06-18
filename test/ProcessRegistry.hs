@@ -213,7 +213,7 @@ data Action_
   | BadUnregister_
   | WhereIs_
   | Exit_
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 constructor :: Action r -> Action_
 constructor act = case act of
