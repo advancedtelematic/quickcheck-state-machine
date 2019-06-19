@@ -13,6 +13,7 @@ module MemoryReference
   ( prop_sequential
   , prop_runSavedCommands
   , prop_parallel
+  , prop_parallel'
   , prop_precondition
   , prop_existsCommands
   , Bug(..)
@@ -28,11 +29,9 @@ import           Data.IORef
                    writeIORef)
 import           GHC.Generics
                    (Generic, Generic1)
-import           Prelude                       hiding
-                   (elem)
-import qualified Prelude
+import           Prelude
 import           System.Random
-                   (randomRIO)
+                   (randomIO, randomRIO)
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
                    once, shrink, (===))
@@ -114,20 +113,38 @@ data Bug
   = None
   | Logic
   | Race
+  | Crash
+  | CrashAndLogic
   deriving Eq
 
 semantics :: Bug -> Command Concrete -> IO (Response Concrete)
 semantics bug cmd = case cmd of
   Create        -> Created     <$> (reference . Opaque <$> newIORef 0)
   Read ref      -> ReadValue   <$> readIORef  (opaque ref)
-  Write ref i   -> Written     <$  writeIORef (opaque ref) i'
-    where
-    -- One of the problems is a bug that writes a wrong value to the
-    -- reference.
-      i' | i `Prelude.elem` [5..10] = if bug == Logic then i + 1 else i
-         | otherwise                = i
+  Write ref i   ->
+    case bug of
+
+      -- One of the problems is a bug that writes a wrong value to the
+      -- reference.
+      Logic | i `elem` [5..10] -> Written <$ writeIORef (opaque ref) (i + 1)
+
+      -- There's also the possibility that the program gets killed or crashes.
+      Crash -> do
+        bool <- randomIO
+        if bool
+        then do
+          error "Crash before writing!"
+          -- Written <$ writeIORef (opaque ref) i
+        else do
+          writeIORef (opaque ref) i
+          error "Crash after writing!"
+      CrashAndLogic -> do
+        writeIORef (opaque ref) (i + 1)
+        error "Crash after writing!"
+
+      _otherwise -> Written <$ writeIORef (opaque ref) i
   Increment ref -> do
-    -- The other problem is that we introduce a possible race condition
+    -- Another problem is that we introduce a possible race condition
     -- when incrementing.
     if bug == Race
     then do
@@ -186,6 +203,18 @@ prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
   prettyParallelCommands cmds =<< runParallelCommands sm' cmds
     where
       sm' = sm bug
+
+prop_parallel' :: Bug -> Property
+prop_parallel' bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
+  prettyParallelCommands cmds =<< runParallelCommands' sm' complete cmds
+    where
+      sm' = sm bug
+      complete :: Command Concrete -> Response Concrete
+      complete Create       = Created (error "This reference will never be used.")
+
+      complete Read {}      = ReadValue 0 -- Doesn't matter what value we read.
+      complete Write {}     = Written
+      complete Increment {} = Incremented
 
 prop_precondition :: Property
 prop_precondition = once $ monadicIO $ do

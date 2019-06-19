@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 -----------------------------------------------------------------------------
@@ -23,9 +24,12 @@ module Test.StateMachine.Types.History
   , Operation(..)
   , makeOperations
   , interleavings
+  , completeHistory
   )
   where
 
+import           Data.List
+                   ((\\))
 import           Data.Set
                    (Set)
 import           Data.Tree
@@ -86,6 +90,8 @@ data Operation cmd resp
 deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
   Show (Operation cmd resp)
 
+-- | Given a sequential history, group invocation and response events into
+--   operations.
 makeOperations :: History' cmd resp -> [Operation cmd resp]
 makeOperations [] = []
 makeOperations [(pid1, Invocation cmd _), (pid2, Exception err)]
@@ -96,9 +102,9 @@ makeOperations ((pid1, Invocation cmd _) : (pid2, Response resp) : hist)
   | otherwise    = error "makeOperations: impossible, pid mismatch."
 makeOperations _ = error "makeOperations: impossible."
 
--- | Given a history, return all possible interleavings of invocations
+-- | Given a parallel history, return all possible interleavings of invocations
 --   and corresponding response events.
-interleavings :: [(Pid, HistoryEvent cmd resp)] -> Forest (Operation cmd resp)
+interleavings :: History' cmd resp -> Forest (Operation cmd resp)
 interleavings [] = []
 interleavings es =
   [ Node (Operation cmd resp pid) (interleavings es')
@@ -113,3 +119,28 @@ interleavings es =
     filter1 _ []                   = []
     filter1 p (x : xs) | p x       = x : filter1 p xs
                        | otherwise = xs
+
+------------------------------------------------------------------------
+
+crashingInvocations :: History' cmd resp -> History' cmd resp
+crashingInvocations = go [] [] . reverse
+  where
+    go :: [Pid] -> History' cmd resp -> History' cmd resp -> History' cmd resp
+    go _crashedPids crashedInvs [] = reverse crashedInvs
+    go  crashedPids crashedInvs ((pid, Exception _err) : es)
+      | pid `elem` crashedPids = error "impossible, a process cannot crash more than once."
+      | otherwise              = go (pid : crashedPids) crashedInvs es
+    go crashedPids crashedInvs (e@(pid, Invocation {}) : es)
+      | pid `elem` crashedPids = go (crashedPids \\ [pid]) (e : crashedInvs) es
+      | otherwise              = go crashedPids crashedInvs es
+    go crashedPids crashedInvs ((_pid, Response {}) : es) =
+      go crashedPids crashedInvs es
+
+completeHistory :: (cmd Concrete -> resp Concrete) -> History cmd resp
+                -> History cmd resp
+completeHistory complete hist = History (hist' ++ resps)
+  where
+    hist' = unHistory hist
+    resps = [ (pid, Response (complete cmd))
+            | (pid, Invocation cmd _vars) <- crashingInvocations hist'
+            ]

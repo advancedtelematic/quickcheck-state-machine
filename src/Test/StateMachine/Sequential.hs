@@ -36,6 +36,7 @@ module Test.StateMachine.Sequential
   , initValidateEnv
   , runCommands
   , getChanContents
+  , Check(..)
   , executeCommands
   , prettyPrintHistory
   , prettyPrintHistory'
@@ -327,7 +328,7 @@ runCommands sm@StateMachine { initModel } = run . go
     go cmds = do
       hchan <- newTChanIO
       (reason, (_, _, _, model)) <- runStateT
-        (executeCommands sm hchan (Pid 0) True cmds)
+        (executeCommands sm hchan (Pid 0) CheckEverything cmds)
         (emptyEnvironment, initModel, newCounter, initModel)
       hist <- getChanContents hchan
       return (History hist, model, reason)
@@ -341,13 +342,18 @@ getChanContents chan = reverse <$> atomically (go' [])
         Just x  -> go' (x : acc)
         Nothing -> return acc
 
+data Check
+  = CheckPrecondition
+  | CheckEverything
+  | CheckNothing
+
 executeCommands :: (Show (cmd Concrete), Show (resp Concrete))
                 => (Rank2.Traversable cmd, Rank2.Foldable resp)
                 => (MonadCatch m, MonadIO m)
                 => StateMachine model cmd m resp
                 -> TChan (Pid, HistoryEvent cmd resp)
                 -> Pid
-                -> Bool -- ^ Check invariant and post-condition?
+                -> Check
                 -> Commands cmd resp
                 -> StateT (Environment, model Symbolic, Counter, model Concrete) m Reason
 executeCommands StateMachine {..} hchan pid check =
@@ -357,8 +363,9 @@ executeCommands StateMachine {..} hchan pid check =
     go (Command scmd _ vars : cmds) = do
       (env, smodel, counter, cmodel) <- get
       case (check, logic (precondition smodel scmd)) of
-        (True, VFalse ce) -> return (PreconditionFailed (show ce))
-        _                 -> do
+        (CheckPrecondition, VFalse ce) -> return (PreconditionFailed (show ce))
+        (CheckEverything,   VFalse ce) -> return (PreconditionFailed (show ce))
+        _otherwise                    -> do
           let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
           atomically (writeTChan hchan (pid, Invocation ccmd (S.fromList vars)))
           !ecresp <- lift $ (fmap Right (semantics ccmd)) `catch`
@@ -379,17 +386,18 @@ executeCommands StateMachine {..} hchan pid check =
               else do
                 atomically (writeTChan hchan (pid, Response cresp))
                 case (check, logic (postcondition cmodel ccmd cresp)) of
-                  (True, VFalse ce) -> return (PostconditionFailed (show ce))
-                  _                 -> case (check, logic (fromMaybe (const Top) invariant cmodel)) of
-                                         (True, VFalse ce') -> return (InvariantBroken (show ce'))
-                                         _                  -> do
-                                           let (sresp, counter') = runGenSym (mock smodel scmd) counter
-                                           put ( insertConcretes vars cvars env
-                                               , transition smodel scmd sresp
-                                               , counter'
-                                               , transition cmodel ccmd cresp
-                                               )
-                                           go cmds
+                  (CheckEverything, VFalse ce) -> return (PostconditionFailed (show ce))
+                  _otherwise ->
+                    case (check, logic (fromMaybe (const Top) invariant cmodel)) of
+                      (CheckEverything, VFalse ce') -> return (InvariantBroken (show ce'))
+                      _otherwise                    -> do
+                        let (sresp, counter') = runGenSym (mock smodel scmd) counter
+                        put ( insertConcretes vars cvars env
+                            , transition smodel scmd sresp
+                            , counter'
+                            , transition cmodel ccmd cresp
+                            )
+                        go cmds
 
     isSomeAsyncException :: SomeException -> Bool
     isSomeAsyncException se = case fromException se of

@@ -24,7 +24,9 @@ module Test.StateMachine.Parallel
   , shrinkParallelCommands
   , shrinkAndValidateParallel
   , runParallelCommands
+  , runParallelCommands'
   , runParallelCommandsNTimes
+  , runParallelCommandsNTimes'
   , executeParallelCommands
   , linearise
   , toBoxDrawings
@@ -35,7 +37,7 @@ module Test.StateMachine.Parallel
 import           Control.Arrow
                    ((***))
 import           Control.Monad
-                   (foldM, replicateM)
+                   (replicateM)
 import           Control.Monad.Catch
                    (MonadCatch)
 import           Control.Monad.State.Strict
@@ -54,7 +56,8 @@ import           Data.Tree
                    (Tree(Node))
 import           Prelude
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, property, sized, forAllShrinkShow)
+                   (Gen, Property, Testable, choose, forAllShrinkShow,
+                   property, sized)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Text.PrettyPrint.ANSI.Leijen
@@ -306,6 +309,15 @@ runParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                     -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommands sm = runParallelCommandsNTimes 10 sm
 
+runParallelCommands' :: (Show (cmd Concrete), Show (resp Concrete))
+                     => (Rank2.Traversable cmd, Rank2.Foldable resp)
+                     => (MonadCatch m, MonadUnliftIO m)
+                     => StateMachine model cmd m resp
+                     -> (cmd Concrete -> resp Concrete)
+                     -> ParallelCommands cmd resp
+                     -> PropertyM m [(History cmd resp, Logic)]
+runParallelCommands' sm = runParallelCommandsNTimes' 10 sm
+
 runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           => (Rank2.Traversable cmd, Rank2.Foldable resp)
                           => (MonadCatch m, MonadUnliftIO m)
@@ -315,48 +327,99 @@ runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommandsNTimes n sm cmds =
   replicateM n $ do
-    (hist, _reason) <- run (executeParallelCommands sm cmds)
+    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds)
     return (hist, linearise sm hist)
+
+runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
+                           => (Rank2.Traversable cmd, Rank2.Foldable resp)
+                           => (MonadCatch m, MonadUnliftIO m)
+                           => Int -- ^ How many times to execute the parallel program.
+                           -> StateMachine model cmd m resp
+                           -> (cmd Concrete -> resp Concrete)
+                           -> ParallelCommands cmd resp
+                           -> PropertyM m [(History cmd resp, Logic)]
+runParallelCommandsNTimes' n sm complete cmds =
+  replicateM n $ do
+    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds)
+    let hist' = completeHistory complete hist
+    return (hist', linearise sm hist')
 
 executeParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                         => (Rank2.Traversable cmd, Rank2.Foldable resp)
                         => (MonadCatch m, MonadUnliftIO m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd resp
-                        -> m (History cmd resp, Reason)
+                        -> m (History cmd resp, Reason, Reason)
 executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) = do
 
   hchan <- newTChanIO
 
   (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
-    (executeCommands sm hchan (Pid 0) True prefix)
+    (executeCommands sm hchan (Pid 0) CheckEverything prefix)
     (emptyEnvironment, initModel, newCounter, initModel)
 
   if reason0 /= Ok
   then do
     hist <- getChanContents hchan
-    return (History hist, reason0)
+    return (History hist, reason0, reason0)
   else do
-    (reason, _) <- foldM (go hchan) (reason0, env0) suffixes
+    (reason1, reason2, _) <- go hchan (Ok, Ok, env0) suffixes
     hist <- getChanContents hchan
-    return (History hist, reason)
+    return (History hist, reason1, reason2)
   where
-    go hchan (_, env) (Pair cmds1 cmds2) = do
+    go _hchan (res1, res2, env) []                         = return (res1, res2, env)
+    go hchan  (Ok,   Ok,   env) (Pair cmds1 cmds2 : pairs) = do
+
       ((reason1, (env1, _, _, _)), (reason2, (env2, _, _, _))) <- concurrently
 
         -- XXX: Post-conditions not checked, so we can pass in initModel here...
-        -- It would be better if we made executeCommands take a Maybe model
-        -- instead of the boolean...
+        -- It would be better if we made executeCommands take a Maybe Environment
+        -- instead of the Check...
 
-        (runStateT (executeCommands sm hchan (Pid 1) False cmds1) (env, initModel, newCounter, initModel))
-        (runStateT (executeCommands sm hchan (Pid 2) False cmds2) (env, initModel, newCounter, initModel))
-      return ( reason1 `combineReason` reason2
-             , env1 <> env2
-             )
-      where
-        combineReason :: Reason -> Reason -> Reason
-        combineReason Ok r2 = r2
-        combineReason r1 _  = r1
+        (runStateT (executeCommands sm hchan (Pid 1) CheckNothing cmds1) (env, initModel, newCounter, initModel))
+        (runStateT (executeCommands sm hchan (Pid 2) CheckNothing cmds2) (env, initModel, newCounter, initModel))
+      go hchan ( reason1
+               , reason2
+               , env1 <> env2
+               ) pairs
+    go hchan (Ok, ExceptionThrown, env) (Pair cmds1 _cmds2 : pairs) = do
+
+      -- XXX: It's possible that pre-conditions fail at this point, because
+      -- commands may depend on references that never got created in the crashed
+      -- process. For example, consider:
+      --
+      --          x <- Create
+      --    ------------+----------
+      --    Write 1 x   | Write 2 x
+      --    y <- Create |
+      --    ------------+----------
+      --    Write 3 x   | Write 4 y
+      --                | Read x
+      --
+      -- If the @Write 1 x@ fails, @y@ will never be created and the
+      -- pre-condition for @Write 4 y@ will fail. This also means that @Read x@
+      -- will never get executed, and so there could be a bug in @Write@ that
+      -- never gets discovered. Not sure if we can do something better here?
+      --
+      (reason1, (env1, _, _, _)) <- runStateT (executeCommands sm hchan (Pid 1) CheckPrecondition cmds1)
+                                              (env, initModel, newCounter, initModel)
+      go hchan ( reason1
+               , ExceptionThrown
+               , env1
+               ) pairs
+    go hchan (ExceptionThrown, Ok, env) (Pair _cmds1 cmds2 : pairs) = do
+
+      (reason2, (env2, _, _, _)) <- runStateT (executeCommands sm hchan (Pid 2) CheckPrecondition cmds2)
+                                              (env, initModel, newCounter, initModel)
+      go hchan ( ExceptionThrown
+               , reason2
+               , env2
+               ) pairs
+    go _hchan out@(ExceptionThrown,       ExceptionThrown,       _env) (_ : _) = return out
+    go _hchan out@(PreconditionFailed {}, ExceptionThrown,       _env) (_ : _) = return out
+    go _hchan out@(ExceptionThrown,       PreconditionFailed {}, _env) (_ : _) = return out
+    go _hchan (res1, res2, _env) (Pair _cmds1 _cmds2 : _pairs) =
+      error ("executeParallelCommands, unexpected result: " ++ show (res1, res2))
 
 ------------------------------------------------------------------------
 

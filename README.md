@@ -66,8 +66,8 @@ semantics bug cmd = case cmd of
     where
     -- One of the problems is a bug that writes a wrong value to the
     -- reference.
-      i' | i `elem` [5..10] = if bug == Logic then i + 1 else i
-         | otherwise        = i
+      i' | bug == Logic && i `elem` [5..10] = i + 1
+         | otherwise                        = i
   Increment ref -> do
     -- The other problem is that we introduce a possible race condition
     -- when incrementing.
