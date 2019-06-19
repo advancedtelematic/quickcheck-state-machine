@@ -29,6 +29,7 @@ module Test.StateMachine.Markov
   , coverMarkov
   , tabulateMarkov
   , transitionMatrix
+  , stimulusMatrix
   , historyObservations
   , markovToDot
   , markovToPs
@@ -271,6 +272,51 @@ transitionMatrix markov = enumMatrix go
     availableStates :: Map state (Map state Double)
     availableStates
       = fmap (Map.fromList . map (to &&& (/ 100) . probability))
+      . unMarkov
+      $ markov
+
+enumMatrix'
+  :: forall state cmd a
+   . (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+  => (Generic cmd,   GEnum FiniteEnum (Rep cmd),   GBounded (Rep cmd))
+  => ((state, cmd) -> a)
+  -> Matrix a
+enumMatrix' f = matrix m n (f . bimap g h)
+  where
+    g :: Int -> state
+    g = gtoFiniteEnum . pred -- We need the predecessor because 'matrix' starts
+                             -- indexing from 1.
+
+    h :: Int -> cmd
+    h = gtoFiniteEnum . pred
+
+    m :: Int
+    m = length states
+
+    n :: Int
+    n = length cmds
+
+    states :: [state]
+    states = gfiniteEnumFromTo gminBound gmaxBound
+
+    cmds :: [cmd]
+    cmds = gfiniteEnumFromTo gminBound gmaxBound
+
+stimulusMatrix
+  :: forall state cmd. (Ord state, Ord cmd)
+  => (Generic state, GEnum FiniteEnum (Rep state), GBounded (Rep state))
+  => (Generic cmd,   GEnum FiniteEnum (Rep cmd),   GBounded (Rep cmd))
+  => Markov state cmd Double
+  -> Matrix Double
+stimulusMatrix markov = enumMatrix' go
+  where
+    go :: (state, cmd) -> Double
+    go (state, cmd) = fromMaybe 0
+      (Map.lookup cmd =<< Map.lookup state availableCmds)
+
+    availableCmds :: Map state (Map cmd Double)
+    availableCmds
+      = fmap (Map.fromList . map (command &&& (/ 100) . probability))
       . unMarkov
       $ markov
 
