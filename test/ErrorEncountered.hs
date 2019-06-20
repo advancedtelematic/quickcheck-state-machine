@@ -6,6 +6,7 @@
 
 module ErrorEncountered
   ( prop_error_sequential
+  , prop_error_nparallel
   , prop_error_parallel
   )
   where
@@ -147,3 +148,7 @@ prop_error_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
 prop_error_parallel :: Property
 prop_error_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $ do
   prettyParallelCommands cmds =<< runParallelCommands sm cmds
+
+prop_error_nparallel :: Int -> Property
+prop_error_nparallel np = forAllNParallelCommands sm np $ \cmds -> monadicIO $ do
+  prettyNParallelCommands cmds =<< runNParallelCommands sm cmds

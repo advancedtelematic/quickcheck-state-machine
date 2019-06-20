@@ -21,6 +21,7 @@
 module Echo
   ( mkEnv
   , prop_echoOK
+  , prop_echoNParallelOK
   , prop_echoParallelOK
   )
   where
@@ -87,6 +88,14 @@ prop_echoParallelOK problem = forAllParallelCommands smUnused $ \cmds -> monadic
     let n | problem   = 2
           | otherwise = 1
     prettyParallelCommands cmds =<< runParallelCommandsNTimes n echoSM' cmds
+
+prop_echoNParallelOK :: Int -> Bool -> Property
+prop_echoNParallelOK np problem = forAllNParallelCommands smUnused np $ \cmds -> monadicIO $ do
+    env <- liftIO $ mkEnv
+    let echoSM' = echoSM env
+    let n | problem   = 2
+          | otherwise = 1
+    prettyNParallelCommands cmds =<< runNParallelCommandsNTimes n echoSM' cmds
 
 smUnused :: StateMachine Model Action IO Response
 smUnused = echoSM $ error "used env during command generation"
