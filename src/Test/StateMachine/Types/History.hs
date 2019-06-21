@@ -52,7 +52,7 @@ deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
 type History' cmd resp = [(Pid, HistoryEvent cmd resp)]
 
 newtype Pid = Pid { unPid :: Int }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 data HistoryEvent cmd resp
   = Invocation !(cmd  Concrete) !(Set Var)

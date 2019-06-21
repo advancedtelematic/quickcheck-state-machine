@@ -219,14 +219,14 @@ prop_ticketDispenserParallel se =
   forAllParallelCommands (smUnused se) $ \cmds -> monadicIO $
     withDbLock $ \ioLock -> do
       let sm' = sm se ioLock
-      prettyParallelCommands cmds =<< runParallelCommandsNTimes 100 sm' cmds
+      prettyParallelCommands cmds Nothing =<< runParallelCommandsNTimes 100 sm' cmds
 
 prop_ticketDispenserNParallel :: SharedExclusive -> Int -> Property
 prop_ticketDispenserNParallel se np =
   forAllNParallelCommands (smUnused se) np $ \cmds -> monadicIO $
     withDbLock $ \ioLock -> do
       let sm' = sm se ioLock
-      prettyNParallelCommands cmds =<< runNParallelCommands sm' cmds
+      prettyNParallelCommands cmds Nothing =<< runNParallelCommands sm' cmds
 
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.

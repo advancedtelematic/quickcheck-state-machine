@@ -211,13 +211,13 @@ prop_runSavedCommands bug fp = monadicIO $ do
 
 prop_parallel :: Bug -> Property
 prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
-  prettyParallelCommands cmds =<< runParallelCommands sm' cmds
+  prettyParallelCommands cmds Nothing =<< runParallelCommands sm' cmds
     where
       sm' = sm bug
 
 prop_parallel' :: Bug -> Property
 prop_parallel' bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
-  prettyParallelCommands cmds =<< runParallelCommands' sm' complete cmds
+  prettyParallelCommands cmds Nothing =<< runParallelCommands' sm' complete cmds
     where
       sm' = sm bug
       complete :: Command Concrete -> Response Concrete
@@ -229,7 +229,7 @@ prop_parallel' bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
 
 prop_nparallel :: Bug -> Int -> Property
 prop_nparallel bug np = forAllNParallelCommands sm' np $ \cmds -> monadicIO $ do
-  prettyNParallelCommands cmds =<< runNParallelCommands sm' cmds
+  prettyNParallelCommands cmds Nothing =<< runNParallelCommands sm' cmds
     where
       sm' = sm bug
 

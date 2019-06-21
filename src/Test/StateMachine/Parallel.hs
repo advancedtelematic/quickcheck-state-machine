@@ -77,6 +77,7 @@ import           UnliftIO
                    forConcurrently, newTChanIO)
 
 import           Test.StateMachine.BoxDrawer
+import           Test.StateMachine.DotDrawing
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
@@ -662,16 +663,20 @@ exists' xs p = exists xs p
 prettyParallelCommands :: (MonadIO m, Rank2.Foldable cmd)
                        => (Show (cmd Concrete), Show (resp Concrete))
                        => ParallelCommands cmd resp
+                       -> Maybe GraphOptions
                        -> [(History cmd resp, Logic)] -- ^ Output of 'runParallelCommands'.
                        -> PropertyM m ()
-prettyParallelCommands cmds =
-  mapM_ (\(hist, l) -> printCounterexample hist (logic l) `whenFailM` property (boolean l))
+prettyParallelCommands cmds mGraphOptions hist =
+  mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
     where
-      printCounterexample hist  (VFalse ce) = do
-        print (toBoxDrawings cmds hist)
+      printCounterexample hist' (VFalse ce) = do
+        print (toBoxDrawings cmds hist')
         putStrLn ""
         print (simplify ce)
         putStrLn ""
+        case mGraphOptions of
+          Nothing -> return ()
+          Just gOptions -> createAndPrintDot cmds gOptions hist'
       printCounterexample _hist _
         = error "prettyParallelCommands: impossible, because `boolean l` was False."
 
@@ -685,19 +690,25 @@ simplify _                          = error "simplify: impossible,\
 
 -- | Takes the output of parallel program runs and pretty prints a
 --   counterexample if any of the runs fail.
-prettyNParallelCommands :: (MonadIO m)
+prettyNParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
+                        => MonadIO m
+                        => Rank2.Foldable cmd
                         => NParallelCommands cmd resp
+                        -> Maybe GraphOptions
                         -> [(History cmd resp, Logic)] -- ^ Output of 'runNParallelCommands'.
                         -> PropertyM m ()
-prettyNParallelCommands _cmds =
-  mapM_ (\(hist, l) -> printCounterexample hist (logic l) `whenFailM` property (boolean l))
+prettyNParallelCommands cmds mGraphOptions hist = do
+  mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
     where
-      printCounterexample _hist  (VFalse ce) = do
+      printCounterexample hist' (VFalse ce) = do
         putStrLn ""
         print (simplify ce)
         putStrLn ""
+        case mGraphOptions of
+          Nothing -> return ()
+          Just gOptions -> createAndPrintDot cmds gOptions hist'
       printCounterexample _hist _
-        = error "prettyParallelCommands: impossible, because `boolean l` was False."
+        = error "prettyNParallelCommands: impossible, because `boolean l` was False."
 
 
 -- | Draw an ASCII diagram of the history of a parallel program. Useful for
@@ -733,6 +744,33 @@ toBoxDrawings (ParallelCommands prefix suffixes) = toBoxDrawings'' allVars
 
         evT :: [(EventType, Pid)]
         evT = toEventType (filter (\e -> fst e `Prelude.elem` map Pid [1, 2]) h)
+
+createAndPrintDot :: forall cmd resp t. Foldable t => Rank2.Foldable cmd
+                  => (Show (cmd Concrete), Show (resp Concrete))
+                  => ParallelCommandsF t cmd resp
+                  -> GraphOptions
+                  -> History cmd resp
+                  -> IO ()
+createAndPrintDot (ParallelCommands prefix suffixes) gOptions = toDotGraph allVars
+  where
+    allVars = getAllUsedVars prefix `S.union`
+                foldMap (foldMap getAllUsedVars) suffixes
+
+    toDotGraph :: Set Var -> History cmd resp -> IO ()
+    toDotGraph knownVars (History h) = printDotGraph gOptions $ (fmap out) <$> (Rose (snd <$> prefixMessages) groupByPid)
+      where
+        (prefixMessages, h') = partition (\e -> fst e == Pid 0) h
+        alterF a Nothing = Just [a]
+        alterF a (Just ls) = Just $ a : ls
+        groupByPid = foldr (\(p,e) m -> Map.alter (alterF e) p m) Map.empty h'
+
+        out :: HistoryEvent cmd resp -> String
+        out (Invocation cmd vars)
+          | vars `S.isSubsetOf` knownVars = show (S.toList vars) ++ " ← " ++ show cmd
+          | otherwise                     = show cmd
+        out (Response resp) = " → " ++ show resp
+        out (Exception err) = " → " ++ err
+
 
 getAllUsedVars :: Rank2.Foldable cmd => Commands cmd resp -> Set Var
 getAllUsedVars = S.fromList . foldMap (\(Command cmd _ _) -> getUsedVars cmd) . unCommands
