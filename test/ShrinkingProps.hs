@@ -378,11 +378,11 @@ prop_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
 
 prop_parallel :: Property
 prop_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $
-    prettyParallelCommands cmds Nothing =<< runParallelCommands sm cmds
+    prettyParallelCommands cmds =<< runParallelCommands sm cmds
 
 prop_3parallel :: Property
 prop_3parallel = forAllNParallelCommands sm 3 $ \cmds -> monadicIO $
-  prettyNParallelCommands cmds Nothing =<< runNParallelCommands sm cmds
+  prettyNParallelCommands cmds =<< runNParallelCommands sm cmds
 
 {-------------------------------------------------------------------------------
   Test that shrinking does not mess up references

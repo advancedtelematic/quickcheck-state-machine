@@ -39,6 +39,8 @@ module Test.StateMachine.Parallel
   , toBoxDrawings
   , prettyNParallelCommands
   , prettyParallelCommands
+  , prettyParallelCommandsWithOpts
+  , prettyNParallelCommandsWithOpts
   , advanceModel
   ) where
 
@@ -660,13 +662,13 @@ exists' xs p = exists xs p
 
 -- | Takes the output of parallel program runs and pretty prints a
 --   counterexample if any of the runs fail.
-prettyParallelCommands :: (MonadIO m, Rank2.Foldable cmd)
-                       => (Show (cmd Concrete), Show (resp Concrete))
-                       => ParallelCommands cmd resp
-                       -> Maybe GraphOptions
-                       -> [(History cmd resp, Logic)] -- ^ Output of 'runParallelCommands'.
-                       -> PropertyM m ()
-prettyParallelCommands cmds mGraphOptions hist =
+prettyParallelCommandsWithOpts :: (MonadIO m, Rank2.Foldable cmd)
+                              => (Show (cmd Concrete), Show (resp Concrete))
+                              => ParallelCommands cmd resp
+                              -> Maybe GraphOptions
+                              -> [(History cmd resp, Logic)] -- ^ Output of 'runParallelCommands'.
+                              -> PropertyM m ()
+prettyParallelCommandsWithOpts cmds mGraphOptions hist =
   mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
     where
       printCounterexample hist' (VFalse ce) = do
@@ -688,16 +690,24 @@ simplify (ExistsC _ (Snd ce : _))   = simplify ce
 simplify _                          = error "simplify: impossible,\
                                             \ because of the structure of linearise."
 
+prettyParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
+                       => MonadIO m
+                       => Rank2.Foldable cmd
+                       => ParallelCommands cmd resp
+                       -> [(History cmd resp, Logic)] -- ^ Output of 'runNParallelCommands'.
+                       -> PropertyM m ()
+prettyParallelCommands cmds = prettyParallelCommandsWithOpts cmds Nothing
+
 -- | Takes the output of parallel program runs and pretty prints a
 --   counterexample if any of the runs fail.
-prettyNParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
-                        => MonadIO m
-                        => Rank2.Foldable cmd
-                        => NParallelCommands cmd resp
-                        -> Maybe GraphOptions
-                        -> [(History cmd resp, Logic)] -- ^ Output of 'runNParallelCommands'.
-                        -> PropertyM m ()
-prettyNParallelCommands cmds mGraphOptions hist = do
+prettyNParallelCommandsWithOpts :: (Show (cmd Concrete), Show (resp Concrete))
+                                => MonadIO m
+                                => Rank2.Foldable cmd
+                                => NParallelCommands cmd resp
+                                -> Maybe GraphOptions
+                                -> [(History cmd resp, Logic)] -- ^ Output of 'runNParallelCommands'.
+                                -> PropertyM m ()
+prettyNParallelCommandsWithOpts cmds mGraphOptions hist = do
   mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
     where
       printCounterexample hist' (VFalse ce) = do
@@ -710,6 +720,13 @@ prettyNParallelCommands cmds mGraphOptions hist = do
       printCounterexample _hist _
         = error "prettyNParallelCommands: impossible, because `boolean l` was False."
 
+prettyNParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
+                        => MonadIO m
+                        => Rank2.Foldable cmd
+                        => NParallelCommands cmd resp
+                        -> [(History cmd resp, Logic)] -- ^ Output of 'runNParallelCommands'.
+                        -> PropertyM m ()
+prettyNParallelCommands cmds = prettyNParallelCommandsWithOpts cmds Nothing
 
 -- | Draw an ASCII diagram of the history of a parallel program. Useful for
 --   seeing how a race condition might have occured.

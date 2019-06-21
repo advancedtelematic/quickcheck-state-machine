@@ -87,7 +87,7 @@ prop_echoParallelOK problem = forAllParallelCommands smUnused $ \cmds -> monadic
     let echoSM' = echoSM env
     let n | problem   = 2
           | otherwise = 1
-    prettyParallelCommands cmds Nothing =<< runParallelCommandsNTimes n echoSM' cmds
+    prettyParallelCommands cmds =<< runParallelCommandsNTimes n echoSM' cmds
 
 prop_echoNParallelOK :: Int -> Bool -> Property
 prop_echoNParallelOK np problem = forAllNParallelCommands smUnused np $ \cmds -> monadicIO $ do
@@ -95,7 +95,7 @@ prop_echoNParallelOK np problem = forAllNParallelCommands smUnused np $ \cmds ->
     let echoSM' = echoSM env
     let n | problem   = 2
           | otherwise = 1
-    prettyNParallelCommands cmds Nothing =<< runNParallelCommandsNTimes n echoSM' cmds
+    prettyNParallelCommands cmds =<< runNParallelCommandsNTimes n echoSM' cmds
 
 smUnused :: StateMachine Model Action IO Response
 smUnused = echoSM $ error "used env during command generation"
