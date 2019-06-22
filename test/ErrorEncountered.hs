@@ -140,7 +140,7 @@ sm = StateMachine initModel transition precondition postcondition
          Nothing generator shrinker semantics mock
 
 prop_error_sequential :: Property
-prop_error_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+prop_error_sequential = forAllCommands sm Nothing $ \cmds -> do
   (hist, _model, res) <- runCommands sm cmds
   prettyCommands sm hist (checkCommandNames cmds (res === Ok))
 

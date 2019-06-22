@@ -286,7 +286,7 @@ sm version bugs = StateMachine
 -- | Property parameterized by spec version and bugs.
 prepropcircularBuffer :: Version -> Bugs -> Property
 prepropcircularBuffer version bugs =
-  forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
+  forAllCommands sm' Nothing $ \cmds -> do
     (hist, _, res) <- runCommands sm' cmds
     prettyCommands sm' hist $
       checkCommandNames cmds (res === Ok)

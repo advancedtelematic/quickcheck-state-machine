@@ -559,14 +559,14 @@ printLabelledExamples = showLabelledExamples sm tag
 ------------------------------------------------------------------------
 
 prop_processRegistry :: StatsDb IO -> Property
-prop_processRegistry sdb = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
+prop_processRegistry sdb = forAllCommands sm (Just 100000) $ \cmds -> do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm cmds
 
   let observed = historyObservations sm markov partition constructor hist
       reqs     = tag (execCmds sm cmds)
 
-  persistStats sdb observed
+  -- persistStats sdb observed
 
   prettyCommands' sm tag cmds hist
     $ tabulate "_Requirements" (map show reqs)

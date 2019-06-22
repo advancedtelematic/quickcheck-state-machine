@@ -223,6 +223,6 @@ sm = StateMachine initModel transition precondition postcondition
 
 prop_unionFindSequential :: Property
 prop_unionFindSequential =
-  forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+  forAllCommands sm Nothing $ \cmds -> do
     (hist, _model, res) <- runCommands sm cmds
     prettyCommands sm hist (checkCommandNames cmds (res === Ok))

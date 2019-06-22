@@ -35,9 +35,9 @@ import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
                    (Gen, Property, arbitrary, elements, frequency,
-                   once, shrink, (===))
+                   ioProperty, once, shrink, (===))
 import           Test.QuickCheck.Monadic
-                   (monadicIO)
+                   (monadic, monadicIO)
 
 import           Test.StateMachine
 import           Test.StateMachine.Types
@@ -46,6 +46,7 @@ import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types       as Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Z
+import           Control.Monad.Trans.State.Lazy
 
 ------------------------------------------------------------------------
 
@@ -169,7 +170,7 @@ sm bug = StateMachine initModel transition precondition postcondition
            Nothing generator shrinker (semantics bug) mock
 
 prop_sequential :: Bug -> Property
-prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
+prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> do
   (hist, _model, res) <- runCommands sm' cmds
   prettyCommands sm' hist (saveCommands "/tmp" cmds
                              (checkCommandNames cmds (res === Ok)))
@@ -177,7 +178,7 @@ prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
       sm' = sm bug
 
 prop_runSavedCommands :: Bug -> FilePath -> Property
-prop_runSavedCommands bug fp = monadicIO $ do
+prop_runSavedCommands bug fp =  monadic (ioProperty . flip evalStateT Nothing) $ do
   (_cmds, hist, _model, res) <- runSavedCommands (sm bug) fp
   prettyCommands (sm bug) hist (res === Ok)
 
@@ -188,7 +189,7 @@ prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
       sm' = sm bug
 
 prop_precondition :: Property
-prop_precondition = once $ monadicIO $ do
+prop_precondition = once $ monadic (ioProperty . flip evalStateT Nothing) $ do
   (hist, _model, res) <- runCommands sm' cmds
   prettyCommands sm' hist
     (res === PreconditionFailed "PredicateC (NotMember (Reference (Symbolic (Var 0))) [])")
@@ -198,7 +199,7 @@ prop_precondition = once $ monadicIO $ do
         [ Types.Command (Read (Reference (Symbolic (Var 0)))) (ReadValue 0) [] ]
 
 prop_existsCommands :: Property
-prop_existsCommands = existsCommands sm' gens $ \cmds -> monadicIO $ do
+prop_existsCommands = existsCommands sm' gens $ \cmds -> monadic (ioProperty . flip evalStateT Nothing) $ do
   (hist, _model, res) <- runCommands sm' cmds
   prettyCommands sm' hist (checkCommandNames cmds (res === Ok))
   where

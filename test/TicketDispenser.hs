@@ -38,7 +38,7 @@ module TicketDispenser
 import           Control.Exception
                    (IOException, catch)
 import           Control.Monad.IO.Class
-                   (liftIO)
+                   (liftIO, MonadIO)
 import           Data.Kind
                    (Type)
 import           GHC.Generics
@@ -57,12 +57,13 @@ import           System.IO
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Gen, Property, frequency, (===))
+                   (Gen, Property, frequency, ioProperty, (===))
 import           Test.QuickCheck.Monadic
-                   (PropertyM, monadicIO)
+                   (PropertyM, monadic, monadicIO)
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Control.Monad.Trans.State.Lazy
 
 ------------------------------------------------------------------------
 
@@ -186,7 +187,7 @@ cleanupLock (tdb, tlock) = do
   removeFile tdb
   removeFile tlock
 
-withDbLock :: (DbLock -> PropertyM IO ()) -> PropertyM IO ()
+withDbLock :: MonadIO m => (DbLock -> m ()) -> m ()
 withDbLock run = do
   lock <- liftIO setupLock
   run lock
@@ -205,8 +206,8 @@ smUnused se = sm se (error "dblock used during command creation")
 
 prop_ticketDispenser :: Property
 prop_ticketDispenser =
-  forAllCommands (smUnused Shared) Nothing $ \cmds -> monadicIO $ do
-    withDbLock $ \ioLock -> do
+  forAllCommands (smUnused Shared) Nothing $ \cmds -> do
+    withDbLock $ \ioLock ->  do
       let sm' = sm Shared ioLock
       (hist, _, res) <- runCommands sm' cmds
       prettyCommands sm' hist $

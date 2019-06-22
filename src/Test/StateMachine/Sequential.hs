@@ -57,6 +57,7 @@ import           Control.Monad.Catch
                    (MonadCatch, catch)
 import           Control.Monad.State.Strict
                    (StateT, evalStateT, get, lift, put, runStateT)
+import qualified Control.Monad.Trans.State.Lazy as LST
 import           Data.Bifunctor
                    (second)
 import           Data.Dynamic
@@ -91,9 +92,10 @@ import           Test.QuickCheck
                    forAllShrinkShow, labelledExamplesWith, maxSuccess,
                    once, property, replay, sized, stdArgs, whenFail)
 import           Test.QuickCheck.Monadic
-                   (PropertyM, run)
+                   (PropertyM, monadic, monadic', monadicIO, run)
 import           Test.QuickCheck.Random
                    (mkQCGen)
+import           Test.StateMachine.QuickShrink
 import           Text.PrettyPrint.ANSI.Leijen
                    (Doc)
 import qualified Text.PrettyPrint.ANSI.Leijen      as PP
@@ -113,15 +115,15 @@ import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
 
-forAllCommands :: Testable prop
+forAllCommands :: (Testable prop, MonadIO m)
                => (Show (cmd Symbolic), Show (resp Symbolic), Show (model Symbolic))
                => (Rank2.Traversable cmd, Rank2.Foldable resp)
                => StateMachine model cmd m resp
                -> Maybe Int -- ^ Minimum number of commands.
-               -> (Commands cmd resp -> prop)     -- ^ Predicate.
+               -> (Commands cmd resp -> PropertyM (LST.StateT (Maybe (Commands cmd resp)) IO) prop) -- ^ Predicate.
                -> Property
 forAllCommands sm mminSize =
-  forAllShrinkShow (generateCommands sm mminSize) (shrinkCommands sm) ppShow
+  quickShrinkShowM (generateCommands sm mminSize) (shrinkCommands sm) ppShow
 
 -- | Generate commands from a list of generators.
 existsCommands :: forall model cmd m resp prop. (Testable prop, Rank2.Foldable resp)
@@ -318,15 +320,16 @@ runCommands :: (Show (cmd Concrete), Show (resp Concrete))
             => (MonadCatch m, MonadIO m)
             => StateMachine model cmd m resp
             -> Commands cmd resp
-            -> PropertyM m (History cmd resp, model Concrete, Reason)
+            -> PropertyM (LST.StateT (Maybe (Commands cmd resp)) m) (History cmd resp, model Concrete, Reason)
 runCommands sm@StateMachine { initModel } = run . go
   where
     go cmds = do
-      hchan <- newTChanIO
-      (reason, (_, _, _, model)) <- runStateT
+      hchan <- lift newTChanIO
+      ((reason, cmds'), (_, _, _, model)) <- lift $ runStateT
         (executeCommands sm hchan (Pid 0) True cmds)
         (emptyEnvironment, initModel, newCounter, initModel)
-      hist <- getChanContents hchan
+      LST.put cmds'
+      hist <- lift $ getChanContents hchan
       return (History hist, model, reason)
 
 getChanContents :: MonadIO m => TChan a -> m [a]
@@ -346,15 +349,18 @@ executeCommands :: (Show (cmd Concrete), Show (resp Concrete))
                 -> Pid
                 -> Bool -- ^ Check invariant and post-condition?
                 -> Commands cmd resp
-                -> StateT (Environment, model Symbolic, Counter, model Concrete) m Reason
+                -> StateT (Environment, model Symbolic, Counter, model Concrete) m (Reason, Maybe (Commands cmd resp))
 executeCommands StateMachine {..} hchan pid check =
-  go . unCommands
+  go [] . unCommands
   where
-    go []                           = return Ok
-    go (Command scmd _ vars : cmds) = do
+    go _ []                           = return (Ok, Nothing)
+    go acc (cmd@(Command scmd _ vars) : cmds) = do
       (env, smodel, counter, cmodel) <- get
+      let cmdsInFailure = case cmds of
+                                [] -> Nothing
+                                _  -> Just $ Commands $ reverse $ cmd : acc
       case (check, logic (precondition smodel scmd)) of
-        (True, VFalse ce) -> return (PreconditionFailed (show ce))
+        (True, VFalse ce) -> return (PreconditionFailed (show ce), cmdsInFailure)
         _                 -> do
           let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
           atomically (writeTChan hchan (pid, Invocation ccmd (S.fromList vars)))
@@ -364,20 +370,20 @@ executeCommands StateMachine {..} hchan pid check =
           case ecresp of
             Left err    -> do
               atomically (writeTChan hchan (pid, Exception err))
-              return ExceptionThrown
+              return (ExceptionThrown, cmdsInFailure)
             Right cresp -> do
               let cvars = getUsedConcrete cresp
               if length vars /= length cvars
               then do
                 let err = mockSemanticsMismatchError (ppShow ccmd) (ppShow vars) (ppShow cresp) (ppShow cvars)
                 atomically (writeTChan hchan (pid, Exception err))
-                return MockSemanticsMismatch
+                return (MockSemanticsMismatch, cmdsInFailure)
               else do
                 atomically (writeTChan hchan (pid, Response cresp))
                 case (check, logic (postcondition cmodel ccmd cresp)) of
-                  (True, VFalse ce) -> return (PostconditionFailed (show ce))
+                  (True, VFalse ce) -> return (PostconditionFailed (show ce), cmdsInFailure)
                   _                 -> case (check, logic (fromMaybe (const Top) invariant cmodel)) of
-                                         (True, VFalse ce') -> return (InvariantBroken (show ce'))
+                                         (True, VFalse ce') -> return (InvariantBroken (show ce'), cmdsInFailure)
                                          _                  -> do
                                            let (sresp, counter') = runGenSym (mock smodel scmd) counter
                                            put ( insertConcretes vars cvars env
@@ -385,7 +391,7 @@ executeCommands StateMachine {..} hchan pid check =
                                                , counter'
                                                , transition cmodel ccmd cresp
                                                )
-                                           go cmds
+                                           go (cmd : acc) cmds
 
     mockSemanticsMismatchError :: String -> String -> String -> String -> String
     mockSemanticsMismatchError cmd svars cresp cvars = unlines
@@ -471,7 +477,7 @@ prettyCommands :: (MonadIO m, ToExpr (model Concrete))
                => StateMachine model cmd m resp
                -> History cmd resp
                -> Property
-               -> PropertyM m ()
+               -> PropertyM (LST.StateT (Maybe (Commands cmd resp)) m) ()
 prettyCommands sm hist prop = prettyPrintHistory sm hist `whenFailM` prop
 
 prettyPrintHistory' :: forall model cmd m resp tag. ToExpr (model Concrete)
@@ -540,7 +546,7 @@ prettyCommands' :: (MonadIO m, ToExpr (model Concrete), ToExpr tag)
                 -> Commands cmd resp
                 -> History cmd resp
                 -> Property
-                -> PropertyM m ()
+                -> PropertyM (LST.StateT (Maybe (Commands cmd resp)) m) ()
 prettyCommands' sm tag cmds hist prop =
   prettyPrintHistory' sm tag cmds hist `whenFailM` prop
 
@@ -563,7 +569,7 @@ runSavedCommands :: (Show (cmd Concrete), Show (resp Concrete))
                  => (Read (cmd Symbolic), Read (resp Symbolic))
                  => StateMachine model cmd m resp
                  -> FilePath
-                 -> PropertyM m (Commands cmd resp, History cmd resp, model Concrete, Reason)
+                 -> PropertyM (LST.StateT (Maybe (Commands cmd resp)) m) (Commands cmd resp, History cmd resp, model Concrete, Reason)
 runSavedCommands sm fp = do
   cmds <- read <$> liftIO (readFile fp)
   (hist, model, res) <- runCommands sm cmds

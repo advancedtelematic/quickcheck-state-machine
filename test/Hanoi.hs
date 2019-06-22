@@ -131,6 +131,6 @@ sm discs = StateMachine (initModel discs) transitions preconditions postconditio
 -- to find an optimal one (or any at all).
 
 prop_hanoi :: Int -> Property
-prop_hanoi n = forAllCommands (sm n) Nothing $ \cmds -> monadicIO $ do
+prop_hanoi n = forAllCommands (sm n) Nothing $ \cmds -> do
   (hist, _model, res) <- runCommands (sm n) cmds
   prettyCommands (sm n) hist (checkCommandNames cmds (res === Ok))

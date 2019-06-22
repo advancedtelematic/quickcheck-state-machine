@@ -74,7 +74,7 @@ output (Env mBuf) = atomically $ do
 -- | Spec for echo.
 
 prop_echoOK :: Property
-prop_echoOK = forAllCommands smUnused Nothing $ \cmds -> monadicIO $ do
+prop_echoOK = forAllCommands smUnused Nothing $ \cmds -> do
     env <- liftIO $ mkEnv
     let echoSM' = echoSM env
     (hist, _, res) <- runCommands echoSM' cmds

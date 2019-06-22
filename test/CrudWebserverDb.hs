@@ -352,10 +352,10 @@ sm = StateMachine initModel transitions preconditions postconditions
 
 ------------------------------------------------------------------------
 -- * Sequential property
-
+-- monadic (ioProperty . runner port)
 prop_crudWebserverDb :: Int -> Property
 prop_crudWebserverDb port =
-  forAllCommands sm Nothing $ \cmds -> monadic (ioProperty . runner port) $ do
+  forAllCommands sm Nothing $ \cmds -> do
     (hist, _, res) <- runCommands sm cmds
     prettyCommands sm hist (res === Ok)
 

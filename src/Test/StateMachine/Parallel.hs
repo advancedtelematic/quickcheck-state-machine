@@ -328,7 +328,7 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
 
   hchan <- newTChanIO
 
-  (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
+  ((reason0, _), (env0, _smodel, _counter, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) True prefix)
     (emptyEnvironment, initModel, newCounter, initModel)
 
@@ -342,7 +342,7 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
     return (History hist, reason)
   where
     go hchan (_, env) (Pair cmds1 cmds2) = do
-      ((reason1, (env1, _, _, _)), (reason2, (env2, _, _, _))) <- concurrently
+      (((reason1, _), (env1, _, _, _)), ((reason2, _), (env2, _, _, _))) <- concurrently
 
         -- XXX: Post-conditions not checked, so we can pass in initModel here...
         -- It would be better if we made executeCommands take a Maybe model

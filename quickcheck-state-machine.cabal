@@ -37,6 +37,7 @@ library
                      , Test.StateMachine.Markov
                      , Test.StateMachine.Parallel
                      , Test.StateMachine.Sequential
+                     , Test.StateMachine.QuickShrink
                      , Test.StateMachine.Types
                      , Test.StateMachine.Types.Environment
                      , Test.StateMachine.Types.GenSym
@@ -49,6 +50,7 @@ library
       Paths_quickcheck_state_machine
   build-depends:
         ansi-wl-pprint >=0.6.7.3,
+        bifunctors,
         base >=4.10 && <5,
         containers >=0.5.7.1,
         directory >=1.0.0.0,
@@ -63,6 +65,7 @@ library
         process >=1.2.0.0,
         QuickCheck >=2.13.1,
         random >=1.1,
+        transformers,
         tree-diff >=0.0.2.1,
         unliftio >=0.2.7.0
   default-language:    Haskell2010
@@ -104,6 +107,7 @@ test-suite quickcheck-state-machine-test
                        tasty-hunit,
                        tasty-quickcheck,
                        text,
+                       transformers,
                        tree-diff,
                        vector >=0.12.0.1,
                        wai,
@@ -111,7 +115,7 @@ test-suite quickcheck-state-machine-test
                        unliftio
 
   other-modules:       CircularBuffer,
-                       CrudWebserverDb,
+--                       CrudWebserverDb,
                        DieHard,
                        Echo,
                        ErrorEncountered,

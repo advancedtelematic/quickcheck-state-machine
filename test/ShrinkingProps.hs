@@ -358,7 +358,7 @@ instance ToExpr IOVar where
 -------------------------------------------------------------------------------}
 
 prop_sequential :: Property
-prop_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+prop_sequential = forAllCommands sm Nothing $ \cmds -> do
     (hist, _model, res) <- runCommands sm cmds
     prettyCommands sm hist (checkCommandNames cmds (res === Ok))
 

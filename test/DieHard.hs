@@ -158,7 +158,7 @@ sm = StateMachine initModel transitions preconditions postconditions
        Nothing generator shrinker semantics mock
 
 prop_dieHard :: Property
-prop_dieHard = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
+prop_dieHard = forAllCommands sm Nothing $ \cmds -> do
   (hist, _model, res) <- runCommands sm cmds
   prettyCommands sm hist (checkCommandNames cmds (res === Ok))
 
