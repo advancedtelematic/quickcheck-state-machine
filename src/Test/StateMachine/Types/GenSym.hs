@@ -44,6 +44,7 @@ genSym  = GenSym $ do
   return (Reference (Symbolic (Var i)))
 
 newtype Counter = Counter Int
+  deriving Show
 
 newCounter :: Counter
 newCounter = Counter 0

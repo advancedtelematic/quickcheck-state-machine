@@ -27,7 +27,9 @@
 module TicketDispenser
   ( prop_ticketDispenser
   , prop_ticketDispenserParallel
+  , prop_ticketDispenserNParallelOK
   , prop_ticketDispenserParallelOK
+  , prop_ticketDispenserNParallelBad
   , prop_ticketDispenserParallelBad
   , withDbLock
   , setupLock
@@ -219,6 +221,13 @@ prop_ticketDispenserParallel se =
       let sm' = sm se ioLock
       prettyParallelCommands cmds =<< runParallelCommandsNTimes 100 sm' cmds
 
+prop_ticketDispenserNParallel :: SharedExclusive -> Int -> Property
+prop_ticketDispenserNParallel se np =
+  forAllNParallelCommands (smUnused se) np $ \cmds -> monadicIO $
+    withDbLock $ \ioLock -> do
+      let sm' = sm se ioLock
+      prettyNParallelCommands cmds =<< runNParallelCommands sm' cmds
+
 -- So long as the file locks are exclusive, i.e. not shared, the
 -- parallel property passes.
 prop_ticketDispenserParallelOK :: Property
@@ -226,3 +235,9 @@ prop_ticketDispenserParallelOK = prop_ticketDispenserParallel Exclusive
 
 prop_ticketDispenserParallelBad :: Property
 prop_ticketDispenserParallelBad = prop_ticketDispenserParallel Shared
+
+prop_ticketDispenserNParallelOK :: Int -> Property
+prop_ticketDispenserNParallelOK = prop_ticketDispenserNParallel Exclusive
+
+prop_ticketDispenserNParallelBad :: Int -> Property
+prop_ticketDispenserNParallelBad = prop_ticketDispenserNParallel Shared
