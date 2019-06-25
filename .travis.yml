@@ -99,7 +99,7 @@ matrix:
   #  compiler: ": #stack 8.0.2"
   #  addons: {apt: {packages: [libgmp-dev]}}
 
-  - env: BUILD=stack ARGS="--resolver lts-11"
+  - env: BUILD=stack ARGS="--resolver lts-11 --stack-yaml=stack_lts-11.yaml"
     compiler: ": #stack 8.2.2"
     addons: {apt: {packages: [libgmp-dev]}}
 

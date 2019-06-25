@@ -1,0 +1,17 @@
+resolver: lts-11.1
+packages:
+  - .
+extra-deps:
+  - base-orphans-0.8@sha256:4885caa82ab94fa5cb841d6d06a43a97cdc7e835f346be4f11c1cc5707b886db
+  - generic-data-0.3.0.0@sha256:86cac53570f45f5b1e5f54d8765d0a05f1674b3703e4dbb48a919f89c57b3cbc
+  - markov-chain-usage-model-0.0.0@sha256:1afa95faeb9213c4d960a669190078b41b89169462b8edd910472980671ba8c0
+  - matrix-0.3.6.1@sha256:96ab17d9a959cd5c0e9e6db5bc48069dba5f6fa17f7f4aea838d22f35e7bc047
+  - QuickCheck-2.13.1@sha256:fdc6fe6c36ae05e77597d2eba22184f826f162f119e4992f8e79dede593910c5
+  - splitmix-0.0.2@sha256:e1c4d1202757d63cd4b4498d5fa600a792f2a315d2fdc6cf772f4679113c1819
+  - tree-diff-0.0.2.1@sha256:4bd07bd26091f21710288c1037124bfe19aadb5bdf3df57c8374afaa5f14fef8
+  - graphviz-2999.18.1.2
+allow-newer: true
+nix:
+  enable: false
+  pure: false
+  packages: [zlib]
