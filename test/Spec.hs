@@ -26,6 +26,7 @@ import           Echo
 import           ErrorEncountered
 import           Hanoi
 import           MemoryReference
+import           Overflow
 import           ProcessRegistry
 import qualified ShrinkingProps
 import           Test.StateMachine.Markov
@@ -68,6 +69,11 @@ tests docker0 = testGroup "Tests"
       , testProperty "ShrinkParallelEquivalence" prop_pairs_shrink_parallel_equivalence
       , testProperty "ShrinkAndValidateParallelEquivalence" prop_pairs_shrinkAndValidate_equivalence
       , testProperty "ShrinkPairsEquialence"     prop_pairs_shrink_parallel
+      ]
+  , testGroup "Overflow"
+      [ testProperty "Overflow 2 threads" prop_parallel_overflow
+      , testProperty "Overflow 3 threads" $ prop_nparallel_overflow 3
+      , testProperty "Overflow 4 threads" $ expectFailure $ prop_nparallel_overflow 4
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
