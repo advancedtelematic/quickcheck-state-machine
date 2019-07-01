@@ -33,6 +33,10 @@ import           Test.StateMachine.Parallel
 import           Test.StateMachine.Types(Reference(..), Symbolic(..))
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
+-- The Model is a set of references of Int8. Command BackAndForth picks a random reference and adds a
+-- constant number (in an atomic way) and then substract the same number (in an atomic way).
+-- If there are enough threads (4 in this case) the result can overflow.
+
 data Command r
   = Create
   | Check (Reference (Opaque (MVar Int8)) r)
@@ -105,23 +109,27 @@ mock _ cmd = case cmd of
 
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
 generator (Model []) = Just (return Create)
-generator m            = Just $ frequency
+generator m          = Just $ frequency
                 [ (1, return Create)
                 , (3, genBackAndForth m)
                 , (3, genCheck m)
                 ]
 
 genCheck :: Model Symbolic -> Gen (Command Symbolic)
-genCheck m = do
+genCheck m =
   Check <$> elements (getVars m)
 
 genBackAndForth :: Model Symbolic -> Gen (Command Symbolic)
 genBackAndForth m = do
-  BackAndForth 50 <$> elements (getVars m)
+  -- The upper limit here must have the property 2 * n < 128 <= 3 * n, so that
+  -- there is a counter example for >= 4 threads.
+  -- The lower limit only affects how fast a counterexample will be found.
+  n <- choose (30,60)
+  BackAndForth n <$> elements (getVars m)
 
 shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
 shrinker _ (BackAndForth n var) = [ BackAndForth n' var | n' <- shrink n ]
-shrinker _ _             = []
+shrinker _ _                    = []
 
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition
@@ -134,8 +142,10 @@ prop_sequential_overflow = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
 
 prop_parallel_overflow :: Property
 prop_parallel_overflow = forAllParallelCommands sm $ \cmds -> monadicIO $ do
-    prettyParallelCommandsWithOpts cmds (Just $ GraphOptions "counter_example.png" Png) =<< runParallelCommands sm cmds
+    prettyParallelCommandsWithOpts cmds opts =<< runParallelCommands sm cmds
+      where opts = Just $ GraphOptions "overflow.png" Png
 
 prop_nparallel_overflow :: Int -> Property
 prop_nparallel_overflow np = forAllNParallelCommands sm np $ \cmds -> monadicIO $ do
-    prettyNParallelCommandsWithOpts cmds (Just $ GraphOptions ("counter_example_" ++ show np ++ ".png") Png) =<< runNParallelCommands sm cmds
+    prettyNParallelCommandsWithOpts cmds opts =<< runNParallelCommands sm cmds
+      where opts = Just $ GraphOptions ("overflow-" ++ show np ++ ".png") Png
