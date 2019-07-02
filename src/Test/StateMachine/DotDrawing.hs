@@ -4,6 +4,7 @@
 
 module Test.StateMachine.DotDrawing
   ( GraphOptions (..)
+  , GraphvizOutput (..)
   , Rose (..)
   , printDotGraph
   ) where
