@@ -488,8 +488,8 @@ runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommandsNTimes n sm cmds =
   replicateM n $ do
-    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds)
-    return (hist, linearise sm hist)
+    (hist, reason1, reason2) <- run (executeParallelCommands sm cmds True)
+    return (hist, (logicReason (combineReasons [reason1, reason2])) .&& linearise sm hist)
 
 runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
@@ -501,7 +501,7 @@ runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                            -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommandsNTimes' n sm complete cmds =
   replicateM n $ do
-    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds)
+    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds False)
     let hist' = completeHistory complete hist
     return (hist', linearise sm hist')
 
@@ -522,8 +522,9 @@ executeParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                         => (MonadCatch m, MonadUnliftIO m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd resp
+                        -> Bool
                         -> m (History cmd resp, Reason, Reason)
-executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) = do
+executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
 
   hchan <- newTChanIO
 
@@ -551,10 +552,12 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
 
         (runStateT (executeCommands sm hchan (Pid 1) CheckNothing cmds1) (env, initModel, newCounter, initModel))
         (runStateT (executeCommands sm hchan (Pid 2) CheckNothing cmds2) (env, initModel, newCounter, initModel))
-      go hchan ( reason1
-               , reason2
-               , env1 <> env2
-               ) pairs
+      case (isOK $ combineReasons [reason1, reason2], stopOnError) of
+        (False, True) -> return (reason1, reason2, env1 <> env2)
+        _ -> go hchan ( reason1
+                      , reason2
+                      , env1 <> env2
+                      ) pairs
     go hchan (Ok, ExceptionThrown, env) (Pair cmds1 _cmds2 : pairs) = do
 
       -- XXX: It's possible that pre-conditions fail at this point, because
@@ -594,6 +597,10 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
     go _hchan (res1, res2, _env) (Pair _cmds1 _cmds2 : _pairs) =
       error ("executeParallelCommands, unexpected result: " ++ show (res1, res2))
 
+logicReason :: Reason -> Logic
+logicReason Ok = Top
+logicReason r = Annotate (show r) Bot
+
 execueNParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
                         => Show (resp Concrete)
                         => (MonadCatch m, MonadUnliftIO m)
@@ -629,9 +636,9 @@ execueNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
       return ( combineReasons (fst <$> reasons)
              , mconcat ((\(_, (env', _, _, _)) -> env') <$> reasons)
              )
-      where
-        combineReasons :: [Reason] -> Reason
-        combineReasons ls = fromMaybe Ok (find (/= Ok) ls)
+
+combineReasons :: [Reason] -> Reason
+combineReasons ls = fromMaybe Ok (find (/= Ok) ls)
 
 
 ------------------------------------------------------------------------
@@ -683,11 +690,13 @@ prettyParallelCommandsWithOpts cmds mGraphOptions hist =
         = error "prettyParallelCommands: impossible, because `boolean l` was False."
 
 simplify :: Counterexample -> Counterexample
-simplify (ExistsC [] [])            = BotC
-simplify (ExistsC _ [Fst ce])       = ce
-simplify (ExistsC x (Fst ce : ces)) = ce `EitherC` simplify (ExistsC x ces)
-simplify (ExistsC _ (Snd ce : _))   = simplify ce
-simplify _                          = error "simplify: impossible,\
+simplify (Fst ce@(AnnotateC _ BotC)) = ce
+simplify (Snd ce)                    = simplify ce
+simplify (ExistsC [] [])             = BotC
+simplify (ExistsC _ [Fst ce])        = ce
+simplify (ExistsC x (Fst ce : ces))  = ce `EitherC` simplify (ExistsC x ces)
+simplify (ExistsC _ (Snd ce : _))    = simplify ce
+simplify _                           = error "simplify: impossible,\
                                             \ because of the structure of linearise."
 
 prettyParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
