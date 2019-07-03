@@ -60,10 +60,9 @@ import           Test.QuickCheck.Monadic
                    (monadicIO)
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
-                   (Arbitrary(..), Gen, Property, conjoin,
+                   (Gen, Property, choose, conjoin,
                    counterexample, elements, forAllShrinkShow,
-                   getNonNegative, getSmall, oneof, property,
-                   testProperty, (===), withMaxSuccess)
+                   oneof, property, testProperty, (===))
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Parallel    as QSM
@@ -78,17 +77,17 @@ tests :: TestTree
 tests = testGroup "Shrinking properties" [
         testProperty "Sanity check: standard sequential test"        prop_sequential
       , testProperty "Sanity check: standard parallel test"          prop_parallel
-      , testProperty "Sanity check: standard 3-parallel test"        $ withMaxSuccess 50 prop_3parallel
+      , testProperty "Sanity check: standard 3-parallel test"        prop_3parallel
       , testProperty "Correct references after sequential shrinking" prop_sequential_subprog
       , testProperty "Correct references after parallel shrinking"   prop_parallel_subprog
-      , testProperty "Correct references after 3-parallel shrinking" $ withMaxSuccess 50 prop_nparallel_subprog
+      , testProperty "Correct references after 3-parallel shrinking" prop_nparallel_subprog
       , testProperty "Correct references after parallel shrinking (buggyShrinkCmds)"   (prop_parallel_subprog' buggyShrinkCmds)
       , testProperty "Sequential shrinker provides correct model"    prop_sequential_model
-      , testProperty "Parallel shrinker provides correct model"      $ withMaxSuccess 70 $ prop_parallel_model
+      , testProperty "Parallel shrinker provides correct model"      prop_parallel_model
       , testProperty "2-Parallel shrinker provides correct model"    $ prop_nparallel_model 2
-      , testProperty "3-Parallel shrinker provides correct model"    $ withMaxSuccess 60 $ prop_nparallel_model 3
+      , testProperty "3-Parallel shrinker provides correct model"    $ prop_nparallel_model 3
       , testProperty "1-Parallel is equivalent to sequential"        prop_one_thread
-      , testProperty "2 Threads equivalence"                         $ withMaxSuccess 40 prop_pairs_round_trip
+      , testProperty "2 Threads equivalence"                         prop_pairs_round_trip
       , testProperty "shrink round trips"                            prop_shrink_round_trip
     ]
 
@@ -292,7 +291,7 @@ generator (Model _ knownRefs cid) = Just $ oneof [
     pickRef = elements (map fst knownRefs)
 
     small :: Gen Int
-    small = getSmall . getNonNegative <$> arbitrary
+    small = choose (0,30)
 
 -- | Shrinker
 --
