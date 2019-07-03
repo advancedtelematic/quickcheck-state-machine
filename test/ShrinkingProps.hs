@@ -281,6 +281,8 @@ lockstep model cmd (At resp) = event model cmd $ \resp' ->
 -------------------------------------------------------------------------------}
 
 generator :: Model Symbolic -> Maybe (Gen (Cmd :@ Symbolic))
+generator (Model _ [] cid)        = Just $
+      At . CreateRef cid Nothing <$> small
 generator (Model _ knownRefs cid) = Just $ oneof [
       At . CreateRef cid Nothing <$> small
     , small >>= \n -> At . Incr cid Nothing <$> replicateM n pickRef
@@ -290,8 +292,8 @@ generator (Model _ knownRefs cid) = Just $ oneof [
     pickRef :: Gen (Reference IOVar Symbolic)
     pickRef = elements (map fst knownRefs)
 
-    small :: Gen Int
-    small = choose (0,30)
+small :: Gen Int
+small = choose (0,30)
 
 -- | Shrinker
 --
