@@ -125,6 +125,7 @@ mock (Model m) cmd = case cmd of
       | otherwise -> pure WriteFailed
 
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
+generator (Model [])    = Just $ pure Create
 generator (Model model) = Just $ frequency
   [ (1, pure Create)
   , (4, Read  <$> elements (domain model))

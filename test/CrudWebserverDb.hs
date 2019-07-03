@@ -309,7 +309,8 @@ postconditions _         _              _              = error "postconditions"
 -- * How to generate and shrink programs.
 
 generator :: Model Symbolic -> Maybe (Gen (Action Symbolic))
-generator (Model m) = Just $ frequency
+generator (Model []) = Just $ PostUser <$> arbitrary
+generator (Model m)  = Just $ frequency
   [ (1, PostUser   <$> arbitrary)
   , (3, GetUser    <$> elements (map fst m))
   , (4, IncAgeUser <$> elements (map fst m))
