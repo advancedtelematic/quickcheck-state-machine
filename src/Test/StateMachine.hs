@@ -36,6 +36,7 @@ module Test.StateMachine
   , runParallelCommands
   , runParallelCommands'
   , runParallelCommandsNTimes
+  , runNParallelCommandsNTimes'
   , runParallelCommandsNTimes'
   , runNParallelCommandsNTimes
   , prettyNParallelCommands
