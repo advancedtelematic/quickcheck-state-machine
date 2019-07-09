@@ -35,6 +35,7 @@ module Test.StateMachine.Types
   , fromPair'
   , toPairUnsafe'
   , Reason(..)
+  , isOK
   , module Test.StateMachine.Types.Environment
   , module Test.StateMachine.Types.GenSym
   , module Test.StateMachine.Types.History
@@ -100,6 +101,10 @@ data Reason
   | ExceptionThrown
   | MockSemanticsMismatch
   deriving (Eq, Show)
+
+isOK :: Reason -> Bool
+isOK Ok = True
+isOK _  = False
 
 data ParallelCommandsF t cmd resp = ParallelCommands
   { prefix   :: !(Commands cmd resp)

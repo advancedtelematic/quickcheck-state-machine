@@ -33,6 +33,7 @@ module Test.StateMachine.Parallel
   , runParallelCommands'
   , runNParallelCommandsNTimes
   , runParallelCommandsNTimes
+  , runNParallelCommandsNTimes'
   , runParallelCommandsNTimes'
   , executeParallelCommands
   , linearise
@@ -45,7 +46,7 @@ module Test.StateMachine.Parallel
   ) where
 
 import           Control.Monad
-                   (foldM, replicateM)
+                   (replicateM, when)
 import           Control.Monad.Catch
                    (MonadCatch)
 import           Control.Monad.State.Strict
@@ -56,7 +57,7 @@ import           Data.List
                    (find, partition, permutations)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
-                   (fromMaybe)
+                   (fromMaybe, mapMaybe)
 import           Data.Monoid
                    ((<>))
 import           Data.Set
@@ -488,8 +489,8 @@ runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommandsNTimes n sm cmds =
   replicateM n $ do
-    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds)
-    return (hist, linearise sm hist)
+    (hist, reason1, reason2) <- run (executeParallelCommands sm cmds True)
+    return (hist, (logicReason (combineReasons [reason1, reason2])) .&& linearise sm hist)
 
 runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
@@ -501,7 +502,7 @@ runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                            -> PropertyM m [(History cmd resp, Logic)]
 runParallelCommandsNTimes' n sm complete cmds =
   replicateM n $ do
-    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds)
+    (hist, _reason1, _reason2) <- run (executeParallelCommands sm cmds False)
     let hist' = completeHistory complete hist
     return (hist', linearise sm hist')
 
@@ -514,16 +515,31 @@ runNParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                            -> PropertyM m [(History cmd resp, Logic)]
 runNParallelCommandsNTimes n sm cmds =
   replicateM n $ do
-    (hist, _reason) <- run (execueNParallelCommands sm cmds)
-    return (hist, linearise sm hist)
+    (hist, reason) <- run (executeNParallelCommands sm cmds True)
+    return (hist, logicReason reason .&& linearise sm hist)
+
+runNParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
+                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
+                            => (MonadCatch m, MonadUnliftIO m)
+                            => Int -- ^ How many times to execute the parallel program.
+                            -> StateMachine model cmd m resp
+                            -> (cmd Concrete -> resp Concrete)
+                            -> NParallelCommands cmd resp
+                            -> PropertyM m [(History cmd resp, Logic)]
+runNParallelCommandsNTimes' n sm complete cmds =
+  replicateM n $ do
+    (hist, _reason) <- run (executeNParallelCommands sm cmds True)
+    let hist' = completeHistory complete hist
+    return (hist, linearise sm hist')
 
 executeParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                         => (Rank2.Traversable cmd, Rank2.Foldable resp)
                         => (MonadCatch m, MonadUnliftIO m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd resp
+                        -> Bool
                         -> m (History cmd resp, Reason, Reason)
-executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) = do
+executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
 
   hchan <- newTChanIO
 
@@ -551,10 +567,12 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
 
         (runStateT (executeCommands sm hchan (Pid 1) CheckNothing cmds1) (env, initModel, newCounter, initModel))
         (runStateT (executeCommands sm hchan (Pid 2) CheckNothing cmds2) (env, initModel, newCounter, initModel))
-      go hchan ( reason1
-               , reason2
-               , env1 <> env2
-               ) pairs
+      case (isOK $ combineReasons [reason1, reason2], stopOnError) of
+        (False, True) -> return (reason1, reason2, env1 <> env2)
+        _ -> go hchan ( reason1
+                      , reason2
+                      , env1 <> env2
+                      ) pairs
     go hchan (Ok, ExceptionThrown, env) (Pair cmds1 _cmds2 : pairs) = do
 
       -- XXX: It's possible that pre-conditions fail at this point, because
@@ -594,18 +612,23 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
     go _hchan (res1, res2, _env) (Pair _cmds1 _cmds2 : _pairs) =
       error ("executeParallelCommands, unexpected result: " ++ show (res1, res2))
 
-execueNParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
-                        => Show (resp Concrete)
-                        => (MonadCatch m, MonadUnliftIO m)
-                        => StateMachine model cmd m resp
-                        -> NParallelCommands cmd resp
-                        -> m (History cmd resp, Reason)
-execueNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) = do
+logicReason :: Reason -> Logic
+logicReason Ok = Top
+logicReason r = Annotate (show r) Bot
+
+executeNParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
+                         => Show (resp Concrete)
+                         => (MonadCatch m, MonadUnliftIO m)
+                         => StateMachine model cmd m resp
+                         -> NParallelCommands cmd resp
+                         -> Bool
+                         -> m (History cmd resp, Reason)
+executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
 
   hchan <- newTChanIO
 
   (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
-    (executeCommands sm hchan (Pid 0) CheckNothing prefix)
+    (executeCommands sm hchan (Pid 0) CheckEverything prefix)
     (emptyEnvironment, initModel, newCounter, initModel)
 
   if reason0 /= Ok
@@ -613,26 +636,40 @@ execueNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
     hist <- getChanContents hchan
     return (History hist, reason0)
   else do
-    (reason, _) <- foldM (go hchan) (reason0, env0) suffixes
+    (errors, _) <- go hchan (Map.empty, env0) suffixes
     hist <- getChanContents hchan
-    return (History hist, reason)
+    return (History hist, combineReasons $ Map.elems errors)
   where
-    go _ (_, env) [] = return (Ok, env)
-    go hchan (_, env) suffix = do
-      reasons <- forConcurrently (zip [1..] suffix) $ \(i, cmds) ->
+    go _ res [] = return res
+    go hchan (previousErrors, env) (suffix : rest) = do
+      when (isInvalid $ Map.elems previousErrors) $
+        error ("executeParallelCommands, unexpected result: " ++ show previousErrors)
 
-        -- XXX: Post-conditions not checked, so we can pass in initModel here...
-        -- It would be better if we made executeCommands take a Maybe model
-        -- instead of the boolean...
+      let noError = Map.null previousErrors
+          check = if noError then CheckNothing else CheckPrecondition
+      res <- forConcurrently (zip [1..] suffix) $ \(i, cmds) ->
+        case Map.lookup i previousErrors of
+          Nothing -> do
+              (reason, (env', _, _, _)) <- (runStateT (executeCommands sm hchan (Pid i) check cmds) (env, initModel, newCounter, initModel))
+              return (if isOK reason then Nothing else Just (i, reason), env')
+          Just _  -> return (Nothing, env)
+      let newErrors = Map.fromList $ mapMaybe fst res
+          errors = Map.union previousErrors newErrors
+          newEnv = mconcat $ snd <$> res
+      case (stopOnError, Map.null errors) of
+        (True, False) -> return (errors, newEnv)
+        _ -> go hchan (errors, newEnv) rest
 
-        (runStateT (executeCommands sm hchan (Pid i) CheckNothing cmds) (env, initModel, newCounter, initModel))
-      return ( combineReasons (fst <$> reasons)
-             , mconcat ((\(_, (env', _, _, _)) -> env') <$> reasons)
-             )
-      where
-        combineReasons :: [Reason] -> Reason
-        combineReasons ls = fromMaybe Ok (find (/= Ok) ls)
+combineReasons :: [Reason] -> Reason
+combineReasons ls = fromMaybe Ok (find (/= Ok) ls)
 
+isInvalid :: [Reason] -> Bool
+isInvalid ls = any isPreconditionFailed ls &&
+               all (/= ExceptionThrown) ls
+
+isPreconditionFailed :: Reason -> Bool
+isPreconditionFailed (PreconditionFailed {}) = True
+isPreconditionFailed _                       = False
 
 ------------------------------------------------------------------------
 
@@ -683,11 +720,13 @@ prettyParallelCommandsWithOpts cmds mGraphOptions hist =
         = error "prettyParallelCommands: impossible, because `boolean l` was False."
 
 simplify :: Counterexample -> Counterexample
-simplify (ExistsC [] [])            = BotC
-simplify (ExistsC _ [Fst ce])       = ce
-simplify (ExistsC x (Fst ce : ces)) = ce `EitherC` simplify (ExistsC x ces)
-simplify (ExistsC _ (Snd ce : _))   = simplify ce
-simplify _                          = error "simplify: impossible,\
+simplify (Fst ce@(AnnotateC _ BotC)) = ce
+simplify (Snd ce)                    = simplify ce
+simplify (ExistsC [] [])             = BotC
+simplify (ExistsC _ [Fst ce])        = ce
+simplify (ExistsC x (Fst ce : ces))  = ce `EitherC` simplify (ExistsC x ces)
+simplify (ExistsC _ (Snd ce : _))    = simplify ce
+simplify _                           = error "simplify: impossible,\
                                             \ because of the structure of linearise."
 
 prettyParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
