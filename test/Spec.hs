@@ -71,9 +71,11 @@ tests docker0 = testGroup "Tests"
       , testProperty "ShrinkPairsEquialence"     prop_pairs_shrink_parallel
       ]
   , testGroup "Overflow"
-      [ testProperty "Overflow 2 threads" prop_parallel_overflow
-      , testProperty "Overflow 3 threads" $ prop_nparallel_overflow 3
-      , testProperty "Overflow 4 threads" $ expectFailure $ prop_nparallel_overflow 4
+      [ testProperty "2-threads" prop_parallel_overflow
+      , testProperty "3-threads" $ prop_nparallel_overflow 3
+      , testProperty "4-threads" $ expectFailure
+                                 $ withMaxSuccess 500
+                                 $ prop_nparallel_overflow 4
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
