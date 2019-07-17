@@ -383,6 +383,12 @@ Here are some more examples to get you started:
     TLA+
     [solution](https://github.com/tlaplus/Examples/blob/master/specifications/DieHard/DieHard.tla);
 
+  * The Tower of Hanoi puzzle -- this
+    [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/Hanoi.hs) uses
+    property based testing in a very similar manner to the
+    [Die Hard example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/DieHard.hs)
+    to find solution for the classic [Tower of Hanoi puzzle](https://en.wikipedia.org/wiki/Tower_of_Hanoi);
+
   * Mutable
     reference
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/MemoryReference.hs) --
@@ -427,6 +433,13 @@ Here are some more examples to get you started:
     will return a unique id, which subsequent reads, updates, and deletes need
     to use. In this example, unlike in the last one, the server is setup and
     torn down once per property rather than generate program;
+
+  * Bookstore [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/Bookstore.hs)
+    -- another database application, that uses simple SQL queries to manage a bookstore.
+    It is based on a
+    [case study](https://propertesting.com/book_case_study_stateful_properties_with_a_bookstore.html)
+    in Erlang from online version of Fred Heberts [PropEr Testing](https://propertesting.com/toc.html)
+    book;
 
   * Process registry
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/ProcessRegistry.hs)

@@ -92,6 +92,7 @@ test-suite quickcheck-state-machine-test
                        persistent >=2.8.2 && <2.10.0,
                        persistent-postgresql,
                        persistent-template,
+                       postgresql-simple,
                        pretty-show,
                        process,
                        QuickCheck,
@@ -115,7 +116,8 @@ test-suite quickcheck-state-machine-test
                        warp,
                        unliftio
 
-  other-modules:       CircularBuffer,
+  other-modules:       Bookstore,
+                       CircularBuffer,
                        CrudWebserverDb,
                        DieHard,
                        Echo,

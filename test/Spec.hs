@@ -19,6 +19,7 @@ import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
                    (expectFailure, testProperty, withMaxSuccess)
 
+import           Bookstore                as Store
 import           CircularBuffer
 import qualified CrudWebserverDb          as WS
 import           DieHard
@@ -90,6 +91,13 @@ tests docker0 = testGroup "Tests"
       , webServer docker0 WS.Race  8802 "NoRaceBug"                   WS.prop_crudWebserverDb
       , webServer docker0 WS.Race  8803 "RaceBug"    (expectFailure . WS.prop_crudWebserverDbParallel)
       ]
+  , testGroup "Bookstore"
+      [ dataBase docker0 "Bookstore no bug" (Store.prop_bookstore NoBug)
+      , dataBase docker0 "Bookstore SQL statement bug" $
+          expectFailure . (Store.prop_bookstore Bug)
+      , dataBase docker0 "Bookstore input validation bug" $
+          expectFailure . (Store.prop_bookstore Injection)
+      ]
   , testGroup "TicketDispenser"
       [ testProperty "Sequential"                       prop_ticketDispenser
       , testProperty "ParallelWithExclusiveLock" (withMaxSuccess 30
@@ -140,6 +148,12 @@ tests docker0 = testGroup "Tests"
       | docker    = withResource (WS.setup bug WS.connectionString port) WS.cleanup
                      (const (testProperty test (prop port)))
       | otherwise = testCase ("No docker or running on CI, skipping: " ++ test) (return ())
+
+    dataBase docker test prop
+      | docker    = withResource Store.setup
+                                 Store.cleanup
+                                 (\io -> testProperty test (prop (snd <$> io)))
+      | otherwise = testCase ("No docker, skipping: " ++ test) (return ())
 
 ------------------------------------------------------------------------
 
