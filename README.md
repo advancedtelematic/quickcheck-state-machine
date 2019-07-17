@@ -386,8 +386,8 @@ Here are some more examples to get you started:
   * The Tower of Hanoi puzzle -- this
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/Hanoi.hs) uses
     property based testing in a very similar manner to the
-    [Die Hard example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/DieHard.hs)
-    to find solution for the classic [Tower of Hanoi puzzle](https://en.wikipedia.org/wiki/Tower_of_Hanoi);
+    Die Hard [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/DieHard.hs)
+    to find a solution to the classic [Tower of Hanoi puzzle](https://en.wikipedia.org/wiki/Tower_of_Hanoi);
 
   * Mutable
     reference
@@ -438,7 +438,7 @@ Here are some more examples to get you started:
     -- another database application, that uses simple SQL queries to manage a bookstore.
     It is based on a
     [case study](https://propertesting.com/book_case_study_stateful_properties_with_a_bookstore.html)
-    in Erlang from online version of Fred Heberts [PropEr Testing](https://propertesting.com/toc.html)
+    in Erlang from online version of Fred Hebert's [PropEr Testing](https://propertesting.com/toc.html)
     book;
 
   * Process registry
