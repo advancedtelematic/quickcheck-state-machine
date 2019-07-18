@@ -92,11 +92,15 @@ tests docker0 = testGroup "Tests"
       , webServer docker0 WS.Race  8803 "RaceBug"    (expectFailure . WS.prop_crudWebserverDbParallel)
       ]
   , testGroup "Bookstore"
-      [ dataBase docker0 "Bookstore no bug" (Store.prop_bookstore NoBug)
-      , dataBase docker0 "Bookstore SQL statement bug" $
-          expectFailure . (Store.prop_bookstore Bug)
-      , dataBase docker0 "Bookstore input validation bug" $
-          expectFailure . (Store.prop_bookstore Injection)
+      [ dataBase docker0 "NoBug" (Store.prop_bookstore NoBug)
+      , dataBase docker0 "SqlStatementBug"
+          $ expectFailure
+          . withMaxSuccess 500
+          . Store.prop_bookstore Bug
+      , dataBase docker0 "InputValidationBug"
+          $ expectFailure
+          . withMaxSuccess 500
+          . Store.prop_bookstore Injection
       ]
   , testGroup "TicketDispenser"
       [ testProperty "Sequential"                       prop_ticketDispenser
