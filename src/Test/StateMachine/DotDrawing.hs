@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Test.StateMachine.DotDrawing
   ( GraphOptions (..)
@@ -9,9 +10,11 @@ module Test.StateMachine.DotDrawing
   , printDotGraph
   ) where
 
+import           Control.Exception
 import           Control.Monad
 import           Data.GraphViz.Attributes.Complete
 import           Data.GraphViz.Commands
+import           Data.GraphViz.Exception
 import           Data.GraphViz.Types.Canonical
 import           Data.List (uncons)
 import           Data.List.Split
@@ -97,7 +100,14 @@ printDotGraph GraphOptions{..} (Rose pref sfx) = do
             , graphStatements = dotStmts
         }
 
-    void $ runGraphviz dg graphvizOutput filePath
+    err <- try $ try $ runGraphviz dg graphvizOutput filePath
+    case err of
+        Left (e :: GraphvizException) ->
+            putStrLn $ displayException e
+        Right (Left (e :: IOException)) ->
+            putStrLn $ displayException e
+        Right (Right _) ->
+            return ()
 
 toDotNode :: String -> (Int, (String,String)) -> DotNode String
 toDotNode nodeIdGroup (n, (invocation, resp)) =
