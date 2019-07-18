@@ -1,2 +1,8 @@
 .stack-work/
 .ghci
+*.hi
+*.o
+dist-newstyle/
+.ghc.environment.*
+*~
+*.swp
