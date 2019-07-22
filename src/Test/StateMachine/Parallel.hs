@@ -43,6 +43,9 @@ module Test.StateMachine.Parallel
   , prettyParallelCommandsWithOpts
   , prettyNParallelCommandsWithOpts
   , advanceModel
+  , checkCommandNamesParallel
+  , coverCommandNamesParallel
+  , commandNamesParallel
   ) where
 
 import           Control.Monad
@@ -53,6 +56,7 @@ import           Control.Monad.State.Strict
                    (runStateT)
 import           Data.Bifunctor
                    (bimap)
+import           Data.Foldable
 import           Data.List
                    (find, partition, permutations)
 import qualified Data.Map.Strict               as Map
@@ -80,6 +84,7 @@ import           UnliftIO
                    forConcurrently, newTChanIO)
 
 import           Test.StateMachine.BoxDrawer
+import           Test.StateMachine.ConstructorName
 import           Test.StateMachine.DotDrawing
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Sequential
@@ -709,6 +714,7 @@ prettyParallelCommandsWithOpts cmds mGraphOptions hist =
   mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
     where
       printCounterexample hist' (VFalse ce) = do
+        putStrLn ""
         print (toBoxDrawings cmds hist')
         putStrLn ""
         print (simplify ce)
@@ -830,3 +836,21 @@ createAndPrintDot (ParallelCommands prefix suffixes) gOptions = toDotGraph allVa
 
 getAllUsedVars :: Rank2.Foldable cmd => Commands cmd resp -> Set Var
 getAllUsedVars = S.fromList . foldMap (\(Command cmd _ _) -> getUsedVars cmd) . unCommands
+
+-- | Print the percentage of each command used. The prefix check is
+--   an unfortunate remaining for backwards compatibility.
+checkCommandNamesParallel :: forall cmd resp t. Foldable t => CommandNames cmd
+                          => ParallelCommandsF t cmd resp -> Property -> Property
+checkCommandNamesParallel cmds = checkCommandNames $ toSequential cmds
+
+-- | Fail if some commands have not been executed.
+coverCommandNamesParallel :: forall cmd resp t. Foldable t => CommandNames cmd
+                          => ParallelCommandsF t cmd resp -> Property -> Property
+coverCommandNamesParallel cmds = coverCommandNames $ toSequential cmds
+
+commandNamesParallel :: forall cmd resp t. Foldable t => CommandNames cmd
+                     => ParallelCommandsF t cmd resp -> [(String, Int)]
+commandNamesParallel = commandNames . toSequential
+
+toSequential :: Foldable t => ParallelCommandsF t cmd resp -> Commands cmd resp
+toSequential cmds = prefix cmds <> mconcat (concatMap toList (suffixes cmds))

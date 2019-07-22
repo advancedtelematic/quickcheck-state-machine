@@ -22,6 +22,7 @@ module Test.StateMachine
   , prettyCommands
   , prettyCommands'
   , checkCommandNames
+  , coverCommandNames
   , commandNames
   , commandNamesInOrder
   , saveCommands
@@ -41,6 +42,9 @@ module Test.StateMachine
   , runNParallelCommandsNTimes
   , prettyNParallelCommands
   , prettyParallelCommands
+  , checkCommandNamesParallel
+  , coverCommandNamesParallel
+  , commandNamesParallel
 
     -- * Types
   , StateMachine(StateMachine)

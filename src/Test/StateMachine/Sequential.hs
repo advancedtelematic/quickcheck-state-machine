@@ -46,6 +46,7 @@ module Test.StateMachine.Sequential
   , runSavedCommands
   , commandNames
   , commandNamesInOrder
+  , coverCommandNames
   , checkCommandNames
   , showLabelledExamples
   , showLabelledExamples'
@@ -90,9 +91,10 @@ import           System.FilePath
 import           System.Random
                    (getStdRandom, randomR)
 import           Test.QuickCheck
-                   (Gen, Property, Testable, choose, collect, cover,
+                   (Gen, Property, Testable, choose, cover,
                    forAllShrinkShow, labelledExamplesWith, maxSuccess,
-                   once, property, replay, sized, stdArgs, whenFail)
+                   once, property, replay, sized, stdArgs, tabulate,
+                   whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM, run)
 import           Test.QuickCheck.Random
@@ -588,14 +590,18 @@ runSavedCommands sm fp = do
 
 ------------------------------------------------------------------------
 
-
--- | Print distribution of commands and fail if some commands have not
---   been executed.
+-- | Print the percentage of each command used. The prefix check is
+--   an unfortunate remaining for backwards compatibility.
 checkCommandNames :: forall cmd resp. CommandNames cmd
                   => Commands cmd resp -> Property -> Property
-checkCommandNames cmds
-  = collect names
-  . cover 1 (length names == numOfConstructors) "coverage"
+checkCommandNames cmds =
+    tabulate "Commands" (fst <$> commandNames cmds)
+
+-- | Fail if some commands have not been executed.
+coverCommandNames :: forall cmd resp. CommandNames cmd
+                  => Commands cmd resp -> Property -> Property
+coverCommandNames cmds
+  = cover 1 (length names == numOfConstructors) "coverage"
   where
     names             = commandNames cmds
     numOfConstructors = length (cmdNames (Proxy :: Proxy (cmd Symbolic)))

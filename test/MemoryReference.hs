@@ -200,7 +200,7 @@ prop_sequential :: Bug -> Property
 prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
   (hist, _model, res) <- runCommands sm' cmds
   prettyCommands sm' hist (saveCommands "/tmp" cmds
-                             (checkCommandNames cmds (res === Ok)))
+                             (coverCommandNames cmds $ checkCommandNames cmds (res === Ok)))
     where
       sm' = sm bug
 
@@ -210,7 +210,8 @@ prop_runSavedCommands bug fp = monadicIO $ do
   prettyCommands (sm bug) hist (res === Ok)
 
 prop_parallel :: Bug -> Property
-prop_parallel bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
+prop_parallel bug = forAllParallelCommands sm' $
+  \cmds -> checkCommandNamesParallel cmds $ monadicIO $
   prettyParallelCommands cmds =<< runParallelCommands sm' cmds
     where
       sm' = sm bug
@@ -228,7 +229,8 @@ prop_parallel' bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
       complete Increment {} = Incremented
 
 prop_nparallel :: Bug -> Int -> Property
-prop_nparallel bug np = forAllNParallelCommands sm' np $ \cmds -> monadicIO $ do
+prop_nparallel bug np = forAllNParallelCommands sm' np $ \cmds ->
+  checkCommandNamesParallel cmds $ coverCommandNamesParallel cmds $ monadicIO $ do
   prettyNParallelCommands cmds =<< runNParallelCommands sm' cmds
     where
       sm' = sm bug
