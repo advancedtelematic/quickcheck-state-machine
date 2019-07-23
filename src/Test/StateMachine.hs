@@ -29,6 +29,7 @@ module Test.StateMachine
   , runSavedCommands
   , showLabelledExamples
   , showLabelledExamples'
+  , noCleanup
 
   -- * Parallel property combinators
   , forAllParallelCommands

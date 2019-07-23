@@ -112,6 +112,7 @@ echoSM env = StateMachine
     , shrinker = mShrinker
     , semantics = mSemantics
     , mock = mMock
+    , cleanup = noCleanup
     }
     where
       mTransitions :: Model r -> Action r -> Response r -> Model r

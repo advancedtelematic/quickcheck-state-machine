@@ -402,7 +402,7 @@ mock (Model m) cmd = return $ case cmd of
 
 sm :: Bug -> StateMachine Model Command (ReaderT ConnectInfo IO) Response
 sm bug = StateMachine initModel transitions preconditions postconditions
-  Nothing generator shrinker (semantics bug) mock
+  Nothing generator shrinker (semantics bug) mock noCleanup
 
 runner :: IO String -> ReaderT ConnectInfo IO Property -> IO Property
 runner io p = do

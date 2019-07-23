@@ -51,7 +51,7 @@ module Test.StateMachine.Parallel
 import           Control.Monad
                    (replicateM, when)
 import           Control.Monad.Catch
-                   (MonadCatch)
+                   (MonadCatch, onException)
 import           Control.Monad.State.Strict
                    (runStateT)
 import           Data.Bifunctor
@@ -544,13 +544,14 @@ executeParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                         -> ParallelCommands cmd resp
                         -> Bool
                         -> m (History cmd resp, Reason, Reason)
-executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
+executeParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands prefix suffixes) stopOnError = do
 
   hchan <- newTChanIO
 
   (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) CheckEverything prefix)
     (emptyEnvironment, initModel, newCounter, initModel)
+    `onException` (getChanContents hchan >>= cleanup . History)
 
   if reason0 /= Ok
   then do
@@ -558,6 +559,7 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
     return (History hist, reason0, reason0)
   else do
     (reason1, reason2, _) <- go hchan (Ok, Ok, env0) suffixes
+          `onException` (getChanContents hchan >>= cleanup . History)
     hist <- getChanContents hchan
     return (History hist, reason1, reason2)
   where
@@ -628,13 +630,14 @@ executeNParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.F
                          -> NParallelCommands cmd resp
                          -> Bool
                          -> m (History cmd resp, Reason)
-executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
+executeNParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands prefix suffixes) stopOnError = do
 
   hchan <- newTChanIO
 
   (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) CheckEverything prefix)
     (emptyEnvironment, initModel, newCounter, initModel)
+    `onException` (getChanContents hchan >>= cleanup . History)
 
   if reason0 /= Ok
   then do
@@ -642,6 +645,7 @@ executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix s
     return (History hist, reason0)
   else do
     (errors, _) <- go hchan (Map.empty, env0) suffixes
+                  `onException` (getChanContents hchan >>= cleanup . History)
     hist <- getChanContents hchan
     return (History hist, combineReasons $ Map.elems errors)
   where

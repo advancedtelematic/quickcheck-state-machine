@@ -343,6 +343,7 @@ sm = QSM.StateMachine {
        , semantics     = semantics
        , mock          = mock
        , invariant     = Nothing
+       , cleanup       = noCleanup
        }
 
 {-------------------------------------------------------------------------------

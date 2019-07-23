@@ -58,7 +58,7 @@ import           Control.Exception
                    fromException)
 import           Control.Monad (when)
 import           Control.Monad.Catch
-                   (MonadCatch, catch)
+                   (MonadCatch, catch, onException)
 import           Control.Monad.State.Strict
                    (StateT, evalStateT, get, lift, put, runStateT)
 import           Data.Bifunctor
@@ -325,16 +325,22 @@ runCommands :: (Show (cmd Concrete), Show (resp Concrete))
             => StateMachine model cmd m resp
             -> Commands cmd resp
             -> PropertyM m (History cmd resp, model Concrete, Reason)
-runCommands sm@StateMachine { initModel } = run . go
+runCommands sm@StateMachine { initModel, cleanup } = run . go
   where
     go cmds = do
       hchan <- newTChanIO
-      (reason, (_, _, _, model)) <- runStateT
-        (executeCommands sm hchan (Pid 0) CheckEverything cmds)
-        (emptyEnvironment, initModel, newCounter, initModel)
+      -- newTChanIO (\ch -> getChanContents ch >> cleanup . History) $ do
+      (reason, (_, _, _, model)) <-
+        (runStateT
+          (executeCommands sm hchan (Pid 0) CheckEverything cmds)
+          (emptyEnvironment, initModel, newCounter, initModel))
+          `onException` (getChanContents hchan >>= cleanup . History)
       hist <- getChanContents hchan
+      cleanup $ History hist
       return (History hist, model, reason)
 
+-- We should try our best to not let this function fail,
+-- since it is used to cleanup up resources.
 getChanContents :: MonadIO m => TChan a -> m [a]
 getChanContents chan = reverse <$> atomically (go' [])
   where

@@ -36,6 +36,7 @@ module Test.StateMachine.Types
   , toPairUnsafe'
   , Reason(..)
   , isOK
+  , noCleanup
   , module Test.StateMachine.Types.Environment
   , module Test.StateMachine.Types.GenSym
   , module Test.StateMachine.Types.History
@@ -68,7 +69,11 @@ data StateMachine model cmd m resp = StateMachine
   , shrinker       :: model Symbolic -> cmd Symbolic -> [cmd Symbolic]
   , semantics      :: cmd Concrete -> m (resp Concrete)
   , mock           :: model Symbolic -> cmd Symbolic -> GenSym (resp Symbolic)
+  , cleanup        :: History cmd resp -> m ()
   }
+
+noCleanup :: Monad m => History cmd resp -> m ()
+noCleanup _ = return ()
 
 -- | Previously symbolically executed command
 --
