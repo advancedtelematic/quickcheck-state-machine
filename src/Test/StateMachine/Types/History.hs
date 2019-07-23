@@ -25,11 +25,14 @@ module Test.StateMachine.Types.History
   , makeOperations
   , interleavings
   , completeHistory
+  , takeResponses
   )
   where
 
 import           Data.List
                    ((\\))
+import           Data.Maybe
+                   (mapMaybe)
 import           Data.Set
                    (Set)
 import           Data.Tree
@@ -78,6 +81,12 @@ findResponse _   []                                         = []
 findResponse pid ((pid', Response resp) : es) | pid == pid' = [(resp, es)]
 findResponse pid (e                     : es)               =
   [ (resp, e : es') | (resp, es') <- findResponse pid es ]
+
+takeResponses :: History cmd resp -> [resp Concrete]
+takeResponses = mapMaybe isResponse . unHistory
+    where
+      isResponse (_, Response r) = Just r
+      isResponse _               = Nothing
 
 ------------------------------------------------------------------------
 
