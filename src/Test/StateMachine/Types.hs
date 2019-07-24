@@ -98,7 +98,7 @@ data Reason
   | PreconditionFailed String
   | PostconditionFailed String
   | InvariantBroken String
-  | ExceptionThrown
+  | ExceptionThrown String
   | MockSemanticsMismatch
   deriving (Eq, Show)
 
