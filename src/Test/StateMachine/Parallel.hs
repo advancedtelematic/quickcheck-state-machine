@@ -578,7 +578,7 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
                       , reason2
                       , env1 <> env2
                       ) pairs
-    go hchan (Ok, ExceptionThrown, env) (Pair cmds1 _cmds2 : pairs) = do
+    go hchan (Ok, ExceptionThrown e, env) (Pair cmds1 _cmds2 : pairs) = do
 
       -- XXX: It's possible that pre-conditions fail at this point, because
       -- commands may depend on references that never got created in the crashed
@@ -600,20 +600,20 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
       (reason1, (env1, _, _, _)) <- runStateT (executeCommands sm hchan (Pid 1) CheckPrecondition cmds1)
                                               (env, initModel, newCounter, initModel)
       go hchan ( reason1
-               , ExceptionThrown
+               , ExceptionThrown e
                , env1
                ) pairs
-    go hchan (ExceptionThrown, Ok, env) (Pair _cmds1 cmds2 : pairs) = do
+    go hchan (ExceptionThrown e, Ok, env) (Pair _cmds1 cmds2 : pairs) = do
 
       (reason2, (env2, _, _, _)) <- runStateT (executeCommands sm hchan (Pid 2) CheckPrecondition cmds2)
                                               (env, initModel, newCounter, initModel)
-      go hchan ( ExceptionThrown
+      go hchan ( ExceptionThrown e
                , reason2
                , env2
                ) pairs
-    go _hchan out@(ExceptionThrown,       ExceptionThrown,       _env) (_ : _) = return out
-    go _hchan out@(PreconditionFailed {}, ExceptionThrown,       _env) (_ : _) = return out
-    go _hchan out@(ExceptionThrown,       PreconditionFailed {}, _env) (_ : _) = return out
+    go _hchan out@(ExceptionThrown _,     ExceptionThrown _,     _env) (_ : _) = return out
+    go _hchan out@(PreconditionFailed {}, ExceptionThrown _,     _env) (_ : _) = return out
+    go _hchan out@(ExceptionThrown _,     PreconditionFailed {}, _env) (_ : _) = return out
     go _hchan (res1, res2, _env) (Pair _cmds1 _cmds2 : _pairs) =
       error ("executeParallelCommands, unexpected result: " ++ show (res1, res2))
 
@@ -648,7 +648,7 @@ executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix s
     go _ res [] = return res
     go hchan (previousErrors, env) (suffix : rest) = do
       when (isInvalid $ Map.elems previousErrors) $
-        error ("executeParallelCommands, unexpected result: " ++ show previousErrors)
+        error ("executeNParallelCommands, unexpected result: " ++ show previousErrors)
 
       let noError = Map.null previousErrors
           check = if noError then CheckNothing else CheckPrecondition
@@ -670,7 +670,10 @@ combineReasons ls = fromMaybe Ok (find (/= Ok) ls)
 
 isInvalid :: [Reason] -> Bool
 isInvalid ls = any isPreconditionFailed ls &&
-               all (/= ExceptionThrown) ls
+               all notException ls
+    where
+      notException (ExceptionThrown _) = False
+      notException _                   = True
 
 isPreconditionFailed :: Reason -> Bool
 isPreconditionFailed (PreconditionFailed {}) = True

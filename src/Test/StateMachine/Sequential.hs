@@ -377,7 +377,7 @@ executeCommands StateMachine {..} hchan pid check =
           case ecresp of
             Left err    -> do
               atomically (writeTChan hchan (pid, Exception err))
-              return ExceptionThrown
+              return $ ExceptionThrown err
             Right cresp -> do
               let cvars = getUsedConcrete cresp
               if length vars /= length cvars
