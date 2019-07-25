@@ -712,7 +712,7 @@ exists' xs p = exists xs p
 
 mkModel :: (model Concrete -> cmd Concrete -> resp Concrete -> model Concrete) -> model Concrete
         -> History cmd resp  -> model Concrete
-mkModel transition initModel = go initModel . path . interleavings . unHistory
+mkModel transition initModel = go initModel . operationsPath . interleavings . unHistory
     where
         go m [] = m
         go m (Operation cmd resp _ : rest) = go (transition m cmd resp) rest

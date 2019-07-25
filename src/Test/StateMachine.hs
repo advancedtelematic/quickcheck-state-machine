@@ -49,6 +49,7 @@ module Test.StateMachine
   , coverCommandNamesParallel
   , commandNamesParallel
   , operationsPath
+  , mkModel
 
     -- * Types
   , StateMachine(StateMachine)
