@@ -90,7 +90,7 @@ prop_echoParallelOK problem = forAllParallelCommands smUnused $ \cmds -> monadic
     prettyParallelCommands cmds =<< runParallelCommandsNTimes n echoSM' cmds
 
 prop_echoNParallelOK :: Int -> Bool -> Property
-prop_echoNParallelOK np problem = forAllNParallelCommands smUnused np $ \cmds -> monadicIO $ do
+prop_echoNParallelOK np problem = forAllNParallelCommands smUnused Nothing np $ \cmds -> monadicIO $ do
     env <- liftIO $ mkEnv
     let echoSM' = echoSM env
     let n | problem   = 2
@@ -112,6 +112,7 @@ echoSM env = StateMachine
     , shrinker = mShrinker
     , semantics = mSemantics
     , mock = mMock
+    , cleanup = noCleanup
     }
     where
       mTransitions :: Model r -> Action r -> Response r -> Model r

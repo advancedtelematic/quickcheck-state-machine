@@ -194,7 +194,7 @@ shrinker _ _             = []
 
 sm :: Bug -> StateMachine Model Command IO Response
 sm bug = StateMachine initModel transition precondition postcondition
-           Nothing generator shrinker (semantics bug) mock
+           Nothing generator shrinker (semantics bug) mock noCleanup
 
 prop_sequential :: Bug -> Property
 prop_sequential bug = forAllCommands sm' Nothing $ \cmds -> monadicIO $ do
@@ -229,7 +229,7 @@ prop_parallel' bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
       complete Increment {} = Incremented
 
 prop_nparallel :: Bug -> Int -> Property
-prop_nparallel bug np = forAllNParallelCommands sm' np $ \cmds ->
+prop_nparallel bug np = forAllNParallelCommands sm' Nothing np $ \cmds ->
   checkCommandNamesParallel cmds $ coverCommandNamesParallel cmds $ monadicIO $ do
   prettyNParallelCommands cmds =<< runNParallelCommands sm' cmds
     where

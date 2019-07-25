@@ -281,7 +281,7 @@ mock (Model m) (Len buffer) = case lookup buffer m of
 sm :: Version -> Bugs -> StateMachine Model Action IO Response
 sm version bugs = StateMachine
   initModel transition (precondition bugs) postcondition
-  Nothing (generator version) shrinker (semantics bugs) mock
+  Nothing (generator version) shrinker (semantics bugs) mock noCleanup
 
 -- | Property parameterized by spec version and bugs.
 prepropcircularBuffer :: Version -> Bugs -> Property

@@ -343,6 +343,7 @@ sm = QSM.StateMachine {
        , semantics     = semantics
        , mock          = mock
        , invariant     = Nothing
+       , cleanup       = noCleanup
        }
 
 {-------------------------------------------------------------------------------
@@ -382,7 +383,7 @@ prop_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $
     prettyParallelCommands cmds =<< runParallelCommands sm cmds
 
 prop_3parallel :: Property
-prop_3parallel = forAllNParallelCommands sm 3 $ \cmds -> monadicIO $
+prop_3parallel = forAllNParallelCommands sm Nothing 3 $ \cmds -> monadicIO $
   prettyNParallelCommands cmds =<< runNParallelCommands sm cmds
 
 {-------------------------------------------------------------------------------
@@ -537,7 +538,7 @@ prop_pairs_round_trip = forAllParallelCommands sm $ \pairCmds ->
 
 prop_nparallel_subprog :: Property
 prop_nparallel_subprog =
-    forAllShrinkShow (QSM.generateNParallelCommands sm 3) (const []) ppShow $
+    forAllShrinkShow (QSM.generateNParallelCommands sm Nothing 3) (const []) ppShow $
       prop_nparallel_subprog'
 
 prop_nparallel_subprog' :: QSM.NParallelCommands (At Cmd) (At Resp) -> Property
@@ -687,7 +688,7 @@ prop_parallel_model =
 
 prop_nparallel_model :: Int -> Property
 prop_nparallel_model n =
-    forAllShrinkShow (QSM.generateNParallelCommands sm n) (const []) ppShow $ \cmds ->
+    forAllShrinkShow (QSM.generateNParallelCommands sm Nothing n) (const []) ppShow $ \cmds ->
       conjoin [ checkCorrectModelNParallel shrunk
               | shrunk <- QSM.shrinkNParallelCommands sm cmds
               ]
@@ -701,7 +702,7 @@ prop_one_thread n = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
           cmdsChucks = chunksOf n' sx
           sfxs = (\c -> [c]) . QSM.Commands <$> cmdsChucks
           nParallelCmd = QSM.ParallelCommands {prefix = QSM.Commands px, suffixes = sfxs}
-      res <- runNParallelCommandsNTimes 1 sm $ nParallelCmd
+      res <- runNParallelCommandsNTimes 1 sm nParallelCmd
       let (hist', _ret) = unzip res
       let events = snd <$> (QSM.unHistory hist)
           events' = snd <$> (concat (QSM.unHistory <$> hist'))

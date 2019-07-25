@@ -10,6 +10,7 @@ extra-deps:
   - splitmix-0.0.2@sha256:e1c4d1202757d63cd4b4498d5fa600a792f2a315d2fdc6cf772f4679113c1819
   - tree-diff-0.0.2.1@sha256:4bd07bd26091f21710288c1037124bfe19aadb5bdf3df57c8374afaa5f14fef8
   - graphviz-2999.20.0.3
+  - hs-rqlite-0.1.0.0
 allow-newer: true
 nix:
   enable: false

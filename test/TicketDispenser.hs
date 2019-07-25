@@ -197,7 +197,7 @@ withDbLock run = do
 sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
 sm se files = StateMachine
   initModel transitions preconditions postconditions
-  Nothing generator shrinker (semantics se files) mock
+  Nothing generator shrinker (semantics se files) mock noCleanup
 
 smUnused :: SharedExclusive -> StateMachine Model Action IO Response
 smUnused se = sm se (error "dblock used during command creation")
@@ -223,7 +223,7 @@ prop_ticketDispenserParallel se =
 
 prop_ticketDispenserNParallel :: SharedExclusive -> Int -> Property
 prop_ticketDispenserNParallel se np =
-  forAllNParallelCommands (smUnused se) np $ \cmds -> monadicIO $
+  forAllNParallelCommands (smUnused se) Nothing np $ \cmds -> monadicIO $
     withDbLock $ \ioLock -> do
       let sm' = sm se ioLock
       prettyNParallelCommands cmds =<< runNParallelCommands sm' cmds

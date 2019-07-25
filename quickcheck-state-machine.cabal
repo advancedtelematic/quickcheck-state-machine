@@ -56,7 +56,7 @@ library
         exceptions >=0.8.3,
         filepath >=1.0,
         generic-data >=0.3.0.0,
-        graphviz,
+        graphviz >= 2999.20.0.3,
         markov-chain-usage-model >=0.0.0,
         matrix >=0.3.5.0,
         mtl >=2.2.1,
@@ -75,7 +75,8 @@ test-suite quickcheck-state-machine-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  build-depends:       array,
+  build-depends:       aeson,
+                       array,
                        base,
                        bytestring,
                        containers,
@@ -85,6 +86,8 @@ test-suite quickcheck-state-machine-test
                        filepath,
                        hashable,
                        hashtables,
+                       hs-rqlite,
+                       HTTP,
                        http-client,
                        monad-logger,
                        mtl,
@@ -126,6 +129,7 @@ test-suite quickcheck-state-machine-test
                        MemoryReference,
                        Overflow,
                        ProcessRegistry,
+                       RQlite,
                        ShrinkingProps,
                        TicketDispenser,
                        UnionFind

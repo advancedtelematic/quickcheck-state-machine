@@ -123,7 +123,7 @@ mock _ _ = return Done
 
 sm :: Int -> StateMachine Model Command IO Response
 sm discs = StateMachine (initModel discs) transitions preconditions postconditions
-       Nothing generator shrinker semantics mock
+       Nothing generator shrinker semantics mock noCleanup
 
 -- A sequential property for Tower of Hanoi with n discs.
 

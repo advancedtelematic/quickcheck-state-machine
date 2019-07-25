@@ -29,6 +29,7 @@ module Test.StateMachine
   , runSavedCommands
   , showLabelledExamples
   , showLabelledExamples'
+  , noCleanup
 
   -- * Parallel property combinators
   , forAllParallelCommands
@@ -42,9 +43,12 @@ module Test.StateMachine
   , runNParallelCommandsNTimes
   , prettyNParallelCommands
   , prettyParallelCommands
+  , prettyParallelCommandsWithOpts
+  , prettyNParallelCommandsWithOpts
   , checkCommandNamesParallel
   , coverCommandNamesParallel
   , commandNamesParallel
+  , operationsPath
 
     -- * Types
   , StateMachine(StateMachine)

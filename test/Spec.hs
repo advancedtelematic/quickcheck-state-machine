@@ -12,6 +12,7 @@ import           System.Process
                    waitForProcess, withCreateProcess)
 import           Test.DocTest
                    (doctest)
+import           Test.QuickCheck
 import           Test.Tasty
                    (TestTree, defaultMain, testGroup, withResource)
 import           Test.Tasty.HUnit
@@ -30,6 +31,8 @@ import           MemoryReference
 import           Overflow
 import           ProcessRegistry
 import qualified ShrinkingProps
+import           RQlite hiding (Level(..))
+import qualified RQlite
 import           Test.StateMachine.Markov
                    (PropertyName, StatsDb, fileStatsDb)
 import           TicketDispenser
@@ -39,7 +42,7 @@ import qualified UnionFind
 
 tests :: Bool -> TestTree
 tests docker0 = testGroup "Tests"
-  [ testCase "Doctest"
+   [ testCase "Doctest"
       (doctest [ "src/Test/StateMachine/Z.hs"
                , "src/Test/StateMachine/Logic.hs"
                ])
@@ -143,6 +146,14 @@ tests docker0 = testGroup "Tests"
       ]
   , testGroup "UnionFind"
       [ testProperty "Sequential" UnionFind.prop_unionFindSequential ]
+
+  , testGroup "rqlite"
+      [ testProperty "SequentialWeak" $ withMaxSuccess 40 $ prop_sequential_rqlite (Just RQlite.Weak)
+      , testProperty "SequentialNone" $ expectFailure $ prop_sequential_rqlite (Just RQlite.None)
+      , testProperty "ParallelWeak" $ withMaxSuccess 40 $ prop_parallel_rqlite (Just RQlite.Strong)
+      , testProperty "ParallelNone" $ expectFailure $ prop_parallel_rqlite (Just RQlite.None)
+      , testProperty "3ParallelStrong" $ prop_nparallel_rqlite 3 (Just RQlite.Strong)
+      ]
   ]
   where
     statsDb :: PropertyName -> StatsDb IO
@@ -163,15 +174,19 @@ tests docker0 = testGroup "Tests"
 
 main :: IO ()
 main = do
+--    run
+    quickCheck $ withMaxSuccess 30 (prop_nparallel_rqlite 2 (Just RQlite.Weak))
   -- Check if docker is avaiable.
-  ec <- rawSystemNoStdout "docker" ["version"]
-          `catch` (\(_ :: IOError) -> return (ExitFailure 127))
-  let docker = case ec of
-                 ExitSuccess   -> True
-                 ExitFailure _ -> False
-  defaultMain (tests docker)
-    where
-      rawSystemNoStdout cmd args =
-        withCreateProcess
-          (proc cmd args) { std_out = CreatePipe }
-          (\_ _ _ -> waitForProcess)
+   -- print "running"
+   -- RQlite.run
+    -- ec <- rawSystemNoStdout "docker" ["version"]
+    --         `catch` (\(_ :: IOError) -> return (ExitFailure 127))
+    -- let docker = case ec of
+    --                ExitSuccess   -> True
+    --                ExitFailure _ -> False
+    --   where
+    --     rawSystemNoStdout cmd args =
+    --       withCreateProcess
+    --         (proc cmd args) { std_out = CreatePipe }
+    --         (\_ _ _ -> waitForProcess)
+-- --

@@ -24,16 +24,20 @@ module Test.StateMachine.Types.History
   , Operation(..)
   , makeOperations
   , interleavings
+  , operationsPath
   , completeHistory
+  , takeResponses
   )
   where
 
 import           Data.List
                    ((\\))
+import           Data.Maybe
+                   (mapMaybe)
 import           Data.Set
                    (Set)
 import           Data.Tree
-                   (Forest, Tree(Node))
+                   (Forest, Tree(Node), levels)
 import           Prelude
 
 import           Test.StateMachine.Types.References
@@ -79,6 +83,12 @@ findResponse pid ((pid', Response resp) : es) | pid == pid' = [(resp, es)]
 findResponse pid (e                     : es)               =
   [ (resp, e : es') | (resp, es') <- findResponse pid es ]
 
+takeResponses :: History cmd resp -> [resp Concrete]
+takeResponses = mapMaybe isResponse . unHistory
+    where
+      isResponse (_, Response r) = Just r
+      isResponse _               = Nothing
+
 ------------------------------------------------------------------------
 
 -- | An operation packs up an invocation event with its corresponding
@@ -119,6 +129,13 @@ interleavings es =
     filter1 _ []                   = []
     filter1 p (x : xs) | p x       = x : filter1 p xs
                        | otherwise = xs
+
+operationsPath :: Forest (Operation cmd resp) -> [Operation cmd resp]
+operationsPath []      = []
+operationsPath (x : _) = mapMaybe hd $ levels x
+    where
+      hd []      = Nothing
+      hd (a : _) = Just a
 
 ------------------------------------------------------------------------
 

@@ -58,7 +58,7 @@ import           Control.Exception
                    fromException)
 import           Control.Monad (when)
 import           Control.Monad.Catch
-                   (MonadCatch, catch)
+                   (MonadCatch, MonadMask, bracketOnError, catch)
 import           Control.Monad.State.Strict
                    (StateT, evalStateT, get, lift, put, runStateT)
 import           Data.Bifunctor
@@ -321,20 +321,26 @@ shrinkAndValidate StateMachine { precondition, transition, mock, shrinker } =
 
 runCommands :: (Show (cmd Concrete), Show (resp Concrete))
             => (Rank2.Traversable cmd, Rank2.Foldable resp)
-            => (MonadCatch m, MonadIO m)
+            => (MonadCatch m, MonadIO m, MonadMask m)
             => StateMachine model cmd m resp
             -> Commands cmd resp
             -> PropertyM m (History cmd resp, model Concrete, Reason)
-runCommands sm@StateMachine { initModel } = run . go
+runCommands sm@StateMachine { initModel, cleanup } = run . go
   where
-    go cmds = do
-      hchan <- newTChanIO
-      (reason, (_, _, _, model)) <- runStateT
-        (executeCommands sm hchan (Pid 0) CheckEverything cmds)
-        (emptyEnvironment, initModel, newCounter, initModel)
+    go cmds = bracketOnError newTChanIO
+                            (\hchan -> getChanContents hchan >>= cleanup . History)
+                            $ \hchan -> do
+      -- newTChanIO (\ch -> getChanContents ch >> cleanup . History) $ do
+      (reason, (_, _, _, model)) <-
+        (runStateT
+          (executeCommands sm hchan (Pid 0) CheckEverything cmds)
+          (emptyEnvironment, initModel, newCounter, initModel))
       hist <- getChanContents hchan
+      cleanup $ History hist
       return (History hist, model, reason)
 
+-- We should try our best to not let this function fail,
+-- since it is used to cleanup up resources.
 getChanContents :: MonadIO m => TChan a -> m [a]
 getChanContents chan = reverse <$> atomically (go' [])
   where
@@ -377,7 +383,7 @@ executeCommands StateMachine {..} hchan pid check =
           case ecresp of
             Left err    -> do
               atomically (writeTChan hchan (pid, Exception err))
-              return ExceptionThrown
+              return $ ExceptionThrown (show err)
             Right cresp -> do
               let cvars = getUsedConcrete cresp
               if length vars /= length cvars
@@ -578,7 +584,7 @@ saveCommands dir cmds prop = go `whenFail` prop
 
 runSavedCommands :: (Show (cmd Concrete), Show (resp Concrete))
                  => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                 => (MonadCatch m, MonadIO m)
+                 => (MonadCatch m, MonadIO m, MonadMask m)
                  => (Read (cmd Symbolic), Read (resp Symbolic))
                  => StateMachine model cmd m resp
                  -> FilePath

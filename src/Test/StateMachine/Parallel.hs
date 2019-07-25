@@ -46,14 +46,15 @@ module Test.StateMachine.Parallel
   , checkCommandNamesParallel
   , coverCommandNamesParallel
   , commandNamesParallel
+  , mkModel
   ) where
 
 import           Control.Monad
                    (replicateM, when)
 import           Control.Monad.Catch
-                   (MonadCatch)
+                   (MonadCatch, MonadMask, bracketOnError)
 import           Control.Monad.State.Strict
-                   (runStateT)
+                   (runStateT, liftIO)
 import           Data.Bifunctor
                    (bimap)
 import           Data.Foldable
@@ -108,11 +109,12 @@ forAllNParallelCommands :: Testable prop
                         => (Show (cmd Symbolic), Show (resp Symbolic), Show (model Symbolic))
                         => (Rank2.Traversable cmd, Rank2.Foldable resp)
                         => StateMachine model cmd m resp
+                        -> Maybe Int
                         -> Int                                      -- ^ Number of threads
                         -> (NParallelCommands cmd resp -> prop)     -- ^ Predicate.
                         -> Property
-forAllNParallelCommands sm np =
-  forAllShrinkShow (generateNParallelCommands sm np) (shrinkNParallelCommands sm) ppShow
+forAllNParallelCommands sm mminSize np =
+  forAllShrinkShow (generateNParallelCommands sm mminSize np) (shrinkNParallelCommands sm) ppShow
 
 
 -- | Generate parallel commands.
@@ -199,11 +201,12 @@ generateNParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
                           => Show (model Symbolic)
                           => (Show (cmd Symbolic), Show (resp Symbolic))
                           => StateMachine model cmd m resp
+                          -> Maybe Int
                           -> Int
                           -> Gen (NParallelCommands cmd resp)
-generateNParallelCommands sm@StateMachine { initModel } np =
+generateNParallelCommands sm@StateMachine { initModel } mminSize np =
   if np <= 0 then error "number of threads must be positive" else do
-  Commands cmds      <- generateCommands sm Nothing
+  Commands cmds      <- generateCommands sm mminSize
   prefixLength       <- sized (\k -> choose (0, k `div` 3))
   let (prefix, rest) =  bimap Commands Commands (splitAt prefixLength cmds)
   return (ParallelCommands prefix
@@ -462,7 +465,7 @@ shrinkAndValidateNParallel sm = \shouldShrink  (ParallelCommands prefix suffixes
 
 runParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                     => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                    => (MonadCatch m, MonadUnliftIO m)
+                    => (MonadUnliftIO m, MonadMask m)
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd resp
                     -> PropertyM m [(History cmd resp, Logic)]
@@ -470,7 +473,7 @@ runParallelCommands sm = runParallelCommandsNTimes 10 sm
 
 runParallelCommands' :: (Show (cmd Concrete), Show (resp Concrete))
                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                     => (MonadCatch m, MonadUnliftIO m)
+                     => (MonadUnliftIO m, MonadMask m)
                      => StateMachine model cmd m resp
                      -> (cmd Concrete -> resp Concrete)
                      -> ParallelCommands cmd resp
@@ -479,7 +482,7 @@ runParallelCommands' sm = runParallelCommandsNTimes' 10 sm
 
 runNParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                     => (MonadCatch m, MonadUnliftIO m)
+                     => (MonadUnliftIO m, MonadMask m)
                      => StateMachine model cmd m resp
                      -> NParallelCommands cmd resp
                      -> PropertyM m [(History cmd resp, Logic)]
@@ -487,7 +490,7 @@ runNParallelCommands sm = runNParallelCommandsNTimes 10 sm
 
 runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                          => (MonadCatch m, MonadUnliftIO m)
+                          => (MonadCatch m, MonadUnliftIO m, MonadMask m)
                           => Int -- ^ How many times to execute the parallel program.
                           -> StateMachine model cmd m resp
                           -> ParallelCommands cmd resp
@@ -499,7 +502,7 @@ runParallelCommandsNTimes n sm cmds =
 
 runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                           => (MonadCatch m, MonadUnliftIO m)
+                           => (MonadCatch m, MonadUnliftIO m, MonadMask m)
                            => Int -- ^ How many times to execute the parallel program.
                            -> StateMachine model cmd m resp
                            -> (cmd Concrete -> resp Concrete)
@@ -513,7 +516,7 @@ runParallelCommandsNTimes' n sm complete cmds =
 
 runNParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                           => (MonadCatch m, MonadUnliftIO m)
+                           => (MonadCatch m, MonadUnliftIO m, MonadMask m)
                            => Int -- ^ How many times to execute the parallel program.
                            -> StateMachine model cmd m resp
                            -> NParallelCommands cmd resp
@@ -525,7 +528,7 @@ runNParallelCommandsNTimes n sm cmds =
 
 runNParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                             => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                            => (MonadCatch m, MonadUnliftIO m)
+                            => (MonadCatch m, MonadUnliftIO m, MonadMask m)
                             => Int -- ^ How many times to execute the parallel program.
                             -> StateMachine model cmd m resp
                             -> (cmd Concrete -> resp Concrete)
@@ -539,15 +542,15 @@ runNParallelCommandsNTimes' n sm complete cmds =
 
 executeParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                         => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                        => (MonadCatch m, MonadUnliftIO m)
+                        => (MonadCatch m, MonadUnliftIO m, MonadMask m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd resp
                         -> Bool
                         -> m (History cmd resp, Reason, Reason)
-executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
+executeParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands prefix suffixes) stopOnError =
 
-  hchan <- newTChanIO
-
+      bracketOnError newTChanIO (\hchan -> getChanContents hchan >>= cleanup . History)
+          $ \hchan -> do
   (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) CheckEverything prefix)
     (emptyEnvironment, initModel, newCounter, initModel)
@@ -555,10 +558,12 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
   if reason0 /= Ok
   then do
     hist <- getChanContents hchan
+    cleanup $ History hist
     return (History hist, reason0, reason0)
   else do
     (reason1, reason2, _) <- go hchan (Ok, Ok, env0) suffixes
     hist <- getChanContents hchan
+    cleanup $ History hist
     return (History hist, reason1, reason2)
   where
     go _hchan (res1, res2, env) []                         = return (res1, res2, env)
@@ -578,7 +583,7 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
                       , reason2
                       , env1 <> env2
                       ) pairs
-    go hchan (Ok, ExceptionThrown, env) (Pair cmds1 _cmds2 : pairs) = do
+    go hchan (Ok, ExceptionThrown e, env) (Pair cmds1 _cmds2 : pairs) = do
 
       -- XXX: It's possible that pre-conditions fail at this point, because
       -- commands may depend on references that never got created in the crashed
@@ -600,20 +605,20 @@ executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix su
       (reason1, (env1, _, _, _)) <- runStateT (executeCommands sm hchan (Pid 1) CheckPrecondition cmds1)
                                               (env, initModel, newCounter, initModel)
       go hchan ( reason1
-               , ExceptionThrown
+               , ExceptionThrown e
                , env1
                ) pairs
-    go hchan (ExceptionThrown, Ok, env) (Pair _cmds1 cmds2 : pairs) = do
+    go hchan (ExceptionThrown e, Ok, env) (Pair _cmds1 cmds2 : pairs) = do
 
       (reason2, (env2, _, _, _)) <- runStateT (executeCommands sm hchan (Pid 2) CheckPrecondition cmds2)
                                               (env, initModel, newCounter, initModel)
-      go hchan ( ExceptionThrown
+      go hchan ( ExceptionThrown e
                , reason2
                , env2
                ) pairs
-    go _hchan out@(ExceptionThrown,       ExceptionThrown,       _env) (_ : _) = return out
-    go _hchan out@(PreconditionFailed {}, ExceptionThrown,       _env) (_ : _) = return out
-    go _hchan out@(ExceptionThrown,       PreconditionFailed {}, _env) (_ : _) = return out
+    go _hchan out@(ExceptionThrown _,       ExceptionThrown _,       _env) (_ : _) = return out
+    go _hchan out@(PreconditionFailed {}, ExceptionThrown _,       _env) (_ : _) = return out
+    go _hchan out@(ExceptionThrown _,       PreconditionFailed {}, _env) (_ : _) = return out
     go _hchan (res1, res2, _env) (Pair _cmds1 _cmds2 : _pairs) =
       error ("executeParallelCommands, unexpected result: " ++ show (res1, res2))
 
@@ -623,15 +628,15 @@ logicReason r = Annotate (show r) Bot
 
 executeNParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
                          => Show (resp Concrete)
-                         => (MonadCatch m, MonadUnliftIO m)
+                         => (MonadCatch m, MonadUnliftIO m, MonadMask m)
                          => StateMachine model cmd m resp
                          -> NParallelCommands cmd resp
                          -> Bool
                          -> m (History cmd resp, Reason)
-executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
+executeNParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands prefix suffixes) stopOnError =
 
-  hchan <- newTChanIO
-
+    bracketOnError newTChanIO (\hchan -> getChanContents hchan >>= cleanup . History)
+        $ \hchan -> do
   (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
     (executeCommands sm hchan (Pid 0) CheckEverything prefix)
     (emptyEnvironment, initModel, newCounter, initModel)
@@ -639,10 +644,12 @@ executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix s
   if reason0 /= Ok
   then do
     hist <- getChanContents hchan
+    cleanup $ History hist
     return (History hist, reason0)
   else do
     (errors, _) <- go hchan (Map.empty, env0) suffixes
     hist <- getChanContents hchan
+    cleanup $ History hist
     return (History hist, combineReasons $ Map.elems errors)
   where
     go _ res [] = return res
@@ -670,7 +677,10 @@ combineReasons ls = fromMaybe Ok (find (/= Ok) ls)
 
 isInvalid :: [Reason] -> Bool
 isInvalid ls = any isPreconditionFailed ls &&
-               all (/= ExceptionThrown) ls
+               all notExc ls
+    where
+      notExc (ExceptionThrown _) = True
+      notExc _                   = False
 
 isPreconditionFailed :: Reason -> Bool
 isPreconditionFailed (PreconditionFailed {}) = True
@@ -699,6 +709,14 @@ linearise StateMachine { transition,  postcondition, initModel } = go . unHistor
 exists' :: Show a => [a] -> (a -> Logic) -> Logic
 exists' [] _ = Top
 exists' xs p = exists xs p
+
+mkModel :: (model Concrete -> cmd Concrete -> resp Concrete -> model Concrete) -> model Concrete
+        -> History cmd resp  -> model Concrete
+mkModel transition initModel = go initModel . path . interleavings . unHistory
+    where
+        go m [] = m
+        go m (Operation cmd resp _ : rest) = go (transition m cmd resp) rest
+        go m (Crash _ _ _ : rest) = go m rest
 
 ------------------------------------------------------------------------
 
