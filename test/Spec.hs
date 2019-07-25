@@ -56,7 +56,7 @@ tests docker0 = testGroup "Tests"
       , testProperty "RaceBugParallel"   (expectFailure (prop_parallel   Race))
       , testProperty "CrashBugParallel"                 (prop_parallel'  Crash)
       , testProperty "CrashAndLogicBugParallel"
-          (expectFailure (withMaxSuccess 6000 (prop_parallel' CrashAndLogic)))
+          (expectFailure (withMaxSuccess 10000 (prop_parallel' CrashAndLogic)))
       , testProperty "PreconditionFailed" prop_precondition
       , testProperty "ExistsCommands"     prop_existsCommands
       , testProperty "NoBug 1 thread"            (prop_nparallel None 1)
