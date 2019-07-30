@@ -372,9 +372,13 @@ historyObservations StateMachine { initModel, transition, postcondition } markov
 ------------------------------------------------------------------------
 
 markovToDot :: (Show state, Show cmd_, Show prob)
-            => Markov state cmd_ prob -> String
-markovToDot = go "digraph g {\n" . Map.toList . unMarkov
+            => state -> state -> Markov state cmd_ prob -> String
+markovToDot source sink = go ("digraph g {\n" ++ nodeColours) . Map.toList . unMarkov
   where
+    nodeColours :: String
+    nodeColours = "\"" ++ show source ++ "\" [color=\"green\"]\n" ++
+                  "\"" ++ show sink   ++ "\" [color=\"red\"]\n"
+
     go acc []                   = acc ++ "}"
     go acc ((from, via) : more) = go acc' more
       where
@@ -391,10 +395,10 @@ markovToDot = go "digraph g {\n" . Map.toList . unMarkov
         string s = "\"" ++ s ++ "\""
 
 markovToPs :: (Show state, Show cmd_, Show prob)
-           => Markov state cmd_ prob -> FilePath -> IO ()
-markovToPs markov out = do
+           => state -> state -> Markov state cmd_ prob -> FilePath -> IO ()
+markovToPs source sink markov out = do
   let dotFile = replaceExtension out "dot"
-  writeFile dotFile (markovToDot markov)
+  writeFile dotFile (markovToDot source sink markov)
   callProcess "dot" ["-Tps", dotFile, "-o", out]
 
 ------------------------------------------------------------------------
