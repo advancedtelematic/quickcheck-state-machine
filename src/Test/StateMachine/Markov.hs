@@ -41,6 +41,7 @@ module Test.StateMachine.Markov
   , computeReliability
   , printReliability
   , quickCheckReliability
+  , testChainToDot
   )
   where
 
@@ -52,17 +53,18 @@ import           Data.Either
                    (partitionEithers)
 import           Data.List
                    (genericLength)
+import qualified Data.Set                           as Set
 import           Data.Map
                    (Map)
 import qualified Data.Map                           as Map
 import           Data.Matrix
                    (Matrix, elementwise, fromLists, matrix, ncols,
-                   nrows, submatrix, toLists, zero)
+                   nrows, submatrix, toLists, zero, getElem)
 import           Data.Maybe
                    (fromMaybe)
 import           Generic.Data
                    (FiniteEnum, GBounded, GEnum, gfiniteEnumFromTo,
-                   gmaxBound, gminBound, gtoFiniteEnum)
+                   gmaxBound, gminBound, gtoFiniteEnum, gfromFiniteEnum)
 import           GHC.Generics
                    (Generic, Rep)
 import           Prelude                            hiding
@@ -376,8 +378,8 @@ markovToDot :: (Show state, Show cmd_, Show prob)
 markovToDot source sink = go ("digraph g {\n" ++ nodeColours) . Map.toList . unMarkov
   where
     nodeColours :: String
-    nodeColours = "\"" ++ show source ++ "\" [color=\"green\"]\n" ++
-                  "\"" ++ show sink   ++ "\" [color=\"red\"]\n"
+    nodeColours = string (show source) ++ " [color=\"green\"]\n" ++
+                  string (show sink)   ++ " [color=\"red\"]\n"
 
     go acc []                   = acc ++ "}"
     go acc ((from, via) : more) = go acc' more
@@ -391,8 +393,8 @@ markovToDot source sink = go ("digraph g {\n" ++ nodeColours) . Map.toList . unM
                   | Transition cmd prob to <- via
                   ]
 
-        string :: String -> String
-        string s = "\"" ++ s ++ "\""
+string :: String -> String
+string s = "\"" ++ s ++ "\""
 
 markovToPs :: (Show state, Show cmd_, Show prob)
            => state -> state -> Markov state cmd_ prob -> FilePath -> IO ()
@@ -492,3 +494,43 @@ quickCheckReliability sdb usage prop = do
       observed = ( zero (nrows usage) (ncols usage)
                  , zero (nrows usage) (ncols usage)
                  )
+
+testChainToDot :: forall state cmd_ prob m. (Show state, Ord state, Monad m)
+               => (Generic state, GEnum FiniteEnum (Rep state))
+               => StatsDb m -> state -> state -> Markov state cmd_ prob -> m String
+testChainToDot StatsDb { load } source sink markov = do
+  mpriors <- load
+  case mpriors of
+    Nothing     -> error "testChainToDot: no test chain exists"
+    Just priors -> return
+      (go ("digraph g {\n" ++ nodeColours) priors markovStatePairs)
+    where
+    nodeColours :: String
+    nodeColours = string (show source) ++ " [color=\"green\"]\n" ++
+                  string (show sink)   ++ " [color=\"red\"]\n"
+
+    go :: String -> (Matrix Double, Matrix Double) -> [(state, state)] -> String
+    go acc _priors               []                  = acc ++ "}"
+    go acc (successes, failures) ((from, to) : more) = go acc' (successes, failures) more
+      where
+        acc' :: String
+        acc' = acc ++
+          string (show from) ++
+          " -> " ++
+          string (show to) ++
+          " [label=<(<font color='green'>" ++ show (lookupStates from to successes) ++ "</font>"
+            ++    ", <font color='red'>"   ++ show (lookupStates from to failures)  ++ "</font>)>]\n"
+
+    markovStatePairs :: [(state, state)]
+    markovStatePairs
+      = Set.toList
+      . foldl (\ih (from, tos) -> ih `Set.union`
+                  foldl (\ih' to -> Set.insert (from, to) ih') Set.empty tos)
+              Set.empty
+      . map (fmap (map to))
+      . Map.toList
+      . unMarkov
+      $ markov
+
+    lookupStates :: state -> state -> Matrix Double -> Int
+    lookupStates from to = round . getElem (gfromFiniteEnum from + 1) (gfromFiniteEnum to + 1)
