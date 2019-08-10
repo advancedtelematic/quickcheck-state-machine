@@ -24,6 +24,7 @@ module Test.StateMachine.Types.History
   , Operation(..)
   , makeOperations
   , interleavings
+  , operationsPath
   , completeHistory
   )
   where
@@ -119,6 +120,13 @@ interleavings es =
     filter1 _ []                   = []
     filter1 p (x : xs) | p x       = x : filter1 p xs
                        | otherwise = xs
+
+operationsPath :: Forest (Operation cmd resp) -> [Operation cmd resp]
+operationsPath = go []
+    where
+      go :: [a] -> Forest a -> [a]
+      go acc [] = reverse acc
+      go acc (Node a f : _) = go (a:acc) f
 
 ------------------------------------------------------------------------
 
