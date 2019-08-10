@@ -425,7 +425,7 @@ mock m act = case act of
 
 sm :: StateMachine Model Action IO Response
 sm = StateMachine initModel transition precondition postcondition
-       Nothing generator shrinker semantics mock
+       Nothing generator shrinker semantics mock noCleanup
 
 markov :: Markov State Action_ Double
 markov = makeMarkov

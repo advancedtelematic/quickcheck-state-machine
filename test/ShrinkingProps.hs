@@ -343,6 +343,7 @@ sm = QSM.StateMachine {
        , semantics     = semantics
        , mock          = mock
        , invariant     = Nothing
+       , cleanup       = noCleanup
        }
 
 {-------------------------------------------------------------------------------
@@ -701,7 +702,7 @@ prop_one_thread n = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
           cmdsChucks = chunksOf n' sx
           sfxs = (\c -> [c]) . QSM.Commands <$> cmdsChucks
           nParallelCmd = QSM.ParallelCommands {prefix = QSM.Commands px, suffixes = sfxs}
-      res <- runNParallelCommandsNTimes 1 sm $ nParallelCmd
+      res <- runNParallelCommandsNTimes 1 sm nParallelCmd
       let (hist', _ret) = unzip res
       let events = snd <$> (QSM.unHistory hist)
           events' = snd <$> (concat (QSM.unHistory <$> hist'))

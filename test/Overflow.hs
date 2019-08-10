@@ -29,7 +29,6 @@ import           Test.QuickCheck
 import           Test.QuickCheck.Monadic (monadicIO)
 import           Test.StateMachine
 import           Test.StateMachine.DotDrawing
-import           Test.StateMachine.Parallel
 import           Test.StateMachine.Types(Reference(..), Symbolic(..))
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
@@ -133,7 +132,7 @@ shrinker _ _                    = []
 
 sm :: StateMachine Model Command IO Response
 sm = StateMachine initModel transition precondition postcondition
-           Nothing generator shrinker semantics mock
+           Nothing generator shrinker semantics mock noCleanup
 
 prop_sequential_overflow :: Property
 prop_sequential_overflow = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
