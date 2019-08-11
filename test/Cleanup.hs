@@ -44,6 +44,8 @@ import           Test.StateMachine.Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
                    (liftProperty, mkModel, whenFailM)
+import           Text.Show.Pretty
+                   (ppShow)
 
 {-----------------------------------------------------------------------------------
   This example in mainly used to check how well cleanup of recourses works. In our
@@ -166,7 +168,7 @@ semantics counter ref bug cmd = case cmd of
             when (c > 3 && bug == Exception) $
                 throwIO $ userError "semantics injected bug"
             withFile path WriteMode (\_ -> return ())
-            when (c > 3 && bug == ExceptionAfter) $
+            when (c > 3 && bug == ExcAfter) $
                 throwIO $ userError "semantics injected bug"
             rf <- newMVar (path, True)
             return $ Created $ reference $ Opaque $ MVarC rf c
@@ -220,7 +222,7 @@ prop_sequential_clean testing bug dc = forAllCommands smUnused Nothing $ \cmds -
     case testing of
         Regular -> prettyCommands sm' hist $ checkCommandNames cmds (res === Ok)
         Files   -> printFiles ls `whenFailM` (ls === [])
-        Equiv   -> liftProperty $ mkModel sm' hist === model
+        Eq _    -> liftProperty $ mkModel sm' hist === model
 
 prop_parallel_clean :: FinalTest -> Bug -> DoubleCleanup -> Property
 prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
@@ -235,12 +237,12 @@ prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> 
     case testing of
         Regular -> prettyParallelCommands cmds ret
         Files   -> printFiles ls `whenFailM` (ls === [])
-        Equiv   -> do
+        Eq bl   -> do
             let (a, b) = case mkModel sm' . fst <$> ret of
                     (x : y : _) -> (x,y)
                     _           -> error "expected at least two histories"
             liftProperty $ printModels a b `whenFail`
-                property (modelEquivalence a b)
+                property (modelEquivalence bl a b)
 
 prop_nparallel_clean :: Int -> FinalTest -> Bug -> DoubleCleanup -> Property
 prop_nparallel_clean np testing bug dc = forAllNParallelCommands smUnused np $ \cmds -> monadicIO $ do
@@ -255,16 +257,16 @@ prop_nparallel_clean np testing bug dc = forAllNParallelCommands smUnused np $ \
     case testing of
         Regular -> prettyNParallelCommands cmds ret
         Files   -> printFiles ls `whenFailM` (ls === [])
-        Equiv   -> do
+        Eq bl   -> do
             let (a, b) = case mkModel sm' . fst <$> ret of
                     (x : y : _) -> (x,y)
                     _           -> error "expected at least two histories"
             liftProperty $ printModels a b `whenFail`
-                property (modelEquivalence a b)
+                property (modelEquivalence bl a b)
 
 printModels :: Show1 r => Model r -> Model r -> IO ()
 printModels a b =
-    putStrLn $ "Models are not equivalent: " ++ show a ++ " and " ++ show b
+    putStrLn $ "Models are not equivalent: \n" ++ ppShow a ++ " \nand \n" ++ ppShow b
 
 printFiles :: [String] -> IO ()
 printFiles ls' =
@@ -272,7 +274,7 @@ printFiles ls' =
 
 data Bug = NoBug
          | Exception
-         | ExceptionAfter
+         | ExcAfter
          deriving (Eq, Show)
 
 data DoubleCleanup = NoOp
@@ -280,7 +282,7 @@ data DoubleCleanup = NoOp
 
 data FinalTest = Regular
                | Files
-               | Equiv
+               | Eq Bool
                  deriving (Eq, Show)
 
 -- | This is meant to be used, in order to test equality of two
@@ -289,10 +291,11 @@ data FinalTest = Regular
 -- different executions in the parallel case, may create references
 -- with different order, so the counter assigned by the semantics
 -- can be different.
-modelEquivalence :: Model Concrete -> Model Concrete -> Bool
-modelEquivalence a b =
+modelEquivalence :: Bool -> Model Concrete -> Model Concrete -> Bool
+modelEquivalence bl a b =
     sameElements (Map.elems $ files a) (Map.elems $ files b)
     && counter a == counter b
+    && (not bl || value a == value b)
 
 makePath :: String -> String
 makePath file = testDirectory ++ "/" ++ file

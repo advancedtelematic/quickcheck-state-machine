@@ -80,60 +80,51 @@ tests docker0 = testGroup "Tests"
                                  $ prop_nparallel_overflow 4
       ]
   , testGroup "Cleanup"
-      [ testProperty "sequentialRegularNoOp" $ prop_sequential_clean   Regular Cleanup.NoBug           NoOp
-      , testProperty "sequentialRegular"     $ prop_sequential_clean   Regular Cleanup.NoBug           ReDo
-      , testProperty "sequentialRegularExceptionNoOp" $ expectFailure
-                                             $ prop_sequential_clean   Regular Cleanup.Exception       NoOp
-      , testProperty "sequentialRegularException" $ expectFailure
-                                             $ prop_sequential_clean   Regular Cleanup.Exception       ReDo
-      , testProperty "sequentialFilesNoOp"   $ prop_sequential_clean   Files   Cleanup.NoBug           NoOp
-      , testProperty "sequentialFiles"       $ prop_sequential_clean   Files   Cleanup.NoBug           ReDo
-      , testProperty "sequentialFilesExceptionNoOp"
-                                             $ prop_sequential_clean   Files   Cleanup.Exception       NoOp
-      , testProperty "sequentialFilesException"
-                                             $ prop_sequential_clean   Files   Cleanup.Exception       ReDo
-      , testProperty "sequentialFilesExceptionAfterNoOp"
-                                             $ prop_sequential_clean   Files   Cleanup.ExceptionAfter  NoOp
-      , testProperty "sequentialFilesExceptionAfterReDo"
-                                             $ prop_sequential_clean  Files   Cleanup.ExceptionAfter  ReDo
-      , testProperty "sequentialEquivalenceNoOp"
-                                             $ prop_sequential_clean  Equiv   Cleanup.NoBug           NoOp
+      [ testProperty "seqRegularNoOp"         $ prop_sequential_clean   Regular    Cleanup.NoBug     NoOp
+      , testProperty "seqRegular"             $ prop_sequential_clean   Regular    Cleanup.NoBug     ReDo
+      , testProperty "seqRegularExcNoOp"
+        $ expectFailure                       $ prop_sequential_clean   Regular    Cleanup.Exception NoOp
+      , testProperty "seqRegularExc"
+        $ expectFailure                       $ prop_sequential_clean   Regular    Cleanup.Exception ReDo
+      , testProperty "seqFilesNoOp"           $ prop_sequential_clean   Files      Cleanup.NoBug     NoOp
+      , testProperty "seqFiles"               $ prop_sequential_clean   Files      Cleanup.NoBug     ReDo
+      , testProperty "seqFilesExcNoOp"        $ prop_sequential_clean   Files      Cleanup.Exception NoOp
+      , testProperty "seqFilesExc"            $ prop_sequential_clean   Files      Cleanup.Exception ReDo
+      , testProperty "seqFilesExcAfterNoOp"   $ prop_sequential_clean   Files      Cleanup.ExcAfter  NoOp
+      , testProperty "seqFilesExcAfterReDo"   $ prop_sequential_clean   Files      Cleanup.ExcAfter  ReDo
+      , testProperty "seqEquivNoOp"           $ prop_sequential_clean  (Eq False)  Cleanup.NoBug     NoOp
 
+      , testProperty "2-threadsRegularNoOp"   $ prop_parallel_clean     Regular    Cleanup.NoBug     NoOp
+      , testProperty "2-threadsRegular"       $ prop_parallel_clean     Regular    Cleanup.NoBug     ReDo
+      , testProperty "2-threadsRegularExc"
+        $ expectFailure                       $ prop_parallel_clean     Regular    Cleanup.Exception NoOp
+      , testProperty "2-threadsRegularExc"
+        $ expectFailure                       $ prop_parallel_clean     Regular    Cleanup.Exception ReDo
+      , testProperty "2-threadsFilesNoOp"     $ prop_parallel_clean     Files      Cleanup.NoBug     NoOp
+      , testProperty "2-threadsFiles"         $ prop_parallel_clean     Files      Cleanup.NoBug     ReDo
+      , testProperty "2-threadsFilesExcNoOp"  $ prop_parallel_clean     Files      Cleanup.Exception NoOp
+      , testProperty "2-threadsFilesExc"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_parallel_clean     Files      Cleanup.Exception ReDo
+      , testProperty "2-threadsFilesExcAfter" $ prop_parallel_clean     Files      Cleanup.ExcAfter  NoOp
+      , testProperty "2-threadsEquivNoOp"     $ prop_parallel_clean     (Eq False) Cleanup.NoBug     NoOp
+      , testProperty "2-threadsEquivFailingNoOp"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_parallel_clean     (Eq True)  Cleanup.NoBug     NoOp
 
-      , testProperty "2-threadsRegularNoOp"  $ prop_parallel_clean     Regular Cleanup.NoBug           NoOp
-      , testProperty "2-threadsRegular"      $ prop_parallel_clean     Regular Cleanup.NoBug           ReDo
-      , testProperty "2-threadsRegularException"  $ expectFailure
-                                             $ prop_parallel_clean     Regular Cleanup.Exception       NoOp
-      , testProperty "2-threadsRegularException" $ expectFailure
-                                             $ prop_parallel_clean     Regular Cleanup.Exception       ReDo
-      , testProperty "2-threadsFilesNoOp"    $ prop_parallel_clean     Files   Cleanup.NoBug           NoOp
-      , testProperty "2-threadsFiles"        $ prop_parallel_clean     Files   Cleanup.NoBug           ReDo
-      , testProperty "2-threadsFilesExceptionNoOp"
-                                             $ prop_parallel_clean     Files   Cleanup.Exception       NoOp
-      , testProperty "2-threadsFilesException" $ expectFailure $ withMaxSuccess 1000
-                                             $ prop_parallel_clean     Files   Cleanup.Exception       ReDo
-      , testProperty "2-threadsFilesExceptionAfter"
-                                             $ prop_parallel_clean     Files   Cleanup.ExceptionAfter  NoOp
-      , testProperty "2-threadsEquivalenceNoOp"
-                                             $ prop_parallel_clean     Equiv   Cleanup.NoBug           NoOp
-
-
-      , testProperty "3-threadsRegularNoOp"  $ prop_nparallel_clean  3 Regular Cleanup.NoBug           NoOp
-      , testProperty "3-threadsRegular"      $ prop_nparallel_clean  3 Regular Cleanup.NoBug           ReDo
-      , testProperty "3-threadsRegularException"  $ expectFailure
-                                             $ prop_nparallel_clean  3 Regular Cleanup.Exception       NoOp
-      , testProperty "3-threadsRegularException"  $ expectFailure
-                                             $ prop_nparallel_clean  3 Regular Cleanup.Exception       ReDo
-      , testProperty "3-threadsFiles"        $ prop_nparallel_clean  3 Files   Cleanup.NoBug           NoOp
-      , testProperty "3-threadsFiles"        $ prop_nparallel_clean  3 Files   Cleanup.NoBug           ReDo
-      , testProperty "3-threadsFilesExceptionNoOp"
-                                             $ prop_nparallel_clean  3 Files   Cleanup.Exception       NoOp
-      , testProperty "3-threadsFilesException" $ expectFailure $ withMaxSuccess 1000
-                                             $ prop_nparallel_clean  3 Files   Cleanup.Exception       ReDo
-      , testProperty "3-threadsFilesExceptionAfter"
-                                             $ prop_nparallel_clean  3 Files   Cleanup.ExceptionAfter  NoOp
-      , testProperty "3-threadsEquivalenceNoOp"
-                                             $ prop_nparallel_clean  3 Equiv   Cleanup.NoBug           NoOp
+      , testProperty "3-threadsRegularNoOp"   $ prop_nparallel_clean  3 Regular    Cleanup.NoBug     NoOp
+      , testProperty "3-threadsRegular"       $ prop_nparallel_clean  3 Regular    Cleanup.NoBug     ReDo
+      , testProperty "3-threadsRegularExc"    $ expectFailure
+                                              $ prop_nparallel_clean  3 Regular    Cleanup.Exception NoOp
+      , testProperty "3-threadsRegularExc"
+        $ expectFailure                       $ prop_nparallel_clean  3 Regular    Cleanup.Exception ReDo
+      , testProperty "3-threadsFilesNoOp"     $ prop_nparallel_clean  3 Files      Cleanup.NoBug     NoOp
+      , testProperty "3-threadsFiles"         $ prop_nparallel_clean  3 Files      Cleanup.NoBug     ReDo
+      , testProperty "3-threadsFilesExcNoOp"  $ prop_nparallel_clean  3 Files      Cleanup.Exception NoOp
+      , testProperty "3-threadsFilesExc"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_nparallel_clean  3 Files      Cleanup.Exception ReDo
+      , testProperty "3-threadsFilesExcAfter" $ prop_nparallel_clean  3 Files      Cleanup.ExcAfter  NoOp
+      , testProperty "3-threadsEquivNoOp"     $ prop_nparallel_clean  3 (Eq False) Cleanup.NoBug     NoOp
+      , testProperty "3-threadsEquivFailingNoOp"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_nparallel_clean  3 (Eq True)  Cleanup.NoBug     NoOp
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
