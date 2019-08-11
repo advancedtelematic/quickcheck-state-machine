@@ -60,6 +60,8 @@ data Command r
   = Create String
   | Delete (Reference (Opaque FileRef) r)
   | Ls
+  | Write Int
+  | Increment
   deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 deriving instance Show (Command Symbolic)
@@ -70,6 +72,7 @@ data Response r
   = Created (Reference (Opaque FileRef) r)
   | Deleted
   | Contents [String]
+  | ChangedValue Int
   deriving (Eq, Generic1, Rank2.Foldable)
 
 deriving instance Show (Response Symbolic)
@@ -80,39 +83,46 @@ data Model r = Model {
       files   :: Map (Reference (Opaque FileRef) r) String
     , counter :: Int
     , semanticsCounter :: Opaque (MVar Int)
+    , ref     :: Opaque (MVar Int)
+    , value   :: Int
   }
   deriving (Generic, Show, Eq)
 
 instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)
 
-initModel :: MVar Int -> Model r
-initModel sc= Model Map.empty 0 (Opaque sc)
+initModel :: MVar Int -> MVar Int -> Model r
+initModel sc ref = Model Map.empty 0 (Opaque sc) (Opaque ref) 0
 
 transition :: Ord1 r => Model r -> Command r -> Response r -> Model r
 transition m@Model {..} cmd resp = case (cmd, resp) of
-    (Create p, Created ref) -> m {files = Map.insert ref p files, counter = counter + 1}
-    (Delete ref, Deleted)   -> m {files = Map.delete ref files}
-    (Ls, Contents _)        -> m
-    _ -> error "transition impossible"
+    (Create p, Created rf)      -> m {files = Map.insert rf p files, counter = counter + 1}
+    (Delete rf, Deleted)        -> m {files = Map.delete rf files}
+    (Ls, Contents _)            -> m
+    (Write n, ChangedValue _)   -> m {value = n}
+    (Increment, ChangedValue _) -> m {value = value + 1}
+    _                           -> error "transition impossible"
 
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition Model {..} cmd = case cmd of
     Create p   -> Boolean $ notElem p (Map.elems files)
-  --                       && (counter < 7)
-    Delete ref -> Boolean $ Map.member ref files
+    Delete rf  -> Boolean $ Map.member rf files
     Ls         -> Top
+    Write _    -> Top
+    Increment  -> Top
 
 sameElements :: Eq a => [a] -> [a] -> Bool
 sameElements x y = null (x \\ y) && null (y \\ x)
 
 postcondition :: Model Concrete -> Command Concrete -> Response Concrete -> Logic
 postcondition  Model{..} cmd resp = case (cmd, resp) of
-  (Create _,      Created _) -> Top
-  (Delete _, Deleted)        -> Top
-  (Ls, Contents ls)          -> if sameElements ls (Map.elems files) then Top
+  (Create _,      Created _)  -> Top
+  (Delete _, Deleted)         -> Top
+  (Ls, Contents ls)           -> if sameElements ls (Map.elems files) then Top
         else Annotate ("Not same elements between " ++ show ls ++ "and " ++ show (Map.elems files)) Bot
-  _ -> Bot
+  (Increment, ChangedValue _) -> Top
+  (Write n, ChangedValue m)   -> m .== n
+  _                           -> Bot
 
 data MVarC a = MVarC (MVar a) Int
 type FileRef = MVarC (String, Bool)
@@ -131,19 +141,23 @@ instance Eq (MVarC a) where
 instance Ord (MVarC a) where
     compare (MVarC _ a) (MVarC _ b) = compare a b
 
-semantics :: MVar Int ->  Bug -> Command Concrete -> IO (Response Concrete)
-semantics counter bug cmd = case cmd of
-    Create f -> createFile f
+semantics :: MVar Int -> MVar Int -> Bug -> Command Concrete -> IO (Response Concrete)
+semantics counter ref bug cmd = case cmd of
+    Create f  -> createFile f
             `onException` removePathForcibly (makePath f)
-    Delete ref -> do
-        let MVarC lockedFile _ = unOpaque $ concrete ref
+    Delete rf -> do
+        let MVarC lockedFile _ = unOpaque $ concrete rf
         modifyMVar_ lockedFile $ \(file, _) -> do
             removeFile file
             return (file, False)
         return Deleted
-    Ls -> do
+    Ls        -> do
         ls <- listDirectory testDirectory
         return $ Contents ls
+    Write n   ->
+        modifyMVar ref (\_ -> return (n, ChangedValue n))
+    Increment ->
+        modifyMVar ref (\m -> return (m + 1, ChangedValue $ m + 1))
     where
         createFile :: String -> IO (Response Concrete)
         createFile f = do
@@ -154,37 +168,44 @@ semantics counter bug cmd = case cmd of
             withFile path WriteMode (\_ -> return ())
             when (c > 3 && bug == ExceptionAfter) $
                 throwIO $ userError "semantics injected bug"
-            ref <- newMVar (path, True)
-            return $ Created $ reference $ Opaque $ MVarC ref c
+            rf <- newMVar (path, True)
+            return $ Created $ reference $ Opaque $ MVarC rf c
 
 mock :: Model Symbolic -> Command Symbolic -> GenSym (Response Symbolic)
 mock Model{..} cmd = case cmd of
-    Create _ -> Created <$> genSym
-    Delete _ -> return Deleted
-    Ls       -> return $ Contents $ Map.elems files
+    Create _  -> Created <$> genSym
+    Delete _  -> return Deleted
+    Ls        -> return $ Contents $ Map.elems files
+    Write n   -> return $ ChangedValue n
+    Increment -> return $ ChangedValue $ value + 1
 
 generator :: Model Symbolic -> Maybe (Gen (Command Symbolic))
-generator Model{..} = Just $ frequency
-    [ (7, return $ Create $ mkFileName counter)
-    , (if Map.null files then 0 else 3, Delete . fst <$> elements (Map.toList files))
-    , (1, return Ls)
-    ]
+generator Model{..} = Just $ do
+    n <- choose (1,10)
+    frequency
+        [ (7, return $ Create $ mkFileName counter)
+        , (if Map.null files then 0 else 3, Delete . fst <$> elements (Map.toList files))
+        , (1, return Ls)
+        , (1, return $ Write n)
+        , (1, return Increment)
+        ]
 
 shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
 shrinker _ _             = []
 
 cleanup :: DoubleCleanup -> Model Concrete -> IO ()
 cleanup dc Model{..} = do
-    forM_ (Map.keys files) $ \ref ->
-        removeFileRef dc $ unOpaque $ concrete ref
+    forM_ (Map.keys files) $ \rf ->
+        removeFileRef dc $ unOpaque $ concrete rf
     modifyMVar_ (unOpaque semanticsCounter) (\_ -> return 0)
+    modifyMVar_ (unOpaque ref) (\_ -> return 0)
 
-sm :: MVar Int -> Bug -> DoubleCleanup -> StateMachine Model Command IO Response
-sm counter bug dc = StateMachine (initModel counter) transition precondition postcondition
-           Nothing generator shrinker (semantics counter bug) mock (cleanup dc)
+sm :: MVar Int -> MVar Int -> Bug -> DoubleCleanup -> StateMachine Model Command IO Response
+sm counter ref bug dc = StateMachine (initModel counter ref) transition precondition postcondition
+           Nothing generator shrinker (semantics counter ref bug) mock (cleanup dc)
 
 smUnused :: StateMachine Model Command IO Response
-smUnused = sm undefined undefined undefined
+smUnused = sm undefined undefined undefined undefined
 
 prop_sequential_clean :: FinalTest -> Bug -> DoubleCleanup -> Property
 prop_sequential_clean testing bug dc = forAllCommands smUnused Nothing $ \cmds -> monadicIO $ do
@@ -192,7 +213,8 @@ prop_sequential_clean testing bug dc = forAllCommands smUnused Nothing $ \cmds -
         removePathForcibly testDirectory
         createDirectory testDirectory
     c <- liftIO $ newMVar 0
-    let sm' = sm c bug dc
+    ref <- liftIO $ newMVar 0
+    let sm' = sm c ref bug dc
     (hist, model, res) <- runCommands sm' cmds
     ls <- liftIO $ listDirectory testDirectory
     case testing of
@@ -206,7 +228,8 @@ prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> 
         removePathForcibly testDirectory
         createDirectory testDirectory
     c <- liftIO $ newMVar 0
-    let sm' = sm c bug dc
+    ref <- liftIO $ newMVar 0
+    let sm' = sm c ref bug dc
     ret <- runParallelCommands sm' cmds
     ls <- liftIO $ listDirectory testDirectory
     case testing of
@@ -225,7 +248,8 @@ prop_nparallel_clean np testing bug dc = forAllNParallelCommands smUnused np $ \
         removePathForcibly testDirectory
         createDirectory testDirectory
     c <- liftIO $ newMVar 0
-    let sm' = sm c bug dc
+    ref <- liftIO $ newMVar 0
+    let sm' = sm c ref bug dc
     ret <- runNParallelCommands sm' cmds
     ls <- liftIO $ listDirectory testDirectory
     case testing of
