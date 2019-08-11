@@ -21,6 +21,7 @@ import           Test.Tasty.QuickCheck
 
 import           Bookstore                as Store
 import           CircularBuffer
+import           Cleanup
 import qualified CrudWebserverDb          as WS
 import           DieHard
 import           Echo
@@ -78,6 +79,56 @@ tests docker0 = testGroup "Tests"
                                  $ withMaxSuccess 500
                                  $ prop_nparallel_overflow 4
       ]
+  , testGroup "Cleanup"
+      [ testProperty "sequentialRegularNoOp" $ prop_sequential_clean   Regular Cleanup.NoBug           NoOp
+      , testProperty "sequentialRegular"     $ prop_sequential_clean   Regular Cleanup.NoBug           ReDo
+      , testProperty "sequentialRegularExceptionNoOp" $ expectFailure
+                                             $ prop_sequential_clean   Regular Cleanup.Exception       NoOp
+      , testProperty "sequentialRegularException" $ expectFailure
+                                             $ prop_sequential_clean   Regular Cleanup.Exception       ReDo
+      , testProperty "sequentialFilesNoOp"   $ prop_sequential_clean   Files   Cleanup.NoBug           NoOp
+      , testProperty "sequentialFiles"       $ prop_sequential_clean   Files   Cleanup.NoBug           ReDo
+      , testProperty "sequentialFilesExceptionNoOp"
+                                             $ prop_sequential_clean   Files   Cleanup.Exception       NoOp
+      , testProperty "sequentialFilesException"
+                                             $ prop_sequential_clean   Files   Cleanup.Exception       ReDo
+      , testProperty "sequentialFilesExceptionAfterNoOp"
+                                             $ prop_sequential_clean   Files   Cleanup.ExceptionAfter  NoOp
+      , testProperty "sequentialFilesExceptionAfterReDo"
+                                              $ prop_sequential_clean   Files   Cleanup.ExceptionAfter ReDo
+
+
+      , testProperty "2-threadsRegularNoOp"  $ prop_parallel_clean     Regular Cleanup.NoBug           NoOp
+      , testProperty "2-threadsRegular"      $ prop_parallel_clean     Regular Cleanup.NoBug           ReDo
+      , testProperty "2-threadsRegularException"  $ expectFailure
+                                             $ prop_parallel_clean     Regular Cleanup.Exception       NoOp
+      , testProperty "2-threadsRegularException" $ expectFailure
+                                             $ prop_parallel_clean     Regular Cleanup.Exception       ReDo
+      , testProperty "2-threadsFilesNoOp"    $ prop_parallel_clean     Files   Cleanup.NoBug           NoOp
+      , testProperty "2-threadsFiles"        $ prop_parallel_clean     Files   Cleanup.NoBug           ReDo
+      , testProperty "2-threadsFilesExceptionNoOp"
+                                             $ prop_parallel_clean     Files   Cleanup.Exception       NoOp
+      , testProperty "2-threadsFilesException" $ expectFailure $ withMaxSuccess 1000
+                                             $ prop_parallel_clean     Files   Cleanup.Exception       ReDo
+      , testProperty "2-threadsFilesExceptionAfter"
+                                              $ prop_parallel_clean     Files   Cleanup.ExceptionAfter NoOp
+
+
+      , testProperty "3-threadsRegular"      $ prop_nparallel_clean  3 Regular Cleanup.NoBug           NoOp
+      , testProperty "3-threadsRegular"      $ prop_nparallel_clean  3 Regular Cleanup.NoBug           ReDo
+      , testProperty "3-threadsRegularException"  $ expectFailure
+                                             $ prop_nparallel_clean  3 Regular Cleanup.Exception       NoOp
+      , testProperty "3-threadsRegularException"  $ expectFailure
+                                             $ prop_nparallel_clean  3 Regular Cleanup.Exception       ReDo
+      , testProperty "3-threadsFiles"        $ prop_nparallel_clean  3 Files   Cleanup.NoBug           NoOp
+      , testProperty "3-threadsFiles"        $ prop_nparallel_clean  3 Files   Cleanup.NoBug           ReDo
+      , testProperty "3-threadsFilesExceptionNoOp"
+                                             $ prop_nparallel_clean  3 Files   Cleanup.Exception       NoOp
+      , testProperty "3-threadsFilesException" $ expectFailure $ withMaxSuccess 1000
+                                             $ prop_nparallel_clean  3 Files   Cleanup.Exception       ReDo
+      , testProperty "3-threadsFilesExceptionAfter"
+                                              $ prop_nparallel_clean  3 Files   Cleanup.ExceptionAfter NoOp
+      ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
       , testProperty "Parallel"   prop_error_parallel
@@ -92,7 +143,7 @@ tests docker0 = testGroup "Tests"
       , webServer docker0 WS.Race  8803 "RaceBug"    (expectFailure . WS.prop_crudWebserverDbParallel)
       ]
   , testGroup "Bookstore"
-      [ dataBase docker0 "NoBug" (Store.prop_bookstore NoBug)
+      [ dataBase docker0 "NoBug" (Store.prop_bookstore Store.NoBug)
       , dataBase docker0 "SqlStatementBug"
           $ expectFailure
           . withMaxSuccess 500
