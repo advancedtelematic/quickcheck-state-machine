@@ -24,21 +24,26 @@ import           Control.Exception
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           Data.Functor.Classes
-                   (Ord1)
-import           Data.List ((\\))
-import           Data.Map.Strict (Map)
+                   (Ord1, Show1)
+import           Data.List
+                   ((\\))
+import           Data.Map.Strict
+                   (Map)
 import qualified Data.Map.Strict as Map
 import           Prelude
 import           System.Directory
 import           System.IO
 import           Test.QuickCheck
-import           Test.QuickCheck.Monadic (monadicIO)
+import           Test.QuickCheck.Monadic
+                  (monadicIO)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Test.StateMachine
-import           Test.StateMachine.Types(Reference(..), Symbolic(..))
+import           Test.StateMachine.Types
+                   (Reference(..), Symbolic(..))
 import qualified Test.StateMachine.Types.Rank2 as Rank2
-import           Test.StateMachine.Utils (whenFailM)
+import           Test.StateMachine.Utils
+                   (liftProperty, mkModel, whenFailM)
 
 {-----------------------------------------------------------------------------------
   This example in mainly used to check how well cleanup of recourses works. In our
@@ -76,7 +81,7 @@ data Model r = Model {
     , counter :: Int
     , semanticsCounter :: Opaque (MVar Int)
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq)
 
 instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)
@@ -188,11 +193,12 @@ prop_sequential_clean testing bug dc = forAllCommands smUnused Nothing $ \cmds -
         createDirectory testDirectory
     c <- liftIO $ newMVar 0
     let sm' = sm c bug dc
-    (hist, _model, res) <- runCommands sm' cmds
+    (hist, model, res) <- runCommands sm' cmds
     ls <- liftIO $ listDirectory testDirectory
     case testing of
         Regular -> prettyCommands sm' hist $ checkCommandNames cmds (res === Ok)
         Files   -> printFiles ls `whenFailM` (ls === [])
+        Equiv   -> liftProperty $ mkModel sm' hist === model
 
 prop_parallel_clean :: FinalTest -> Bug -> DoubleCleanup -> Property
 prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
@@ -206,6 +212,12 @@ prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> 
     case testing of
         Regular -> prettyParallelCommands cmds ret
         Files   -> printFiles ls `whenFailM` (ls === [])
+        Equiv   -> do
+            let (a, b) = case mkModel sm' . fst <$> ret of
+                    (x : y : _) -> (x,y)
+                    _           -> error "expected at least two histories"
+            liftProperty $ printModels a b `whenFail`
+                property (modelEquivalence a b)
 
 prop_nparallel_clean :: Int -> FinalTest -> Bug -> DoubleCleanup -> Property
 prop_nparallel_clean np testing bug dc = forAllNParallelCommands smUnused np $ \cmds -> monadicIO $ do
@@ -219,6 +231,16 @@ prop_nparallel_clean np testing bug dc = forAllNParallelCommands smUnused np $ \
     case testing of
         Regular -> prettyNParallelCommands cmds ret
         Files   -> printFiles ls `whenFailM` (ls === [])
+        Equiv   -> do
+            let (a, b) = case mkModel sm' . fst <$> ret of
+                    (x : y : _) -> (x,y)
+                    _           -> error "expected at least two histories"
+            liftProperty $ printModels a b `whenFail`
+                property (modelEquivalence a b)
+
+printModels :: Show1 r => Model r -> Model r -> IO ()
+printModels a b =
+    putStrLn $ "Models are not equivalent: " ++ show a ++ " and " ++ show b
 
 printFiles :: [String] -> IO ()
 printFiles ls' =
@@ -234,7 +256,19 @@ data DoubleCleanup = NoOp
 
 data FinalTest = Regular
                | Files
+               | Equiv
                  deriving (Eq, Show)
+
+-- | This is meant to be used, in order to test equality of two
+-- Models, created by two different executions of the same program.
+-- Note that we don't test reference equality. This is because
+-- different executions in the parallel case, may create references
+-- with different order, so the counter assigned by the semantics
+-- can be different.
+modelEquivalence :: Model Concrete -> Model Concrete -> Bool
+modelEquivalence a b =
+    sameElements (Map.elems $ files a) (Map.elems $ files b)
+    && counter a == counter b
 
 makePath :: String -> String
 makePath file = testDirectory ++ "/" ++ file
