@@ -46,6 +46,7 @@ import           Test.StateMachine.Utils
                    (liftProperty, mkModel, whenFailM)
 import           Text.Show.Pretty
                    (ppShow)
+import           System.Random
 
 {-----------------------------------------------------------------------------------
   This example in mainly used to check how well cleanup of recourses works. In our
@@ -143,10 +144,10 @@ instance Eq (MVarC a) where
 instance Ord (MVarC a) where
     compare (MVarC _ a) (MVarC _ b) = compare a b
 
-semantics :: MVar Int -> MVar Int -> Bug -> Command Concrete -> IO (Response Concrete)
-semantics counter ref bug cmd = case cmd of
+semantics :: MVar Int -> MVar Int -> String -> Bug -> Command Concrete -> IO (Response Concrete)
+semantics counter ref tstDir bug cmd = case cmd of
     Create f  -> createFile f
-            `onException` removePathForcibly (makePath f)
+            `onException` removePathForcibly (makePath tstDir f)
     Delete rf -> do
         let MVarC lockedFile _ = unOpaque $ concrete rf
         modifyMVar_ lockedFile $ \(file, _) -> do
@@ -154,7 +155,7 @@ semantics counter ref bug cmd = case cmd of
             return (file, False)
         return Deleted
     Ls        -> do
-        ls <- listDirectory testDirectory
+        ls <- listDirectory tstDir
         return $ Contents ls
     Write n   ->
         modifyMVar ref (\_ -> return (n, ChangedValue n))
@@ -163,7 +164,7 @@ semantics counter ref bug cmd = case cmd of
     where
         createFile :: String -> IO (Response Concrete)
         createFile f = do
-            let path = makePath f
+            let path = makePath tstDir f
             c <- modifyMVar counter $ \n -> return (n + 1, n)
             when (c > 3 && bug == Exception) $
                 throwIO $ userError "semantics injected bug"
@@ -195,30 +196,39 @@ generator Model{..} = Just $ do
 shrinker :: Model Symbolic -> Command Symbolic -> [Command Symbolic]
 shrinker _ _             = []
 
-cleanup :: DoubleCleanup -> Model Concrete -> IO ()
-cleanup dc Model{..} = do
-    forM_ (Map.keys files) $ \rf ->
-        removeFileRef dc $ unOpaque $ concrete rf
-    modifyMVar_ (unOpaque semanticsCounter) (\_ -> return 0)
-    modifyMVar_ (unOpaque ref) (\_ -> return 0)
+cleanup :: String -> DoubleCleanup -> Model Concrete -> IO ()
+cleanup testDir dc Model{..} = do
+    let cl = do
+            forM_ (Map.keys files) $ \rf ->
+                removeFileRef dc $ unOpaque $ concrete rf
+            modifyMVar_ (unOpaque semanticsCounter) (\_ -> return 0)
+            modifyMVar_ (unOpaque ref) (\_ -> return 0)
+    -- onException here does not affect any tests. It just makes sure
+    -- no leftover directories remain after the end of tests.
+    -- We have it here, because we found no other way to handle the
+    -- exceptions in the ProperyM level.
+    cl `onException` removePathForcibly testDir
 
-sm :: MVar Int -> MVar Int -> Bug -> DoubleCleanup -> StateMachine Model Command IO Response
-sm counter ref bug dc = StateMachine (initModel counter ref) transition precondition postcondition
-           Nothing generator shrinker (semantics counter ref bug) mock (cleanup dc)
+sm :: MVar Int -> MVar Int -> String -> Bug -> DoubleCleanup -> StateMachine Model Command IO Response
+sm counter ref tstDir bug dc = StateMachine (initModel counter ref) transition precondition postcondition
+           Nothing generator shrinker (semantics counter ref tstDir bug) mock (cleanup tstDir dc)
 
 smUnused :: StateMachine Model Command IO Response
-smUnused = sm undefined undefined undefined undefined
+smUnused = sm undefined undefined undefined undefined undefined
 
 prop_sequential_clean :: FinalTest -> Bug -> DoubleCleanup -> Property
 prop_sequential_clean testing bug dc = forAllCommands smUnused Nothing $ \cmds -> monadicIO $ do
+    folderId :: Word <- liftIO randomIO
+    let testDir = testDirectoryBase ++ "-" ++ show folderId
     liftIO $ do
-        removePathForcibly testDirectory
-        createDirectory testDirectory
+        removePathForcibly testDir
+        createDirectory testDir
     c <- liftIO $ newMVar 0
     ref <- liftIO $ newMVar 0
-    let sm' = sm c ref bug dc
+    let sm' = sm c ref testDir bug dc
     (hist, model, res) <- runCommands sm' cmds
-    ls <- liftIO $ listDirectory testDirectory
+    ls <- liftIO $ listDirectory testDir
+    liftIO $ removePathForcibly testDir
     case testing of
         Regular -> prettyCommands sm' hist $ checkCommandNames cmds (res === Ok)
         Files   -> printFiles ls `whenFailM` (ls === [])
@@ -226,14 +236,17 @@ prop_sequential_clean testing bug dc = forAllCommands smUnused Nothing $ \cmds -
 
 prop_parallel_clean :: FinalTest -> Bug -> DoubleCleanup -> Property
 prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
+    folderId :: Word <- liftIO randomIO
+    let testDir = testDirectoryBase ++ "-" ++ show folderId
     liftIO $ do
-        removePathForcibly testDirectory
-        createDirectory testDirectory
+        removePathForcibly testDir
+        createDirectory testDir
     c <- liftIO $ newMVar 0
     ref <- liftIO $ newMVar 0
-    let sm' = sm c ref bug dc
+    let sm' = sm c ref testDir bug dc
     ret <- runParallelCommands sm' cmds
-    ls <- liftIO $ listDirectory testDirectory
+    ls <- liftIO $ listDirectory testDir
+    liftIO $ removePathForcibly testDir
     case testing of
         Regular -> prettyParallelCommands cmds ret
         Files   -> printFiles ls `whenFailM` (ls === [])
@@ -246,14 +259,17 @@ prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> 
 
 prop_nparallel_clean :: Int -> FinalTest -> Bug -> DoubleCleanup -> Property
 prop_nparallel_clean np testing bug dc = forAllNParallelCommands smUnused np $ \cmds -> monadicIO $ do
+    folderId :: Word <- liftIO randomIO
+    let testDir = testDirectoryBase ++ "-" ++ show folderId
     liftIO $ do
-        removePathForcibly testDirectory
-        createDirectory testDirectory
+        removePathForcibly testDir
+        createDirectory testDir
     c <- liftIO $ newMVar 0
     ref <- liftIO $ newMVar 0
-    let sm' = sm c ref bug dc
+    let sm' = sm c ref testDir bug dc
     ret <- runNParallelCommands sm' cmds
-    ls <- liftIO $ listDirectory testDirectory
+    ls <- liftIO $ listDirectory testDir
+    liftIO $ removePathForcibly testDir
     case testing of
         Regular -> prettyNParallelCommands cmds ret
         Files   -> printFiles ls `whenFailM` (ls === [])
@@ -279,6 +295,7 @@ data Bug = NoBug
 
 data DoubleCleanup = NoOp
                    | ReDo
+                   deriving (Eq, Show)
 
 data FinalTest = Regular
                | Files
@@ -297,11 +314,11 @@ modelEquivalence bl a b =
     && counter a == counter b
     && (not bl || value a == value b)
 
-makePath :: String -> String
-makePath file = testDirectory ++ "/" ++ file
+makePath :: String -> String -> String
+makePath tstDir file = tstDir ++ "/" ++ file
 
 mkFileName :: Int -> String
 mkFileName n = "file" ++ show n
 
-testDirectory :: String
-testDirectory = "cleanup-test-folder"
+testDirectoryBase :: String
+testDirectoryBase = "cleanup-test-folder"
