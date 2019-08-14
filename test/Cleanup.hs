@@ -244,7 +244,7 @@ prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> 
     c <- liftIO $ newMVar 0
     ref <- liftIO $ newMVar 0
     let sm' = sm c ref testDir bug dc
-    ret <- runParallelCommands sm' cmds
+    ret <- runParallelCommandsNTimes 2 sm' cmds
     ls <- liftIO $ listDirectory testDir
     liftIO $ removePathForcibly testDir
     case testing of
@@ -267,7 +267,7 @@ prop_nparallel_clean np testing bug dc = forAllNParallelCommands smUnused np $ \
     c <- liftIO $ newMVar 0
     ref <- liftIO $ newMVar 0
     let sm' = sm c ref testDir bug dc
-    ret <- runNParallelCommands sm' cmds
+    ret <- runNParallelCommandsNTimes 2 sm' cmds
     ls <- liftIO $ listDirectory testDir
     liftIO $ removePathForcibly testDir
     case testing of

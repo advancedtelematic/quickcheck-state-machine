@@ -94,19 +94,12 @@ tests docker0 = testGroup "Tests"
       , testProperty "seqFilesExcAfterReDo"   $ prop_sequential_clean   Files      Cleanup.ExcAfter  ReDo
       , testProperty "seqEquivNoOp"           $ prop_sequential_clean  (Eq False)  Cleanup.NoBug     NoOp
 
-      , testProperty "2-threadsRegularNoOp"   $ prop_parallel_clean     Regular    Cleanup.NoBug     NoOp
-      , testProperty "2-threadsRegular"       $ prop_parallel_clean     Regular    Cleanup.NoBug     ReDo
       , testProperty "2-threadsRegularExc"
         $ expectFailure                       $ prop_parallel_clean     Regular    Cleanup.Exception NoOp
       , testProperty "2-threadsRegularExc"
         $ expectFailure                       $ prop_parallel_clean     Regular    Cleanup.Exception ReDo
-      , testProperty "2-threadsFilesNoOp"     $ prop_parallel_clean     Files      Cleanup.NoBug     NoOp
-      , testProperty "2-threadsFiles"         $ prop_parallel_clean     Files      Cleanup.NoBug     ReDo
-      , testProperty "2-threadsFilesExcNoOp"  $ prop_parallel_clean     Files      Cleanup.Exception NoOp
       , testProperty "2-threadsFilesExc"
         $ expectFailure $ withMaxSuccess 1000 $ prop_parallel_clean     Files      Cleanup.Exception ReDo
-      , testProperty "2-threadsFilesExcAfter" $ prop_parallel_clean     Files      Cleanup.ExcAfter  NoOp
-      , testProperty "2-threadsEquivNoOp"     $ prop_parallel_clean     (Eq False) Cleanup.NoBug     NoOp
       , testProperty "2-threadsEquivFailingNoOp"
         $ expectFailure $ withMaxSuccess 1000 $ prop_parallel_clean     (Eq True)  Cleanup.NoBug     NoOp
 

@@ -9,4 +9,4 @@ stack.yaml.lock
 *~
 *.swp
 
-cleanup-test-folder/
+cleanup-test-folder*
