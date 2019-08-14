@@ -60,7 +60,7 @@ import           System.IO.Unsafe
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-                   (Arbitrary, Gen, Property, arbitrary, elements,
+                   (Arbitrary, Gen, Property, arbitrary, elements, noShrinking,
                    (===))
 import           Test.QuickCheck.Monadic
                    (monadicIO)
@@ -345,7 +345,7 @@ markov = makeMarkov
   ]
 
 prop_processRegistry :: Property
-prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
+prop_processRegistry = noShrinking $ forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
   liftIO ioReset
   (hist, _model, res) <- runCommands sm cmds
 
@@ -355,7 +355,5 @@ prop_processRegistry = forAllCommands sm (Just 100000) $ \cmds -> monadicIO $ do
   persistStats statsDb observed
 
   prettyCommands sm hist
-    $ coverMarkov markov
-    $ tabulateMarkov sm partition constructor cmds
     $ printReliability statsDb (transitionMatrix markov) observed
     $ res === Ok
