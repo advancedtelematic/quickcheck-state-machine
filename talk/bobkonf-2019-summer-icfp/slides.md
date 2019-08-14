@@ -9,18 +9,17 @@ header-includes:
 
 # Background
 
-* I was working on end-to-end testing microservices and clients interacting with those
+* I was working on end-to-end testing microservices and clients interacting with
+  those
 
-* Questions
-    - How do we measure the quality of our software?
-    - Improve Agile process, where exactly does end-to-end testing fit in?
+* Question: How do we measure the quality of our software?
 
 * Started reading about the two software development processes *Cleanroom
   Software Engineering* (Mills et al) and *Software Reliability
   Engineering* (Musa et al)
 
 * Today I'd like to share my interpretation of what those two camps have to say
-  about the above two questions, and show how one might go about implementing
+  about the above question, and show how one might go about implementing
   (the testing part) of their ideas
 
 ---
@@ -31,7 +30,7 @@ header-includes:
   Engineering*?
 
     - History, in what context where they developed
-    - Main points of the two methods, focusing on the testing parts
+    - Main points of the two methods, focusing on the testing part
 
 * How can we implement their ideas to solve our two questions?
 
@@ -121,7 +120,7 @@ header-includes:
 
 # Statistical testing as a statistical experiment
 
-![Picture by [@car95]](image/software_testing_as_a_statistical_experiment.png){ height=280px }
+![Picture by @car95](image/software_testing_as_a_statistical_experiment.png){ height=280px }
 
 ---
 
@@ -136,7 +135,7 @@ header-includes:
     3. How often do the use cases happen in relation to each other?
 
 * There are different ways encode this information, e.g. formal grammars
-  (QuickCheck) or Markov chains
+  (property-based testing) or Markov chains
 
 ---
 
@@ -159,6 +158,25 @@ header-includes:
     - The above with some unregisters and kills interleaved that happen with
       less frequently than the lookups seems realistic
     - If we want to be precise, we could e.g. study production logs
+
+---
+
+# Formal grammer usage model for process registry
+
+```haskell
+data Action = Spawn | Register Pid Name | Kill ...
+
+gen :: (Int, Int) -> Gen [Action]
+gen (spawned, registered) = case (spawned, registered) of
+  (0, 0) -> liftM (Spawn :) (gen (1, 0))
+  (1, 0) -> frequency
+    [ (35, liftM (Register (Pid 0) (Name "0") :)
+                 (gen (1, 1)))
+    , (20, liftM (Kill (Pid 0) :) (gen (0, 0)))
+    ]
+  ...
+```
+
 
 ---
 
@@ -185,21 +203,37 @@ header-includes:
 
 ---
 
-# Two ways of computing reliability from test experience
+# Bernoulli sampling model for computing reliability
 
-* Reliability = probability of a successful walk from the source to the sink
-  state in the Markov chain
+* Reliability = 1 - 1 / MTTF (mean time to failure, where time could be number
+  of test cases)
 
-* Bernoulli sampling model
-    - Count successful and unsuccessful tests/walks
+* Number of test cases = log(1 - Confidence) / log(Reliability)
+
+* E.g. To achieve 0.999 reliability with 95% confidence we need 2995 test cases
+  to pass without failure
+
+* Idea: pick desired confidence and reliability, calculate number of test cases
+  needed, use QuickCheck to generate said many test cases
+
+* Shortcomings
+    - Coarse-grained, did the whole test case succeed or not
     - Doesn't take test case length into account
+    - Doesn't allow the presence of failures (consider flaky tests)
 
-* Arc-based Bayesian model [@pp04, @xlss18]
-    - Count successful and unsuccessful state transitions (arcs)
-    - Compute the overall reliability from the above, and taking the Markov
-      chain probabilities and the probability mass for each sequence/test case
+# Arc-based Bayesian model for computing reliability
 
-* (There are other ways to compute the reliability)
+* More fine-grained, count successful and unsuccessful state transitions (arcs)
+
+* Compute the overall reliability (and variance) from the above, and taking the
+  Markov chain probabilities and the probability mass for each sequence/test
+  case
+
+* More complicated, see @pp04, and @xlss18 for details
+
+* There are other ways to compute the reliability, but this seems to be the
+  latest one published in the literature that I could find. It's also used by
+  the JUMBL tool
 
 ---
 
@@ -210,56 +244,38 @@ header-includes:
 
 ---
 
-# Demo: Computing software reliability
+# Demo: Computing reliability for process registry example
 
 ---
 
-# Where does statistical testing fit into the Agile development process?
+# Statistical testing inspired changes to standard property-based testing
 
-* End-to-end and black-box, potentially slow
-
-* Cleanroom and SRE both seem to assume release based deployments rather than
-  continues deployments
-
-* SRE says these tests should be long running (days), so that you catch problems
-  related to a degrading environment
-
-* Perhaps closer to load testing? (if we tweak the frequency distributions)
-
+* Generate programs using a Markov chain usage model
+* Persist test results (about state transition reliability)
+* Don't stop in presence of failures
+* Compute reliability (and variance) from the usage model and test experience
 
 ---
-
 
 # Conclusion and further work
 
-* How do we measure the quality of our software?
+* Compare to other ways of measuring quality? Cleanroom people claim:
+    - Bugs/kloc: too developer centric
+    - Code coverage: less cost effective
 
-    - Compare to other ways of measuring quality?
-        + Bugs/kloc: too developer centric
-        * Code coverage: less cost effective
-
-    - Both statistical testing and property-based testing use a random sample,
-      is there more we can learn from statistical testing than computing the
-      reliability?
-
+* Both statistical testing and property-based testing use a random sample, is
+  there more we can learn from statistical testing than computing the
+  reliability?
+    - Can we add combinators to our property-based testing libraries to make it
+      easier to do statistical testing?
     - Can we in a statistically sound way account for flakiness in tests this way?
-
-* Where exactly does this type of testing fit into the Agile development process?
-
-    - Not sure, perhaps replacing/augmenting load testing?
-
-    - Can we update Cleanroom/SRE to meet the new CI/CD needs, or is continuous
-      deployment somehow inherently at odds with quality?
+    - How do we account for incremental development? When testing version *n +
+      1* of some software, we should be able reuse some of the test experience
+      from version *n*
 
 ---
 
-# Extra slide: The confidence of the reliability number
-
-* How do we know that we trust this reliability number? Or do we have enough
-  test data?
-
-    - Stopping criteria via the Kullback discriminant [@sp00]
-    - Compute the variance of the reliability [@xlss18]
+# Questions?
 
 ---
 
