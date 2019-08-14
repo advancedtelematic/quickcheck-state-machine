@@ -9,14 +9,11 @@ header-includes:
 
 # Background
 
-* I was working on end-to-end testing microservices and clients interacting with
-  those
-
 * Question: How do we measure the quality of our software?
 
-* Started reading about the two software development processes *Cleanroom
-  Software Engineering* (Mills et al) and *Software Reliability
-  Engineering* (Musa et al)
+* Started reading about the two software development processes:
+    - *Cleanroom Software Engineering* (Mills et al) and;
+    - *Software Reliability Engineering* (Musa et al)
 
 * Today I'd like to share my interpretation of what those two camps have to say
   about the above question, and show how one might go about implementing
@@ -30,9 +27,9 @@ header-includes:
   Engineering*?
 
     - History, in what context where they developed
-    - Main points of the two methods, focusing on the testing part
+    - Main points of the two methods, focusing on the (statistical) testing part
 
-* How can we implement their ideas to solve our two questions?
+* How can we implement their testing ideas using property-based testing
 
 ---
 
@@ -206,7 +203,7 @@ gen (spawned, registered) = case (spawned, registered) of
 # Bernoulli sampling model for computing reliability
 
 * Reliability = 1 - 1 / MTTF (mean time to failure, where time could be number
-  of test cases)
+  of test cases) [See: @pmm93]
 
 * Number of test cases = log(1 - Confidence) / log(Reliability)
 
@@ -245,6 +242,8 @@ gen (spawned, registered) = case (spawned, registered) of
 ---
 
 # Demo: Computing reliability for process registry example
+
+[comment]: # (492ff8dab1836736ec7b3afdd27ccf381335ad71)
 
 ---
 
