@@ -77,6 +77,7 @@ test-suite quickcheck-state-machine-test
   main-is:             Spec.hs
   build-depends:       array,
                        base,
+                       bifunctors,
                        bytestring,
                        containers,
                        directory,
@@ -91,6 +92,7 @@ test-suite quickcheck-state-machine-test
                        network,
                        persistent >=2.8.2 && <2.10.0,
                        persistent-postgresql,
+                       persistent-sqlite,
                        persistent-template,
                        postgresql-simple,
                        pretty-show,
@@ -100,10 +102,12 @@ test-suite quickcheck-state-machine-test
                        quickcheck-state-machine,
                        random,
                        resourcet,
+                       resource-pool,
                        servant,
                        servant-client,
                        servant-server,
                        split,
+                       stm,
                        strict,
                        string-conversions,
                        tasty,
@@ -114,7 +118,8 @@ test-suite quickcheck-state-machine-test
                        vector >=0.12.0.1,
                        wai,
                        warp,
-                       unliftio
+                       unliftio,
+                       unliftio-core
 
   other-modules:       Bookstore,
                        CircularBuffer,
@@ -127,7 +132,9 @@ test-suite quickcheck-state-machine-test
                        MemoryReference,
                        Overflow,
                        ProcessRegistry,
+                       Schema,
                        ShrinkingProps,
+                       SQLite,
                        TicketDispenser,
                        UnionFind
 
