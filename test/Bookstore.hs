@@ -260,7 +260,7 @@ generator (Model m) = Just $ oneof $ [
   , FindByAuthor Exist   <$> genAuthor
   ]
   where
-    newIsbn = arbitrary `suchThat` \x -> not $ elem x (domain m)
+    newIsbn = arbitrary `suchThat` \x -> x `notElem` domain m
     existIsbn = elements $ domain m
     genTitle  = elements $ (title  <$> codomain m) >>= infixes
     genAuthor = elements $ (author <$> codomain m) >>= infixes

@@ -2,9 +2,7 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE KindSignatures     #-}
 {-# LANGUAGE PolyKinds          #-}
-{-# LANGUAGE StandaloneDeriving #-}
 
 ------------------------------------------------------------------------
 -- |

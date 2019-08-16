@@ -98,7 +98,7 @@ instance Ord1 Concrete where
 instance ToExpr a => ToExpr (Concrete a) where
   toExpr (Concrete x) = toExpr x
 
-data Reference a r = Reference (r a)
+newtype Reference a r = Reference (r a)
   deriving Generic
 
 deriving instance Typeable a => Read (Reference a Symbolic)

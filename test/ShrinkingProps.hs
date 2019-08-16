@@ -634,14 +634,14 @@ checkCorrectModelNParallel = \(QSM.ParallelCommands prefix suffixes) ->
       Right () -> property True
   where
     go :: QSM.Commands (At Cmd) (At Resp)
-       -> [[(QSM.Commands (At Cmd) (At Resp))]]
+       -> [[QSM.Commands (At Cmd) (At Resp)]]
        -> Except String ()
     go prefix suffixes = do
         modelAfterPrefix <- checkCorrectModel' initModel prefix
         go' modelAfterPrefix suffixes
 
     go' :: Model Symbolic
-        -> [[(QSM.Commands (At Cmd) (At Resp))]]
+        -> [[QSM.Commands (At Cmd) (At Resp)]]
         -> Except String ()
     go' _ []                        = return ()
     go' m ([] : suffixes) =
@@ -650,7 +650,7 @@ checkCorrectModelNParallel = \(QSM.ParallelCommands prefix suffixes) ->
         modelAfterHead <- checkCorrectModel' m headThread
         -- The starting model for the right part is the /initial/ model:
         -- it should not be affected by the left part
-        _ <- forM_ suffix $ checkCorrectModel' m
+        forM_ suffix $ checkCorrectModel' m
         -- But when we check the /next/ suffix, /both/ parts have been executed
         go' (foldl (\m' r -> QSM.advanceModel sm m' r) modelAfterHead suffix) suffixes
 

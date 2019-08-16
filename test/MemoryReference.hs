@@ -143,7 +143,7 @@ semantics bug cmd = case cmd of
       Crash -> do
         bool <- randomIO
         if bool
-        then do
+        then
           error "Crash before writing!"
           -- Written <$ writeIORef (opaque ref) i
         else do
