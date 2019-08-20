@@ -13,7 +13,13 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module Schema where
+module Schema
+    ( Person (..)
+    , Car (..)
+    , Key (..)
+    , CarId
+    , entityDefs
+    ) where
 
 import           Database.Persist.Sqlite
 import           Database.Persist.TH
