@@ -53,13 +53,15 @@ header-includes:
 * A complete software development process developed by Mills and many others at IBM
 * Goal: Bug prevention, rather than removal (achieve or approach zero bugs)
 * Controversial
+    - Developers and testers are separate teams
     - Relies on formal methods/specifications, stepwise refinement, and
       design/code verification/review at each step to prevent bugs
-    - Developers and testers are separate teams
     - Developers have no access to compilers, and are not supposed to write
       tests
-    + Claims to be academic, criticised by Dijkstra
-    - Testers job isn't to find bugs, but to measure the quality
+    - Testers job isn't to find bugs, but to measure the quality (end-to-end
+      black box tests only)
+    - Claims to be academic, criticised by Dijkstra
+
 * Many case studies with positive outcomes
 
 
@@ -131,7 +133,7 @@ header-includes:
     2. What are the use cases?
     3. How often do the use cases happen in relation to each other?
 
-* There are different ways encode this information, e.g. formal grammars
+* There are different ways to encode this information, e.g. formal grammars
   (property-based testing) or Markov chains
 
 ---
@@ -158,7 +160,7 @@ header-includes:
 
 ---
 
-# Formal grammer usage model for process registry
+# Formal grammar usage model for process registry
 
 ```haskell
 data Action = Spawn | Register Pid Name | Kill ...
@@ -170,6 +172,7 @@ gen (spawned, registered) = case (spawned, registered) of
     [ (35, liftM (Register (Pid 0) (Name "0") :)
                  (gen (1, 1)))
     , (20, liftM (Kill (Pid 0) :) (gen (0, 0)))
+    , ...
     ]
   ...
 ```
@@ -190,13 +193,19 @@ gen (spawned, registered) = case (spawned, registered) of
 
 * Examples of analytic computations we can do without running any tests:
     - Calculate the expected test case length
-    - Number of test cases requried to cover all states/arcs in the usage model
+    - Number of test cases required to cover all states/arcs in the usage model
     - Expected proportion of time spent in each state/arc
-    - Expected number of test cases to first occurance of each state/arc
+    - Expected number of test cases to first occurrence of each state/arc
     - For more see @pro00 and the JUMBL tool
 
 * The usage model can also guide development work (Pareto principle: 20% of use
   cases support 80% of the system use)
+
+---
+
+# Statistical testing as a statistical experiment
+
+![Picture by @car95](image/software_testing_as_a_statistical_experiment.png){ height=280px }
 
 ---
 
