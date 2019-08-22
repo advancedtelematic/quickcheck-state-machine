@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
@@ -32,6 +33,7 @@ module Test.StateMachine.Utils
   , pickOneReturnRest
   , pickOneReturnRest2
   , pickOneReturnRestL
+  , mkModel
   )
   where
 
@@ -48,6 +50,7 @@ import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
                    (property, (.&&.), (.||.))
+import           Test.StateMachine.Types
 
 ------------------------------------------------------------------------
 
@@ -183,3 +186,13 @@ pickOneReturnRestL ls = concatMap
             go' acc (prev, a', b : next) =
               let newElem = (a' : prev, b, next)
               in go' (newElem : acc) newElem
+
+-----------------------------------------------------------------------------
+
+mkModel :: StateMachine model cmd m resp -> History cmd resp  -> model Concrete
+mkModel StateMachine {transition, initModel} =
+  go initModel . operationsPath . interleavings . unHistory
+    where
+        go m [] = m
+        go m (Operation cmd resp _ : rest) = go (transition m cmd resp) rest
+        go m (Crash _ _ _ : rest) = go m rest

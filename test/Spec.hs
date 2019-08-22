@@ -21,6 +21,7 @@ import           Test.Tasty.QuickCheck
 
 import           Bookstore                as Store
 import           CircularBuffer
+import           Cleanup
 import qualified CrudWebserverDb          as WS
 import           DieHard
 import           Echo
@@ -78,6 +79,46 @@ tests docker0 = testGroup "Tests"
                                  $ withMaxSuccess 500
                                  $ prop_nparallel_overflow 4
       ]
+  , testGroup "Cleanup"
+      [ testProperty "seqRegularNoOp"         $ prop_sequential_clean   Regular    Cleanup.NoBug     NoOp
+      , testProperty "seqRegular"             $ prop_sequential_clean   Regular    Cleanup.NoBug     ReDo
+      , testProperty "seqRegularExcNoOp"
+        $ expectFailure                       $ prop_sequential_clean   Regular    Cleanup.Exception NoOp
+      , testProperty "seqRegularExc"
+        $ expectFailure                       $ prop_sequential_clean   Regular    Cleanup.Exception ReDo
+      , testProperty "seqFilesNoOp"           $ prop_sequential_clean   Files      Cleanup.NoBug     NoOp
+      , testProperty "seqFiles"               $ prop_sequential_clean   Files      Cleanup.NoBug     ReDo
+      , testProperty "seqFilesExcNoOp"        $ prop_sequential_clean   Files      Cleanup.Exception NoOp
+      , testProperty "seqFilesExc"            $ prop_sequential_clean   Files      Cleanup.Exception ReDo
+      , testProperty "seqFilesExcAfterNoOp"   $ prop_sequential_clean   Files      Cleanup.ExcAfter  NoOp
+      , testProperty "seqFilesExcAfterReDo"   $ prop_sequential_clean   Files      Cleanup.ExcAfter  ReDo
+      , testProperty "seqEquivNoOp"           $ prop_sequential_clean  (Eq False)  Cleanup.NoBug     NoOp
+
+      , testProperty "2-threadsRegularExc"
+        $ expectFailure                       $ prop_parallel_clean     Regular    Cleanup.Exception NoOp
+      , testProperty "2-threadsRegularExc"
+        $ expectFailure                       $ prop_parallel_clean     Regular    Cleanup.Exception ReDo
+      , testProperty "2-threadsFilesExc"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_parallel_clean     Files      Cleanup.Exception ReDo
+      , testProperty "2-threadsEquivFailingNoOp"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_parallel_clean     (Eq True)  Cleanup.NoBug     NoOp
+
+      , testProperty "3-threadsRegularNoOp"   $ prop_nparallel_clean  3 Regular    Cleanup.NoBug     NoOp
+      , testProperty "3-threadsRegular"       $ prop_nparallel_clean  3 Regular    Cleanup.NoBug     ReDo
+      , testProperty "3-threadsRegularExc"    $ expectFailure
+                                              $ prop_nparallel_clean  3 Regular    Cleanup.Exception NoOp
+      , testProperty "3-threadsRegularExc"
+        $ expectFailure                       $ prop_nparallel_clean  3 Regular    Cleanup.Exception ReDo
+      , testProperty "3-threadsFilesNoOp"     $ prop_nparallel_clean  3 Files      Cleanup.NoBug     NoOp
+      , testProperty "3-threadsFiles"         $ prop_nparallel_clean  3 Files      Cleanup.NoBug     ReDo
+      , testProperty "3-threadsFilesExcNoOp"  $ prop_nparallel_clean  3 Files      Cleanup.Exception NoOp
+      , testProperty "3-threadsFilesExc"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_nparallel_clean  3 Files      Cleanup.Exception ReDo
+      , testProperty "3-threadsFilesExcAfter" $ prop_nparallel_clean  3 Files      Cleanup.ExcAfter  NoOp
+      , testProperty "3-threadsEquivNoOp"     $ prop_nparallel_clean  3 (Eq False) Cleanup.NoBug     NoOp
+      , testProperty "3-threadsEquivFailingNoOp"
+        $ expectFailure $ withMaxSuccess 1000 $ prop_nparallel_clean  3 (Eq True)  Cleanup.NoBug     NoOp
+      ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
       , testProperty "Parallel"   prop_error_parallel
@@ -92,7 +133,7 @@ tests docker0 = testGroup "Tests"
       , webServer docker0 WS.Race  8803 "RaceBug"    (expectFailure . WS.prop_crudWebserverDbParallel)
       ]
   , testGroup "Bookstore"
-      [ dataBase docker0 "NoBug" (Store.prop_bookstore NoBug)
+      [ dataBase docker0 "NoBug" (Store.prop_bookstore Store.NoBug)
       , dataBase docker0 "SqlStatementBug"
           $ expectFailure
           . withMaxSuccess 500

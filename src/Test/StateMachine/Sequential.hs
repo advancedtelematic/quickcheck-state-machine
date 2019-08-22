@@ -58,7 +58,7 @@ import           Control.Exception
                    fromException)
 import           Control.Monad (when)
 import           Control.Monad.Catch
-                   (MonadCatch, catch)
+                   (MonadCatch, MonadMask, catch, mask, onException)
 import           Control.Monad.State.Strict
                    (StateT, evalStateT, get, lift, put, runStateT)
 import           Data.Bifunctor
@@ -80,7 +80,7 @@ import           Data.Proxy
                    (Proxy(..))
 import qualified Data.Set                          as S
 import           Data.Time
-                   (defaultTimeLocale, formatTime, getZonedTime)
+                    (defaultTimeLocale, formatTime, getZonedTime)
 import           Data.TreeDiff
                    (ToExpr, ansiWlBgEditExprCompact, ediff)
 import           Prelude
@@ -321,20 +321,28 @@ shrinkAndValidate StateMachine { precondition, transition, mock, shrinker } =
 
 runCommands :: (Show (cmd Concrete), Show (resp Concrete))
             => (Rank2.Traversable cmd, Rank2.Foldable resp)
-            => (MonadCatch m, MonadIO m)
+            => (MonadMask m, MonadIO m)
             => StateMachine model cmd m resp
             -> Commands cmd resp
             -> PropertyM m (History cmd resp, model Concrete, Reason)
-runCommands sm@StateMachine { initModel } = run . go
+runCommands sm@StateMachine { initModel, cleanup } = run . go
   where
-    go cmds = do
-      hchan <- newTChanIO
-      (reason, (_, _, _, model)) <- runStateT
-        (executeCommands sm hchan (Pid 0) CheckEverything cmds)
-        (emptyEnvironment, initModel, newCounter, initModel)
-      hist <- getChanContents hchan
+    go cmds = mask $ \restore -> do
+      hchan <- restore newTChanIO
+      (reason, (_, _, _, model)) <- restore
+        (runStateT
+          (executeCommands sm hchan (Pid 0) CheckEverything cmds)
+          (emptyEnvironment, initModel, newCounter, initModel))
+          `onException` (getChanContents hchan >>= cleanup . mkModel sm . History)
+      -- if sequential execution ends normally, we have the correct and
+      -- deterministic final model ready, so no need to use history for cleanup.
+      cleanup model
+      -- we have cleaned up, so we can restore noe
+      hist <- restore $ getChanContents hchan
       return (History hist, model, reason)
 
+-- We should try our best to not let this function fail,
+-- since it is used to cleanup resources, in parallel programs.
 getChanContents :: MonadIO m => TChan a -> m [a]
 getChanContents chan = reverse <$> atomically (go' [])
   where
@@ -370,7 +378,7 @@ executeCommands StateMachine {..} hchan pid check =
         _otherwise                    -> do
           let ccmd = fromRight (error "executeCommands: impossible") (reify env scmd)
           atomically (writeTChan hchan (pid, Invocation ccmd (S.fromList vars)))
-          !ecresp <- lift $ (fmap Right (semantics ccmd)) `catch`
+          !ecresp <- lift $ fmap Right (semantics ccmd) `catch`
                             \(err :: SomeException) -> do
                               when (isSomeAsyncException err) (liftIO (putStrLn $ displayException err) >> throwIO err)
                               return (Left (displayException err))
@@ -578,7 +586,7 @@ saveCommands dir cmds prop = go `whenFail` prop
 
 runSavedCommands :: (Show (cmd Concrete), Show (resp Concrete))
                  => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                 => (MonadCatch m, MonadIO m)
+                 => (MonadMask m, MonadIO m)
                  => (Read (cmd Symbolic), Read (resp Symbolic))
                  => StateMachine model cmd m resp
                  -> FilePath

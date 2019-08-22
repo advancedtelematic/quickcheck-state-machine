@@ -197,7 +197,7 @@ withDbLock run = do
 sm :: SharedExclusive -> DbLock -> StateMachine Model Action IO Response
 sm se files = StateMachine
   initModel transitions preconditions postconditions
-  Nothing generator shrinker (semantics se files) mock
+  Nothing generator shrinker (semantics se files) mock noCleanup
 
 smUnused :: SharedExclusive -> StateMachine Model Action IO Response
 smUnused se = sm se (error "dblock used during command creation")

@@ -51,7 +51,7 @@ module Test.StateMachine.Parallel
 import           Control.Monad
                    (replicateM, when)
 import           Control.Monad.Catch
-                   (MonadCatch)
+                   (MonadMask, mask, onException)
 import           Control.Monad.State.Strict
                    (runStateT)
 import           Data.Bifunctor
@@ -462,7 +462,7 @@ shrinkAndValidateNParallel sm = \shouldShrink  (ParallelCommands prefix suffixes
 
 runParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                     => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                    => (MonadCatch m, MonadUnliftIO m)
+                    => (MonadMask m, MonadUnliftIO m)
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd resp
                     -> PropertyM m [(History cmd resp, Logic)]
@@ -470,7 +470,7 @@ runParallelCommands sm = runParallelCommandsNTimes 10 sm
 
 runParallelCommands' :: (Show (cmd Concrete), Show (resp Concrete))
                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                     => (MonadCatch m, MonadUnliftIO m)
+                     => (MonadMask m, MonadUnliftIO m)
                      => StateMachine model cmd m resp
                      -> (cmd Concrete -> resp Concrete)
                      -> ParallelCommands cmd resp
@@ -479,7 +479,7 @@ runParallelCommands' sm = runParallelCommandsNTimes' 10 sm
 
 runNParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                     => (MonadCatch m, MonadUnliftIO m)
+                     => (MonadMask m, MonadUnliftIO m)
                      => StateMachine model cmd m resp
                      -> NParallelCommands cmd resp
                      -> PropertyM m [(History cmd resp, Logic)]
@@ -487,7 +487,7 @@ runNParallelCommands sm = runNParallelCommandsNTimes 10 sm
 
 runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                          => (MonadCatch m, MonadUnliftIO m)
+                          => (MonadMask m, MonadUnliftIO m)
                           => Int -- ^ How many times to execute the parallel program.
                           -> StateMachine model cmd m resp
                           -> ParallelCommands cmd resp
@@ -499,7 +499,7 @@ runParallelCommandsNTimes n sm cmds =
 
 runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                           => (MonadCatch m, MonadUnliftIO m)
+                           => (MonadMask m, MonadUnliftIO m)
                            => Int -- ^ How many times to execute the parallel program.
                            -> StateMachine model cmd m resp
                            -> (cmd Concrete -> resp Concrete)
@@ -513,7 +513,7 @@ runParallelCommandsNTimes' n sm complete cmds =
 
 runNParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                           => (MonadCatch m, MonadUnliftIO m)
+                           => (MonadMask m, MonadUnliftIO m)
                            => Int -- ^ How many times to execute the parallel program.
                            -> StateMachine model cmd m resp
                            -> NParallelCommands cmd resp
@@ -525,7 +525,7 @@ runNParallelCommandsNTimes n sm cmds =
 
 runNParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                             => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                            => (MonadCatch m, MonadUnliftIO m)
+                            => (MonadMask m, MonadUnliftIO m)
                             => Int -- ^ How many times to execute the parallel program.
                             -> StateMachine model cmd m resp
                             -> (cmd Concrete -> resp Concrete)
@@ -539,27 +539,29 @@ runNParallelCommandsNTimes' n sm complete cmds =
 
 executeParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                         => (Rank2.Traversable cmd, Rank2.Foldable resp)
-                        => (MonadCatch m, MonadUnliftIO m)
+                        => (MonadMask m, MonadUnliftIO m)
                         => StateMachine model cmd m resp
                         -> ParallelCommands cmd resp
                         -> Bool
                         -> m (History cmd resp, Reason, Reason)
-executeParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
-
-  hchan <- newTChanIO
-
-  (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
-    (executeCommands sm hchan (Pid 0) CheckEverything prefix)
-    (emptyEnvironment, initModel, newCounter, initModel)
-
-  if reason0 /= Ok
-  then do
-    hist <- getChanContents hchan
-    return (History hist, reason0, reason0)
-  else do
-    (reason1, reason2, _) <- go hchan (Ok, Ok, env0) suffixes
-    hist <- getChanContents hchan
-    return (History hist, reason1, reason2)
+executeParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands prefix suffixes) stopOnError =
+  mask $ \restore -> do
+    hchan <- restore newTChanIO
+    (reason0, (env0, _smodel, _counter, _cmodel)) <- restore (runStateT
+      (executeCommands sm hchan (Pid 0) CheckEverything prefix)
+      (emptyEnvironment, initModel, newCounter, initModel))
+        `onException` (getChanContents hchan >>= cleanup . mkModel sm . History)
+    if reason0 /= Ok
+    then do
+      hist <- getChanContents hchan
+      cleanup $ mkModel sm $ History hist
+      return (History hist, reason0, reason0)
+    else do
+      (reason1, reason2, _) <- restore (go hchan (Ok, Ok, env0) suffixes)
+        `onException` (getChanContents hchan >>= cleanup . mkModel sm . History)
+      hist <- getChanContents hchan
+      cleanup $ mkModel sm $ History hist
+      return (History hist, reason1, reason2)
   where
     go _hchan (res1, res2, env) []                         = return (res1, res2, env)
     go hchan  (Ok,   Ok,   env) (Pair cmds1 cmds2 : pairs) = do
@@ -623,27 +625,29 @@ logicReason r = Annotate (show r) Bot
 
 executeNParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
                          => Show (resp Concrete)
-                         => (MonadCatch m, MonadUnliftIO m)
+                         => (MonadMask m, MonadUnliftIO m)
                          => StateMachine model cmd m resp
                          -> NParallelCommands cmd resp
                          -> Bool
                          -> m (History cmd resp, Reason)
-executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix suffixes) stopOnError = do
-
-  hchan <- newTChanIO
-
-  (reason0, (env0, _smodel, _counter, _cmodel)) <- runStateT
-    (executeCommands sm hchan (Pid 0) CheckEverything prefix)
-    (emptyEnvironment, initModel, newCounter, initModel)
-
-  if reason0 /= Ok
-  then do
-    hist <- getChanContents hchan
-    return (History hist, reason0)
-  else do
-    (errors, _) <- go hchan (Map.empty, env0) suffixes
-    hist <- getChanContents hchan
-    return (History hist, combineReasons $ Map.elems errors)
+executeNParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands prefix suffixes) stopOnError =
+  mask $ \restore -> do
+    hchan <- restore newTChanIO
+    (reason0, (env0, _smodel, _counter, _cmodel)) <- restore (runStateT
+      (executeCommands sm hchan (Pid 0) CheckEverything prefix)
+      (emptyEnvironment, initModel, newCounter, initModel))
+        `onException` (getChanContents hchan >>= cleanup . mkModel sm . History)
+    if reason0 /= Ok
+    then do
+      hist <- getChanContents hchan
+      cleanup $ mkModel sm $ History hist
+      return (History hist, reason0)
+    else do
+      (errors, _) <- restore (go hchan (Map.empty, env0) suffixes)
+        `onException` (getChanContents hchan >>= cleanup . mkModel sm . History)
+      hist <- getChanContents hchan
+      cleanup $ mkModel sm $ History hist
+      return (History hist, combineReasons $ Map.elems errors)
   where
     go _ res [] = return res
     go hchan (previousErrors, env) (suffix : rest) = do
@@ -655,7 +659,7 @@ executeNParallelCommands sm@StateMachine{ initModel } (ParallelCommands prefix s
       res <- forConcurrently (zip [1..] suffix) $ \(i, cmds) ->
         case Map.lookup i previousErrors of
           Nothing -> do
-              (reason, (env', _, _, _)) <- (runStateT (executeCommands sm hchan (Pid i) check cmds) (env, initModel, newCounter, initModel))
+              (reason, (env', _, _, _)) <- runStateT (executeCommands sm hchan (Pid i) check cmds) (env, initModel, newCounter, initModel)
               return (if isOK reason then Nothing else Just (i, reason), env')
           Just _  -> return (Nothing, env)
       let newErrors = Map.fromList $ mapMaybe fst res
@@ -756,7 +760,7 @@ prettyNParallelCommandsWithOpts :: (Show (cmd Concrete), Show (resp Concrete))
                                 -> [(History cmd resp, Logic)] -- ^ Output of 'runNParallelCommands'.
                                 -> PropertyM m ()
 prettyNParallelCommandsWithOpts cmds mGraphOptions hist = do
-  mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
+   mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
     where
       printCounterexample hist' (VFalse ce) = do
         putStrLn ""
