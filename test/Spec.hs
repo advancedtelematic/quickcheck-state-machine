@@ -28,6 +28,7 @@ import           Echo
 import           ErrorEncountered
 import           Hanoi
 import           MemoryReference
+import           Mock
 import           Overflow
 import           ProcessRegistry
 import qualified ShrinkingProps
@@ -154,6 +155,11 @@ tests docker0 = testGroup "Tests"
       , testProperty "4-ParallelWithExclusiveLock" (prop_ticketDispenserNParallelOK 4)
       , testProperty "3-ParallelWithSharedLock" (expectFailure $
                                                     prop_ticketDispenserNParallelBad 3)
+      ]
+  , testGroup "Mock"
+      [ testProperty "sequential" prop_sequential_mock
+      , testProperty "parallel"   prop_parallel_mock
+      , testProperty "nparallel"  prop_nparallel_mock
       ]
   , testGroup "CircularBuffer"
       [ testProperty "unpropNoSizeCheck"

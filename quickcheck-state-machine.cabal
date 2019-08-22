@@ -125,6 +125,7 @@ test-suite quickcheck-state-machine-test
                        ErrorEncountered,
                        Hanoi,
                        MemoryReference,
+                       Mock,
                        Overflow,
                        ProcessRegistry,
                        ShrinkingProps,

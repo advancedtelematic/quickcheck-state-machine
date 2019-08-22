@@ -182,7 +182,8 @@ generateParallelCommands sm@StateMachine { initModel } = do
 -- list of commands for which the preconditions of all commands hold
 -- for permutation of the list, i.e. it is parallel safe. The other
 -- half is the remainder of the input list.
-spanSafe :: StateMachine model cmd m resp
+spanSafe :: Rank2.Foldable resp
+         => StateMachine model cmd m resp
          -> model Symbolic -> [Command cmd resp] -> [Command cmd resp]
          -> ([Command cmd resp], [Command cmd resp])
 spanSafe _ _     safe []           = (reverse safe, [])
@@ -238,18 +239,23 @@ generateNParallelCommands sm@StateMachine { initModel } np =
 
 -- | A list of commands is parallel safe if the pre-conditions for all commands
 --   hold in all permutations of the list.
-parallelSafe :: StateMachine model cmd m resp -> model Symbolic
+parallelSafe :: Rank2.Foldable resp
+             => StateMachine model cmd m resp -> model Symbolic
              -> Commands cmd resp -> Bool
-parallelSafe StateMachine { precondition, transition } model0
+parallelSafe StateMachine { precondition, transition, mock } model0
   = and
   . map (preconditionsHold model0)
   . permutations
   . unCommands
   where
-    preconditionsHold _     []                              = True
-    preconditionsHold model (Command cmd resp _vars : cmds) =
+    preconditionsHold _     []                             = True
+    preconditionsHold model (Command cmd resp vars : cmds) =
         boolean (precondition model cmd) &&
-          preconditionsHold (transition model cmd resp) cmds
+          preconditionsHold (transition model cmd resp) cmds &&
+          -- This makes sure that in all permutations the length of variables created is the same.
+          -- By doing so, we try to avoid MockSemanticsMismatch errors.
+          -- More https://github.com/advancedtelematic/quickcheck-state-machine/pull/348
+          length vars == length (getUsedVars $ fst $ runGenSym (mock model cmd) newCounter)
 
 -- | Apply the transition of some commands to a model.
 advanceModel :: StateMachine model cmd m resp
