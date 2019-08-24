@@ -1,20 +1,21 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE GADTs                   #-}
+{-# LANGUAGE ScopedTypeVariables     #-}
+{-# LANGUAGE OverloadedStrings       #-}
+{-# LANGUAGE MultiParamTypeClasses   #-}
+{-# LANGUAGE PolyKinds               #-}
+{-# LANGUAGE TypeFamilies            #-}
+{-# LANGUAGE TypeOperators           #-}
+{-# LANGUAGE TemplateHaskell         #-}
+{-# LANGUAGE QuasiQuotes             #-}
+{-# LANGUAGE UndecidableInstances    #-}
+{-# LANGUAGE FlexibleContexts        #-}
+{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE DeriveGeneric           #-}
+{-# LANGUAGE RecordWildCards         #-}
+{-# LANGUAGE StandaloneDeriving      #-}
+{-# LANGUAGE DeriveAnyClass          #-}
+{-# OPTIONS_GHC -fno-warn-orphans    #-}
+{-# OPTIONS_GHC -fno-warn-identities #-}
 
 module SQLite
     ( prop_sequential_sqlite
@@ -92,7 +93,7 @@ data DBModel = DBModel {
 initModelImpl :: Model r
 initModelImpl = Model (DBModel [] 0 [] 0) [] []
 
-newtype Resp kp kc = Resp {getResp :: Either SqliteException (Success kp kc)}
+newtype Resp kp kc = Resp (Either SqliteException (Success kp kc))
     deriving (Show, Generic1)
 
 instance (Eq kp, Eq kc) => Eq (Resp kp kc) where
@@ -311,8 +312,8 @@ prop_sequential_sqlite =
             createDirectory "sqlite-seq"
         db <- liftIO $ runNoLoggingT $ createSqliteAsyncPool "sqlite-seq/persons.db" 5
         _ <- liftIO $ flip runSqlAsyncWrite db $ do
-            _ <- runMigrationSilent $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
-            runMigrationSilent $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
+            _ <- runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
+            runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
         lock <- liftIO $ newMVar ()
         (hist, _model, res) <- runCommands (sm "sqlite-seq" db lock)  cmds
         prettyCommands smUnused hist $ res === Ok
@@ -325,8 +326,8 @@ prop_parallel_sqlite =
             createDirectory "sqlite-par"
         qBackend <- liftIO $ runNoLoggingT $ createSqliteAsyncPool "sqlite-par/persons.db" 5
         _ <- liftIO $ flip runSqlAsyncWrite qBackend $ do
-            _ <- runMigrationSilent $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
-            runMigrationSilent $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
+            _ <- runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
+            runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
         lock <- liftIO $ newMVar ()
         ret <- runParallelCommandsNTimes 1 (sm "sqlite-par" qBackend lock) cmds
         prettyParallelCommandsWithOpts cmds (Just $ GraphOptions "sqlite.jpeg" Jpeg) ret
@@ -363,7 +364,7 @@ data AsyncQueue r = AsyncQueue
                   -- ^ A queue which can be used to send actions
                   -- to the thread.
 
-  , _serves       :: (TVar Bool)
+  , _serves       :: TVar Bool
 
   , _resource     :: r
                   -- ^ the resource. We may not want to give AsyncQueue
@@ -390,7 +391,7 @@ asyncQueueUsing doFork queueSize createResource = do
                 r <- createResource
                 atomically $ putTMVar resVar $ Right r
                 serve queue servesVar r
-    res <- atomically $ takeTMVar resVar -- we don't need readTMVar, since this TMVar will be shortly gone.
+    res <- atomically $ takeTMVar resVar
     case res of
         Left e -> throwIO e
         Right r -> return $ AsyncQueue t queue servesVar r
@@ -407,7 +408,6 @@ serve queue serves resource = go
 
 waitQueue :: AsyncQueue r -> (r -> IO a) -> IO a
 waitQueue async action = do
---    putStrLn "write to queue"
     resp <- newEmptyTMVarIO
     atomically $ do
         serves <- readTVar $ _serves async
@@ -418,18 +418,13 @@ waitQueue async action = do
         Left e -> throwIO e
         Right a -> return a
 
--- This doesn't belong here
 data AsyncWithPool r = AsyncWithPool {
     queue :: AsyncQueue r
   , pool  :: Pool r
   }
 
--- This doesn't belong here
 mkAsyncWithPool :: AsyncQueue r -> Pool r -> AsyncWithPool r
 mkAsyncWithPool = AsyncWithPool
-
--- data DoesntServeError = DoesntServeError
---       deriving (Show, Exception)
 
 createSqliteAsyncQueue :: (MonadLogger m, MonadUnliftIO m)
                        => Text -> m (AsyncQueue SqlBackend)
