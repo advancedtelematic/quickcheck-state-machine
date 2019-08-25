@@ -32,6 +32,7 @@ import           Mock
 import           Overflow
 import           ProcessRegistry
 import qualified ShrinkingProps
+import           SQLite
 import           Test.StateMachine.Markov
                    (PropertyName, StatsDb, fileStatsDb)
 import           TicketDispenser
@@ -119,6 +120,9 @@ tests docker0 = testGroup "Tests"
       , testProperty "3-threadsEquivNoOp"     $ prop_nparallel_clean  3 (Eq False) Cleanup.NoBug     NoOp
       , testProperty "3-threadsEquivFailingNoOp"
         $ expectFailure $ withMaxSuccess 1000 $ prop_nparallel_clean  3 (Eq True)  Cleanup.NoBug     NoOp
+      ]
+  , testGroup "SQLite"
+      [ testProperty "Parallel" prop_parallel_sqlite
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
