@@ -31,6 +31,7 @@ import           MemoryReference
 import           Mock
 import           Overflow
 import           ProcessRegistry
+import           RQlite
 import qualified ShrinkingProps
 import           SQLite
 import           Test.StateMachine.Markov
@@ -52,20 +53,20 @@ tests docker0 = testGroup "Tests"
   , testProperty "DieHard"
       (expectFailure (withMaxSuccess 2000 prop_dieHard))
   , testGroup "MemoryReference"
-      [testProperty  "NoBugSeq"                         (prop_sequential None)
+      [testProperty  "NoBugSeq"                         (prop_sequential MemoryReference.None)
       , testProperty "LogicBug"          (expectFailure (prop_sequential Logic))
       , testProperty "RaceBugSequential"                (prop_sequential Race)
-      , testProperty "NoBugParallel"                    (prop_parallel None)
+      , testProperty "NoBugParallel"                    (prop_parallel MemoryReference.None)
       , testProperty "RaceBugParallel"   (expectFailure (prop_parallel   Race))
       , testProperty "CrashBugParallel"                 (prop_parallel'  Crash)
       , testProperty "CrashAndLogicBugParallel"
           (expectFailure (withMaxSuccess 10000 (prop_parallel' CrashAndLogic)))
       , testProperty "PreconditionFailed" prop_precondition
       , testProperty "ExistsCommands"     prop_existsCommands
-      , testProperty "NoBug 1 thread"            (prop_nparallel None 1)
-      , testProperty "NoBug 2 threads"           (prop_nparallel None 2)
-      , testProperty "NoBug 3 threads"           (withMaxSuccess 80 $ prop_nparallel None 3)
-      , testProperty "NoBug 4 threads"           (withMaxSuccess 40 $ prop_nparallel None 4)
+      , testProperty "NoBug 1 thread"            (prop_nparallel MemoryReference.None 1)
+      , testProperty "NoBug 2 threads"           (prop_nparallel MemoryReference.None 2)
+      , testProperty "NoBug 3 threads"           (withMaxSuccess 80 $ prop_nparallel MemoryReference.None 3)
+      , testProperty "NoBug 4 threads"           (withMaxSuccess 40 $ prop_nparallel MemoryReference.None 4)
       , testProperty "RaceBugParalleel 1 thread"  (prop_nparallel Race 1)
       , testProperty "RaceBugParalleel 2 threads" (expectFailure (prop_nparallel   Race 2))
       , testProperty "RaceBugParalleel 3 threads" (expectFailure (prop_nparallel   Race 3))
@@ -123,6 +124,9 @@ tests docker0 = testGroup "Tests"
       ]
   , testGroup "SQLite"
       [ testProperty "Parallel" prop_parallel_sqlite
+      ]
+  , testGroup "Rqlite"
+      [ testProperty "parallel" $ withMaxSuccess 10 $ prop_parallel_rqlite (Just Weak)
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential
