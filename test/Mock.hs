@@ -106,7 +106,7 @@ prop_sequential_mock = forAllCommands smUnused Nothing $ \cmds -> monadicIO $ do
   prettyCommands smUnused hist (res === Ok)
 
 prop_parallel_mock :: Property
-prop_parallel_mock = forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
+prop_parallel_mock = forAllParallelCommands smUnused Nothing $ \cmds -> monadicIO $ do
     counter <- liftIO $ newMVar 0
     ret <- runParallelCommandsNTimes 1 (sm counter) cmds
     prettyParallelCommandsWithOpts cmds opts ret

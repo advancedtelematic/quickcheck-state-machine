@@ -216,7 +216,7 @@ prop_ticketDispenser =
 
 prop_ticketDispenserParallel :: SharedExclusive -> Property
 prop_ticketDispenserParallel se =
-  forAllParallelCommands (smUnused se) $ \cmds -> monadicIO $
+  forAllParallelCommands (smUnused se) Nothing $ \cmds -> monadicIO $
     withDbLock $ \ioLock -> do
       let sm' = sm se ioLock
       prettyParallelCommands cmds =<< runParallelCommandsNTimes 100 sm' cmds

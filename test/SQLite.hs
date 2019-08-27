@@ -320,7 +320,7 @@ prop_sequential_sqlite =
 
 prop_parallel_sqlite :: Property
 prop_parallel_sqlite =
-    forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
+    forAllParallelCommands smUnused Nothing $ \cmds -> monadicIO $ do
         liftIO $ do
             removePathForcibly "sqlite-par"
             createDirectory "sqlite-par"
