@@ -126,7 +126,10 @@ tests docker0 = testGroup "Tests"
       [ testProperty "Parallel" prop_parallel_sqlite
       ]
   , testGroup "Rqlite"
-      [ testProperty "parallel" $ withMaxSuccess 10 $ prop_parallel_rqlite (Just Weak)
+      [ testProperty "parallel" $ withMaxSuccess 10     $ prop_parallel_rqlite (Just Weak)
+      -- we currently don't add other properties, because they interfere (Tasty runs tests on parallel)
+      -- , testProperty "sequential" $ withMaxSuccess 10   $ prop_sequential_rqlite (Just Weak)
+      -- , testProperty "sequential-stale" $ expectFailure $ prop_sequential_rqlite (Just RQlite.None)
       ]
   , testGroup "ErrorEncountered"
       [ testProperty "Sequential" prop_error_sequential

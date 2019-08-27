@@ -679,7 +679,7 @@ runCmds cmds = withMaxSuccess 1 $ noShrinking $ monadicIO $ do
 garbageCollect :: Model Concrete -> IO ()
 garbageCollect (Model _ nodes) =
     forM_ nodes $ \(Reference (Concrete node), p) -> do
-        putStrLnM $ "stoping " ++ show p
+        putStrLnM $ "stopping " ++ show p
         stopNode node
 
 generatorImpl :: Maybe Level -> Model Symbolic -> Maybe (Gen (At Cmd Symbolic))

@@ -1,3 +1,8 @@
+#### 0.7.0
+
+  * forAllParallelCommands now gets another argument with type Maybe Int,
+    indicating the minimum number of commands we want a test-case to have.
+
 #### 0.6.0 (2019-1-15)
 
   This is a breaking release. See mentioned PRs for how to upgrade your code,
