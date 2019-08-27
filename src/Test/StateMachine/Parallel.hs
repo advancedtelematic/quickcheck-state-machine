@@ -98,10 +98,11 @@ forAllParallelCommands :: Testable prop
                        => (Show (cmd Symbolic), Show (resp Symbolic), Show (model Symbolic))
                        => (Rank2.Traversable cmd, Rank2.Foldable resp)
                        => StateMachine model cmd m resp
+                       -> Maybe Int
                        -> (ParallelCommands cmd resp -> prop)     -- ^ Predicate.
                        -> Property
-forAllParallelCommands sm =
-  forAllShrinkShow (generateParallelCommands sm) (shrinkParallelCommands sm) ppShow
+forAllParallelCommands sm mminSize =
+  forAllShrinkShow (generateParallelCommands sm mminSize) (shrinkParallelCommands sm) ppShow
 
 
 forAllNParallelCommands :: Testable prop
@@ -159,9 +160,10 @@ generateParallelCommands :: forall model cmd m resp. Rank2.Foldable resp
                          => Show (model Symbolic)
                          => (Show (cmd Symbolic), Show (resp Symbolic))
                          => StateMachine model cmd m resp
+                         -> Maybe Int
                          -> Gen (ParallelCommands cmd resp)
-generateParallelCommands sm@StateMachine { initModel } = do
-  Commands cmds      <- generateCommands sm Nothing
+generateParallelCommands sm@StateMachine { initModel } mminSize  = do
+  Commands cmds      <- generateCommands sm mminSize
   prefixLength       <- sized (\k -> choose (0, k `div` 3))
   let (prefix, rest) =  bimap Commands Commands (splitAt prefixLength cmds)
   return (ParallelCommands prefix
