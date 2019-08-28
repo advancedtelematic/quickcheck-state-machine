@@ -82,7 +82,7 @@ prop_echoOK = forAllCommands smUnused Nothing $ \cmds -> monadicIO $ do
     prettyCommands echoSM' hist (res === Ok)
 
 prop_echoParallelOK :: Bool -> Property
-prop_echoParallelOK problem = forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
+prop_echoParallelOK problem = forAllParallelCommands smUnused Nothing $ \cmds -> monadicIO $ do
     env <- liftIO $ mkEnv
     let echoSM' = echoSM env
     let n | problem   = 2

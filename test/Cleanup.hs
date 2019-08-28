@@ -235,7 +235,7 @@ prop_sequential_clean testing bug dc = forAllCommands smUnused Nothing $ \cmds -
         Eq _    -> liftProperty $ mkModel sm' hist === model
 
 prop_parallel_clean :: FinalTest -> Bug -> DoubleCleanup -> Property
-prop_parallel_clean testing bug dc = forAllParallelCommands smUnused $ \cmds -> monadicIO $ do
+prop_parallel_clean testing bug dc = forAllParallelCommands smUnused Nothing $ \cmds -> monadicIO $ do
     folderId :: Word <- liftIO randomIO
     let testDir = testDirectoryBase ++ "-" ++ show folderId
     liftIO $ do

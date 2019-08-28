@@ -140,7 +140,7 @@ prop_sequential_overflow = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
   prettyCommands sm hist (res === Ok)
 
 prop_parallel_overflow :: Property
-prop_parallel_overflow = forAllParallelCommands sm $ \cmds -> monadicIO $ do
+prop_parallel_overflow = forAllParallelCommands sm Nothing $ \cmds -> monadicIO $ do
     prettyParallelCommandsWithOpts cmds opts =<< runParallelCommands sm cmds
       where opts = Just $ GraphOptions "overflow.png" Png
 

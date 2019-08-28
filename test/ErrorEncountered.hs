@@ -147,7 +147,7 @@ prop_error_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
   prettyCommands sm hist (checkCommandNames cmds (res === Ok))
 
 prop_error_parallel :: Property
-prop_error_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $ do
+prop_error_parallel = forAllParallelCommands sm Nothing $ \cmds -> monadicIO $ do
   prettyParallelCommands cmds =<< runParallelCommands sm cmds
 
 prop_error_nparallel :: Int -> Property

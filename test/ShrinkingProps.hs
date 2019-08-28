@@ -379,7 +379,7 @@ prop_sequential = forAllCommands sm Nothing $ \cmds -> monadicIO $ do
     prettyCommands sm hist (checkCommandNames cmds (res === Ok))
 
 prop_parallel :: Property
-prop_parallel = forAllParallelCommands sm $ \cmds -> monadicIO $
+prop_parallel = forAllParallelCommands sm Nothing $ \cmds -> monadicIO $
     prettyParallelCommands cmds =<< runParallelCommands sm cmds
 
 prop_3parallel :: Property
@@ -500,7 +500,7 @@ refGraph'' (QSM.ParallelCommands prefix suffixes) =
 
 prop_parallel_subprog :: Property
 prop_parallel_subprog =
-    forAllShrinkShow (QSM.generateParallelCommands sm) (const []) ppShow $
+    forAllShrinkShow (QSM.generateParallelCommands sm Nothing) (const []) ppShow $
       prop_parallel_subprog'
   where
     -- TODO add as a test (?)
@@ -527,7 +527,7 @@ prop_shrink_round_trip (ls1, ls2) =
     val === ex
 
 prop_pairs_round_trip :: Property
-prop_pairs_round_trip = forAllParallelCommands sm $ \pairCmds ->
+prop_pairs_round_trip = forAllParallelCommands sm Nothing $ \pairCmds ->
   let
     pairShrunk = QSM.shrinkParallelCommands sm pairCmds
     listCmds = QSM.fromPair' pairCmds
@@ -681,7 +681,7 @@ checkCorrectModelParallel = \(QSM.ParallelCommands prefix suffixes) ->
 
 prop_parallel_model :: Property
 prop_parallel_model =
-    forAllShrinkShow (QSM.generateParallelCommands sm) (const []) ppShow $ \cmds ->
+    forAllShrinkShow (QSM.generateParallelCommands sm Nothing) (const []) ppShow $ \cmds ->
       conjoin [ checkCorrectModelParallel shrunk
               | shrunk <- QSM.shrinkParallelCommands sm cmds
               ]

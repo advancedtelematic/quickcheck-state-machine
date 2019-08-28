@@ -210,14 +210,14 @@ prop_runSavedCommands bug fp = monadicIO $ do
   prettyCommands (sm bug) hist (res === Ok)
 
 prop_parallel :: Bug -> Property
-prop_parallel bug = forAllParallelCommands sm' $
+prop_parallel bug = forAllParallelCommands sm' Nothing $
   \cmds -> checkCommandNamesParallel cmds $ monadicIO $
   prettyParallelCommands cmds =<< runParallelCommands sm' cmds
     where
       sm' = sm bug
 
 prop_parallel' :: Bug -> Property
-prop_parallel' bug = forAllParallelCommands sm' $ \cmds -> monadicIO $ do
+prop_parallel' bug = forAllParallelCommands sm' Nothing $ \cmds -> monadicIO $ do
   prettyParallelCommands cmds =<< runParallelCommands' sm' complete cmds
     where
       sm' = sm bug
@@ -264,7 +264,7 @@ prop_existsCommands = existsCommands sm' gens $ \cmds -> monadicIO $ do
 
 prop_pairs_shrink_parallel_equivalence :: Property
 prop_pairs_shrink_parallel_equivalence =
-    forAllParallelCommands (sm None) $ \pairCmds ->
+    forAllParallelCommands (sm None) Nothing $ \pairCmds ->
       let pairShrunk = shrinkParallelCommands (sm None) pairCmds
           listCmds = Types.fromPair' pairCmds
           listShrunk = shrinkNParallelCommands (sm None) listCmds
@@ -273,7 +273,7 @@ prop_pairs_shrink_parallel_equivalence =
 
 prop_pairs_shrinkAndValidate_equivalence :: Property
 prop_pairs_shrinkAndValidate_equivalence =
-    forAllParallelCommands (sm None) $ \pairCmds ->
+    forAllParallelCommands (sm None) Nothing $ \pairCmds ->
       let pairShrunk' = shrinkAndValidateParallel (sm None) DontShrink pairCmds
           listCmds = Types.fromPair' pairCmds
           listShrunk' = shrinkAndValidateNParallel (sm None) DontShrink listCmds
@@ -282,7 +282,7 @@ prop_pairs_shrinkAndValidate_equivalence =
 
 prop_pairs_shrink_parallel :: Property
 prop_pairs_shrink_parallel =
-    forAllParallelCommands (sm None) $ \cmds@(Types.ParallelCommands prefix suffixes) ->
+    forAllParallelCommands (sm None) Nothing $ \cmds@(Types.ParallelCommands prefix suffixes) ->
       let pair =
             [ Shrunk s (Types.ParallelCommands prefix' (map Types.toPair suffixes'))
             | Shrunk s (prefix', suffixes') <- shrinkPairS shrinkCommands' (shrinkListS (shrinkPairS' shrinkCommands'))
