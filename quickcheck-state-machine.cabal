@@ -87,7 +87,7 @@ test-suite quickcheck-state-machine-test
                        filepath,
                        hashable,
                        hashtables,
-                       hs-rqlite,
+                       hs-rqlite >= 0.1.2.0,
                        HTTP,
                        http-client,
                        monad-logger,

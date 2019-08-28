@@ -306,7 +306,7 @@ data Cmd node =
     | Delay Int
     deriving (Generic, Show, Functor, Foldable, Traversable)
 
-newtype Resp node = Resp {getResp :: Either SomeError (Success node)}
+newtype Resp node = Resp (Either SomeError (Success node))
     deriving (Show, Eq, Functor, Foldable, Traversable, Generic)
 
 newtype SomeError = SomeError String
@@ -576,6 +576,7 @@ semantics counter (At cmd) = At . Resp <$> case cmd of
             bracketOnError (mkNodeTime c n t elt join)
                             stopNode
                             $ \rqNode -> do
+                threadDelay 500000
                 _ <- retryUntilAlive $ httpHost n
                 _ <- createQuery $ httpHost n
                 return $ Right $ Spawned $ reference rqNode
@@ -585,6 +586,7 @@ semantics counter (At cmd) = At . Resp <$> case cmd of
             bracketOnError (mkNodeTime c n t elt join)
                             stopNode
                             $ \rqNode -> do
+                threadDelay 500000
                 _ <- retryUntilAlive $ httpHost n
                 return $ Right $ Spawned $ reference rqNode
     Stop node -> do
