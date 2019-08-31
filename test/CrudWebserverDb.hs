@@ -385,7 +385,7 @@ demoNoRace   = demoNoRace'   crudWebserverDbPort
 
 prop_crudWebserverDbParallel :: Int -> Property
 prop_crudWebserverDbParallel port =
-  forAllParallelCommands sm Nothing $ \cmds -> monadic (ioProperty . runner port) $ do
+  forAllParallelCommands sm Nothing $ \cmds -> monadic (ioProperty . runner port) $
     prettyParallelCommands cmds =<< runParallelCommandsNTimes 30 sm cmds
 
 demoRace' :: Int -> IO ()

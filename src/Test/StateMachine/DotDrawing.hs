@@ -137,4 +137,4 @@ connectNodes = go []
     go acc (a:b:rest) = go (DotEdge (nodeID a) (nodeID b) [] : acc) (b:rest)
 
 newLinesAfter :: String -> Int -> String -> String
-newLinesAfter esc n str = concat (fmap (\s -> s ++ esc) (chunksOf n str))
+newLinesAfter esc n str = concatMap (++ esc) (chunksOf n str)

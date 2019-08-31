@@ -3,12 +3,9 @@
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TemplateHaskell     #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -207,7 +204,7 @@ smUnused se = sm se (error "dblock used during command creation")
 
 prop_ticketDispenser :: Property
 prop_ticketDispenser =
-  forAllCommands (smUnused Shared) Nothing $ \cmds -> monadicIO $ do
+  forAllCommands (smUnused Shared) Nothing $ \cmds -> monadicIO $
     withDbLock $ \ioLock -> do
       let sm' = sm Shared ioLock
       (hist, _, res) <- runCommands sm' cmds

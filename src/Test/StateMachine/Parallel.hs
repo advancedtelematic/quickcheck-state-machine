@@ -245,8 +245,7 @@ parallelSafe :: Rank2.Foldable resp
              => StateMachine model cmd m resp -> model Symbolic
              -> Commands cmd resp -> Bool
 parallelSafe StateMachine { precondition, transition, mock } model0
-  = and
-  . map (preconditionsHold model0)
+  = all (preconditionsHold model0)
   . permutations
   . unCommands
   where
@@ -368,7 +367,7 @@ shrinkAndValidateParallel sm@StateMachine { initModel } = \shouldShrink (Paralle
        -> ShouldShrink               -- should we /still/ shrink something?
        -> [Pair (Commands cmd resp)] -- suffixes to validate
        -> [ParallelCommands cmd resp]
-    go prefix' envAfterPrefix = go' [] envAfterPrefix
+    go prefix' = go' []
       where
         go' :: [Pair (Commands cmd resp)] -- accumulated validated suffixes (in reverse order)
             -> ValidateEnv model          -- environment after the validated suffixes
@@ -425,7 +424,7 @@ shrinkAndValidateNParallel sm = \shouldShrink  (ParallelCommands prefix suffixes
        -> ShouldShrink              -- should we /still/ shrink something?
        -> [[Commands cmd resp]]     -- suffixes to validate
        -> [NParallelCommands cmd resp]
-    go prefix' envAfterPrefix = go' [] envAfterPrefix
+    go prefix' = go' []
       where
         go' :: [[Commands cmd resp]] -- accumulated validated suffixes (in reverse order)
             -> ValidateEnv model     -- environment after the validated suffixes
@@ -474,7 +473,7 @@ runParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                     => StateMachine model cmd m resp
                     -> ParallelCommands cmd resp
                     -> PropertyM m [(History cmd resp, Logic)]
-runParallelCommands sm = runParallelCommandsNTimes 10 sm
+runParallelCommands = runParallelCommandsNTimes 10
 
 runParallelCommands' :: (Show (cmd Concrete), Show (resp Concrete))
                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
@@ -483,7 +482,7 @@ runParallelCommands' :: (Show (cmd Concrete), Show (resp Concrete))
                      -> (cmd Concrete -> resp Concrete)
                      -> ParallelCommands cmd resp
                      -> PropertyM m [(History cmd resp, Logic)]
-runParallelCommands' sm = runParallelCommandsNTimes' 10 sm
+runParallelCommands' = runParallelCommandsNTimes' 10
 
 runNParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                      => (Rank2.Traversable cmd, Rank2.Foldable resp)
@@ -491,7 +490,7 @@ runNParallelCommands :: (Show (cmd Concrete), Show (resp Concrete))
                      => StateMachine model cmd m resp
                      -> NParallelCommands cmd resp
                      -> PropertyM m [(History cmd resp, Logic)]
-runNParallelCommands sm = runNParallelCommandsNTimes 10 sm
+runNParallelCommands = runNParallelCommandsNTimes 10
 
 runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
                           => (Rank2.Traversable cmd, Rank2.Foldable resp)
@@ -503,7 +502,7 @@ runParallelCommandsNTimes :: (Show (cmd Concrete), Show (resp Concrete))
 runParallelCommandsNTimes n sm cmds =
   replicateM n $ do
     (hist, reason1, reason2) <- run (executeParallelCommands sm cmds True)
-    return (hist, (logicReason (combineReasons [reason1, reason2])) .&& linearise sm hist)
+    return (hist, logicReason (combineReasons [reason1, reason2]) .&& linearise sm hist)
 
 runParallelCommandsNTimes' :: (Show (cmd Concrete), Show (resp Concrete))
                            => (Rank2.Traversable cmd, Rank2.Foldable resp)
@@ -688,8 +687,8 @@ isInvalid ls = any isPreconditionFailed ls &&
       notException _                   = True
 
 isPreconditionFailed :: Reason -> Bool
-isPreconditionFailed (PreconditionFailed {}) = True
-isPreconditionFailed _                       = False
+isPreconditionFailed PreconditionFailed {} = True
+isPreconditionFailed _                     = False
 
 ------------------------------------------------------------------------
 
@@ -725,8 +724,8 @@ prettyParallelCommandsWithOpts :: (MonadIO m, Rank2.Foldable cmd)
                               -> Maybe GraphOptions
                               -> [(History cmd resp, Logic)] -- ^ Output of 'runParallelCommands'.
                               -> PropertyM m ()
-prettyParallelCommandsWithOpts cmds mGraphOptions hist =
-  mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
+prettyParallelCommandsWithOpts cmds mGraphOptions =
+  mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l))
     where
       printCounterexample hist' (VFalse ce) = do
         putStrLn ""
@@ -767,8 +766,8 @@ prettyNParallelCommandsWithOpts :: (Show (cmd Concrete), Show (resp Concrete))
                                 -> Maybe GraphOptions
                                 -> [(History cmd resp, Logic)] -- ^ Output of 'runNParallelCommands'.
                                 -> PropertyM m ()
-prettyNParallelCommandsWithOpts cmds mGraphOptions hist = do
-   mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l)) hist
+prettyNParallelCommandsWithOpts cmds mGraphOptions =
+   mapM_ (\(h, l) -> printCounterexample h (logic l) `whenFailM` property (boolean l))
     where
       printCounterexample hist' (VFalse ce) = do
         putStrLn ""

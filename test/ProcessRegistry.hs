@@ -138,7 +138,7 @@ ioSpawn = do
   else pure pid
 
 ioKill :: Pid -> IO ()
-ioKill pid = do
+ioKill pid =
   IORef.modifyIORef killedPidsRef (pid :)
 
 reverseLookup :: (Eq k, Eq v, Hashable k, Hashable v)

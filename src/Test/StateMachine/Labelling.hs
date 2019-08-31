@@ -34,7 +34,7 @@ import           Data.Either
 import           Data.Kind
                    (Type)
 import           Data.Maybe
-                   (catMaybes)
+                   (mapMaybe)
 import           Prelude                       hiding
                    (maximum)
 
@@ -71,7 +71,7 @@ maximum f = go Nothing
   where
     go :: Maybe b -> Predicate a b
     go maxSoFar = Predicate {
-          predApply  = \a -> Right $ go (upd maxSoFar (f a))
+          predApply  = Right . go . upd maxSoFar . f
         , predFinish = maxSoFar
         }
 
@@ -87,7 +87,7 @@ classify = go []
     go :: [b] -> [Predicate a b] -> [a] -> [b]
     go acc ps [] = acc ++ bs
       where
-        bs = catMaybes $ map predFinish ps
+        bs = mapMaybe predFinish ps
     go acc ps (a : as) = go (acc ++ bs) ps' as
       where
         (bs, ps') = partitionEithers $ map (`predApply` a) ps

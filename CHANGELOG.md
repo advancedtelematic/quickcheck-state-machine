@@ -2,6 +2,24 @@
 
   * forAllParallelCommands now gets another argument with type Maybe Int,
     indicating the minimum number of commands we want a test-case to have.
+    `Nothing` provides old functionality.
+
+  * Add Stack resolver lts-14 and drop lts-11.
+
+  * Fixed a bug in the parallel case for the mock function (PR #348) and other
+    bugs related to references in the parallel case.
+
+  * Add a new field in the StateMachine called cleanup. This function can be
+    used to ensure recourses are cleaned between tests. `noCleanup` can be
+    used to achieve the older functionality.
+
+  * Improved labelling.
+
+  * Generalize parallelism, so that more than 2 threads can be used (PR #324).
+
+  * Option to print dot visualisation of failed examples.
+
+  * Handle exceptions better and provide better output.
 
 #### 0.6.0 (2019-1-15)
 

@@ -35,7 +35,7 @@ newtype GenSym a = GenSym (State Counter a)
   deriving (Functor, Applicative, Monad)
 
 runGenSym :: GenSym a -> Counter -> (a, Counter)
-runGenSym (GenSym m) counter = runState m counter
+runGenSym (GenSym m) = runState m
 
 genSym :: Typeable a => GenSym (Reference a Symbolic)
 genSym  = GenSym $ do
