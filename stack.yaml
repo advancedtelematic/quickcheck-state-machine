@@ -11,6 +11,7 @@ extra-deps:
   - tree-diff-0.0.2.1@sha256:4bd07bd26091f21710288c1037124bfe19aadb5bdf3df57c8374afaa5f14fef8
   - graphviz-2999.20.0.3
   - hs-rqlite-0.1.2.0
+  - sop-core-0.5.0.0
 allow-newer: true
 nix:
   enable: false
