@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DeriveTraversable    #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE RecordWildCards      #-}
@@ -34,8 +35,8 @@ import           Data.Maybe
 import           Data.TreeDiff
 import           GHC.Generics
 import           Prelude
-import           Rqlite
-import           Rqlite.Status
+import "hs-rqlite" Rqlite
+import "hs-rqlite" Rqlite.Status
 import           System.Directory
 import           System.IO
 import           System.Process
