@@ -27,6 +27,7 @@ import           DieHard
 import           Echo
 import           ErrorEncountered
 import           Hanoi
+import           IORefs
 import           MemoryReference
 import           Mock
 import           Overflow
@@ -201,6 +202,9 @@ tests docker0 = testGroup "Tests"
       ]
   , testGroup "UnionFind"
       [ testProperty "Sequential" UnionFind.prop_unionFindSequential ]
+  , testGroup "Lockstep"
+      [ testProperty "IORefs_Sequential" prop_IORefs_sequential
+      ]
   ]
   where
     statsDb :: PropertyName -> StatsDb IO
