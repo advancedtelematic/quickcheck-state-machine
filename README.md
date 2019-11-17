@@ -401,7 +401,9 @@ Here are some more examples to get you started:
     different kind of bugs. This example is borrowed from the paper *Testing the
     Hard Stuff and Staying Sane*
     [[PDF](http://publications.lib.chalmers.se/records/fulltext/232550/local_232550.pdf),
-    [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)];
+    [video](https://www.youtube.com/watch?v=zi0rHwfiX1Q)]. For a more direct
+    translation from the paper, see the following
+    [variant](https://github.com/polux/qsm-ffi-demo) which uses the C FFI;
 
   * The union-find
     [example](https://github.com/advancedtelematic/quickcheck-state-machine/blob/master/test/UnionFind.hs)
@@ -478,7 +480,11 @@ More examples from the "real world":
     a mock file system that they in turn use to simulate file system errors when
     testing a blockchain database. The following blog
     [post](http://www.well-typed.com/blog/2019/01/qsm-in-depth/) describes their
-    tests in more detail.
+    tests in more detail;
+
+  * Wire are using a state machine model to
+    [test](https://github.com/wireapp/wire-server/blob/master/services/gundeck/test/unit/ThreadBudget.hs)
+    the lower bound of running threads in their push notification system.
 
 ### How to contribute
 
@@ -493,6 +499,12 @@ we can improve it on the issue tracker!
     [issue](https://github.com/nick8325/quickcheck/issues/139) -- where the
     initial discussion about how to add state machine based testing to
     QuickCheck started;
+
+  * John Hughes' Midlands Graduate School 2019
+    [course](http://www.cse.chalmers.se/~rjmh/MGS2019/) on property-based
+    testing, which covers the basics of state machine modelling and testing. It
+    also contains a minimal implementation of a state machine testing library
+    built on top of Haskell's QuickCheck;
 
   * *Finding Race Conditions in Erlang with QuickCheck and
     PULSE*
