@@ -35,6 +35,7 @@ module Test.StateMachine.Sequential
   , ShouldShrink(..)
   , initValidateEnv
   , runCommands
+  , runCommands'
   , getChanContents
   , Check(..)
   , executeCommands
@@ -325,9 +326,16 @@ runCommands :: (Show (cmd Concrete), Show (resp Concrete))
             => StateMachine model cmd m resp
             -> Commands cmd resp
             -> PropertyM m (History cmd resp, model Concrete, Reason)
-runCommands sm@StateMachine { initModel, cleanup } = run . go
-  where
-    go cmds = mask $ \restore -> do
+runCommands sm cmds = run $ runCommands' sm cmds
+
+runCommands' :: (Show (cmd Concrete), Show (resp Concrete))
+             => (Rank2.Traversable cmd, Rank2.Foldable resp)
+             => (MonadMask m, MonadIO m)
+             => StateMachine model cmd m resp
+             -> Commands cmd resp
+             -> m (History cmd resp, model Concrete, Reason)
+runCommands' sm@StateMachine { initModel, cleanup } cmds =
+    mask $ \restore -> do
       hchan <- restore newTChanIO
       (reason, (_, _, _, model)) <- restore
         (runStateT
