@@ -652,7 +652,7 @@ prop_parallel_rqlite lvl =
             createDirectory testPath
             threadDelay 10000
         c <- liftIO $ newMVar 0
-        prettyParallelCommandsWithOpts cmds (Just $ GraphOptions "rqlite.png" Png)
+        prettyParallelCommandsWithOpts cmds (Just $ GraphOptions "rqlite-test-output.png" Png)
                 =<< runParallelCommandsNTimes 2 (sm c lvl) cmds
 
 prop_nparallel_rqlite :: Int -> Maybe Level -> Property
@@ -664,7 +664,7 @@ prop_nparallel_rqlite np lvl =
             createDirectory testPath
             threadDelay 10000
         c <- liftIO $ newMVar 0
-        prettyNParallelCommandsWithOpts cmds (Just $ GraphOptions "rqlite.png" Png)
+        prettyNParallelCommandsWithOpts cmds (Just $ GraphOptions "rqlite-test-output.png" Png)
                 =<< runNParallelCommandsNTimes 1 (sm c lvl) cmds
 
 
@@ -675,7 +675,7 @@ runCmds cmds = withMaxSuccess 1 $ noShrinking $ monadicIO $ do
             createDirectory testPath
     c <- liftIO $ newMVar 0
     ls <- runNParallelCommandsNTimes 1 (sm c $ Just Weak) cmds
-    prettyNParallelCommandsWithOpts cmds (Just $ GraphOptions "rqlite.png" Png) ls
+    prettyNParallelCommandsWithOpts cmds (Just $ GraphOptions "rqlite-test-output.png" Png) ls
     liftIO $ print $ fst $ head ls
     liftIO $ print $ interleavings $ unHistory $ fst $ head ls
 
@@ -734,7 +734,7 @@ mkSpawn respawm n =
         Just ref -> ReSpawn ref) n (Sec 1) (Sec 1)
 
 testPath :: String
-testPath = "rqlite-test"
+testPath = "rqlite-test-output"
 
 names :: [String]
 names = ["John", "Stevan", "Kostas", "Curry", "Robert"]
