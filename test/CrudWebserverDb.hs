@@ -1,20 +1,22 @@
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE QuasiQuotes                #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE DataKinds                     #-}
+{-# LANGUAGE DeriveGeneric                 #-}
+{-# LANGUAGE DerivingStrategies            #-}
+{-# LANGUAGE FlexibleContexts              #-}
+{-# LANGUAGE FlexibleInstances             #-}
+{-# LANGUAGE GADTs                         #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving    #-}
+{-# LANGUAGE LambdaCase                    #-}
+{-# LANGUAGE MultiParamTypeClasses         #-}
+{-# LANGUAGE OverloadedStrings             #-}
+{-# LANGUAGE PolyKinds                     #-}
+{-# LANGUAGE QuasiQuotes                   #-}
+{-# LANGUAGE ScopedTypeVariables           #-}
+{-# LANGUAGE StandaloneDeriving            #-}
+{-# LANGUAGE TemplateHaskell               #-}
+{-# LANGUAGE TypeFamilies                  #-}
+{-# LANGUAGE TypeOperators                 #-}
+{-# LANGUAGE UndecidableInstances          #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- NOTE: Make sure NOT to use DeriveAnyClass, or persistent-template
 -- will do the wrong thing.
@@ -90,10 +92,11 @@ import           Data.Text
 import qualified Data.Text                     as T
 import           Data.TreeDiff
                    (Expr(App))
+import           Database.Persist.Class
 import           Database.Persist.Postgresql
                    (ConnectionPool, ConnectionString, Key, SqlBackend,
                    delete, get, getJust, insert, liftSqlPersistMPool,
-                   replace, runMigration, runSqlPool, update,
+                   replace, runMigrationQuiet, runSqlPool, update,
                    withPostgresqlPool, (+=.))
 import           Database.Persist.TH
                    (mkMigrate, mkPersist, persistLowerCase, share,
@@ -403,7 +406,7 @@ app bug pool = serve (Proxy :: Proxy Api) (server bug pool)
 mkApp :: Bug -> ConnectionString -> IO Application
 mkApp bug conn = runNoLoggingT $
   withPostgresqlPool (cs conn) 10 $ \pool -> do
-    runSqlPool (runMigration migrateAll) pool
+    _ <- runSqlPool (runMigrationQuiet migrateAll) pool
     return (app bug pool)
 
 runServer :: Bug -> ConnectionString -> Warp.Port -> IO () -> IO ()

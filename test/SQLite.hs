@@ -312,8 +312,8 @@ prop_sequential_sqlite =
             createDirectory "sqlite-seq"
         db <- liftIO $ runNoLoggingT $ createSqliteAsyncPool "sqlite-seq/persons.db" 5
         _ <- liftIO $ flip runSqlAsyncWrite db $ do
-            _ <- runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
-            runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
+            _ <- runMigrationQuiet $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
+            runMigrationQuiet $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
         lock <- liftIO $ newMVar ()
         (hist, _model, res) <- runCommands (sm "sqlite-seq" db lock)  cmds
         prettyCommands smUnused hist $ res === Ok
@@ -326,8 +326,8 @@ prop_parallel_sqlite =
             createDirectory "sqlite-par"
         qBackend <- liftIO $ runNoLoggingT $ createSqliteAsyncPool "sqlite-par/persons.db" 5
         _ <- liftIO $ flip runSqlAsyncWrite qBackend $ do
-            _ <- runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
-            runMigration $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
+            _ <- runMigrationQuiet $ migrate entityDefs $ entityDef (Nothing :: Maybe Person)
+            runMigrationQuiet $ migrate entityDefs $ entityDef (Nothing :: Maybe Car)
         lock <- liftIO $ newMVar ()
         ret <- runParallelCommandsNTimes 1 (sm "sqlite-par" qBackend lock) cmds
         prettyParallelCommandsWithOpts cmds (Just $ GraphOptions "sqlite.jpeg" Jpeg) ret
