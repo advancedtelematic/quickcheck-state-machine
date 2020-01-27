@@ -155,7 +155,7 @@ setupNode n timeout elTimeout mjoin = do
         , show p ++ ":" ++ show p
         , "--name"
         , ndName
-        , "rqlite/rqlite"
+        , "rqlite/rqlite:4.5.0"
         , "-http-addr"
         , ip ++ ":" ++ show p
         , "-raft-addr"
