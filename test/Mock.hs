@@ -110,11 +110,11 @@ prop_parallel_mock = forAllParallelCommands smUnused Nothing $ \cmds -> monadicI
     counter <- liftIO $ newMVar 0
     ret <- runParallelCommandsNTimes 1 (sm counter) cmds
     prettyParallelCommandsWithOpts cmds opts ret
-      where opts = Just $ GraphOptions "mock.png" Png
+      where opts = Just $ GraphOptions "mock-test-output.png" Png
 
 prop_nparallel_mock :: Property
 prop_nparallel_mock = forAllNParallelCommands smUnused 3 $ \cmds -> monadicIO $ do
     counter <- liftIO $ newMVar 0
     ret <- runNParallelCommandsNTimes 1 (sm counter) cmds
     prettyNParallelCommandsWithOpts cmds opts ret
-      where opts = Just $ GraphOptions "mock-np.png" Png
+      where opts = Just $ GraphOptions "mock-np-test-output.png" Png

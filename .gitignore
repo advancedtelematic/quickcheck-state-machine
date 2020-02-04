@@ -12,3 +12,5 @@ stack.yaml.lock
 cleanup-test-folder/
 sqlite-seq/
 sqlite-par/
+rqlite-test-output/
+*test-output.png

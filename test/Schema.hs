@@ -1,17 +1,19 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DerivingStrategies            #-}
+{-# LANGUAGE GADTs                         #-}
+{-# LANGUAGE ScopedTypeVariables           #-}
+{-# LANGUAGE OverloadedStrings             #-}
+{-# LANGUAGE MultiParamTypeClasses         #-}
+{-# LANGUAGE TypeFamilies                  #-}
+{-# LANGUAGE TypeOperators                 #-}
+{-# LANGUAGE TemplateHaskell               #-}
+{-# LANGUAGE QuasiQuotes                   #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving    #-}
+{-# LANGUAGE UndecidableInstances          #-}
+{-# LANGUAGE FlexibleInstances             #-}
+{-# LANGUAGE DeriveGeneric                 #-}
+{-# LANGUAGE RecordWildCards               #-}
+{-# LANGUAGE StandaloneDeriving            #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 module Schema
     ( Person (..)
@@ -21,6 +23,7 @@ module Schema
     , entityDefs
     ) where
 
+import           Database.Persist.Class
 import           Database.Persist.Sqlite
 import           Database.Persist.TH
 import           Prelude

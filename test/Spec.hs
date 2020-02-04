@@ -127,7 +127,7 @@ tests docker0 = testGroup "Tests"
       [ testProperty "Parallel" prop_parallel_sqlite
       ]
   , testGroup "Rqlite"
-      [ testProperty "parallel" $ withMaxSuccess 10     $ prop_parallel_rqlite (Just Weak)
+      [ whenDocker docker0 "rqlite" $ testProperty "parallel" $ withMaxSuccess 10 $ prop_parallel_rqlite (Just Weak)
       -- we currently don't add other properties, because they interfere (Tasty runs tests on parallel)
       -- , testProperty "sequential" $ withMaxSuccess 10   $ prop_sequential_rqlite (Just Weak)
       -- , testProperty "sequential-stale" $ expectFailure $ prop_sequential_rqlite (Just RQlite.None)
@@ -219,6 +219,10 @@ tests docker0 = testGroup "Tests"
       | docker    = withResource Store.setup
                                  Store.cleanup
                                  (\io -> testProperty test (prop (snd <$> io)))
+      | otherwise = testCase ("No docker, skipping: " ++ test) (return ())
+
+    whenDocker docker test prop
+      | docker    = prop
       | otherwise = testCase ("No docker, skipping: " ++ test) (return ())
 
 ------------------------------------------------------------------------
