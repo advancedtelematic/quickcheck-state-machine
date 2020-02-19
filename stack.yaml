@@ -1,4 +1,4 @@
-resolver: lts-14.1
+resolver: lts-15.0
 packages:
   - .
 extra-deps:
@@ -12,7 +12,7 @@ extra-deps:
   - graphviz-2999.20.0.3
   - hs-rqlite-0.1.2.0
   - sop-core-0.5.0.0
-  - persistent-2.10.2
+  - persistent-2.10.3
   - persistent-sqlite-2.10.2
   - persistent-postgresql-2.10.1
   - persistent-template-2.8.0
