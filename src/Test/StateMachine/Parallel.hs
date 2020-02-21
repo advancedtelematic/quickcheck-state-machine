@@ -57,16 +57,16 @@ import           Control.Monad.State.Strict
 import           Data.Bifunctor
                    (bimap)
 import           Data.Foldable
+                   (toList)
 import           Data.List
                    (find, partition, permutations)
-import qualified Data.Map.Strict               as Map
+import qualified Data.Map.Strict                   as Map
 import           Data.Maybe
                    (fromMaybe, mapMaybe)
 import           Data.Monoid
-                   ((<>))
 import           Data.Set
                    (Set)
-import qualified Data.Set                      as S
+import qualified Data.Set                          as S
 import           Data.Tree
                    (Tree(Node))
 import           Prelude
@@ -89,7 +89,7 @@ import           Test.StateMachine.DotDrawing
 import           Test.StateMachine.Logic
 import           Test.StateMachine.Sequential
 import           Test.StateMachine.Types
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import qualified Test.StateMachine.Types.Rank2     as Rank2
 import           Test.StateMachine.Utils
 
 ------------------------------------------------------------------------
@@ -628,7 +628,7 @@ executeParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands 
 
 logicReason :: Reason -> Logic
 logicReason Ok = Top
-logicReason r = Annotate (show r) Bot
+logicReason r  = Annotate (show r) Bot
 
 executeNParallelCommands :: (Rank2.Traversable cmd, Show (cmd Concrete), Rank2.Foldable resp)
                          => Show (resp Concrete)
@@ -674,7 +674,7 @@ executeNParallelCommands sm@StateMachine{ initModel, cleanup } (ParallelCommands
           newEnv = mconcat $ snd <$> res
       case (stopOnError, Map.null errors) of
         (True, False) -> return (errors, newEnv)
-        _ -> go hchan (errors, newEnv) rest
+        _             -> go hchan (errors, newEnv) rest
 
 combineReasons :: [Reason] -> Reason
 combineReasons ls = fromMaybe Ok (find (/= Ok) ls)
@@ -734,7 +734,7 @@ prettyParallelCommandsWithOpts cmds mGraphOptions =
         print (simplify ce)
         putStrLn ""
         case mGraphOptions of
-          Nothing -> return ()
+          Nothing       -> return ()
           Just gOptions -> createAndPrintDot cmds gOptions hist'
       printCounterexample _hist _
         = error "prettyParallelCommands: impossible, because `boolean l` was False."
@@ -774,7 +774,7 @@ prettyNParallelCommandsWithOpts cmds mGraphOptions =
         print (simplify ce)
         putStrLn ""
         case mGraphOptions of
-          Nothing -> return ()
+          Nothing       -> return ()
           Just gOptions -> createAndPrintDot cmds gOptions hist'
       printCounterexample _hist _
         = error "prettyNParallelCommands: impossible, because `boolean l` was False."
@@ -836,7 +836,7 @@ createAndPrintDot (ParallelCommands prefix suffixes) gOptions = toDotGraph allVa
     toDotGraph knownVars (History h) = printDotGraph gOptions $ (fmap out) <$> (Rose (snd <$> prefixMessages) groupByPid)
       where
         (prefixMessages, h') = partition (\e -> fst e == Pid 0) h
-        alterF a Nothing = Just [a]
+        alterF a Nothing   = Just [a]
         alterF a (Just ls) = Just $ a : ls
         groupByPid = foldr (\(p,e) m -> Map.alter (alterF e) p m) Map.empty h'
 

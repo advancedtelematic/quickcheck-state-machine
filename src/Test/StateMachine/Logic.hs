@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies        #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE StandaloneDeriving        #-}
 
@@ -44,7 +45,7 @@ module Test.StateMachine.Logic
   )
   where
 
-import Prelude
+import           Prelude
 
 ------------------------------------------------------------------------
 
@@ -71,7 +72,7 @@ data LogicPredicate
   | forall t a. (Foldable t, Eq a, Show a, Show (t a)) => Member    a (t a)
   | forall t a. (Foldable t, Eq a, Show a, Show (t a)) => NotMember a (t a)
 
-deriving instance Show LogicPredicate
+deriving stock instance Show LogicPredicate
 
 dual :: LogicPredicate -> LogicPredicate
 dual p = case p of
@@ -112,12 +113,12 @@ data Counterexample
   | BooleanC
   | AnnotateC String Counterexample
 
-deriving instance Show Counterexample
+deriving stock instance Show Counterexample
 
 data Value
   = VFalse Counterexample
   | VTrue
-  deriving Show
+  deriving stock Show
 
 boolean :: Logic -> Bool
 boolean l = case logic l of

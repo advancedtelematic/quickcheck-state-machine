@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -35,7 +36,7 @@ import           Data.Kind
                    (Type)
 import           Data.Maybe
                    (mapMaybe)
-import           Prelude                       hiding
+import           Prelude                 hiding
                    (maximum)
 
 import           Test.StateMachine.Types
@@ -100,7 +101,7 @@ data Event model cmd resp (r :: Type -> Type) = Event
   , eventAfter  :: model r
   , eventResp   :: resp  r
   }
-  deriving Show
+  deriving stock Show
 
 -- | Step the model using a 'Command' (i.e., a command associated with an
 -- explicit set of variables).

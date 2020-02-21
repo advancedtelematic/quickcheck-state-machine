@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MonoLocalBinds             #-}
@@ -46,7 +47,6 @@ module Test.StateMachine.Types
 import           Data.Functor.Classes
                    (Ord1, Show1)
 import           Data.Semigroup
-                   (Semigroup)
 import           Prelude
 import           Test.QuickCheck
                    (Gen)
@@ -83,17 +83,33 @@ data Command cmd resp = Command !(cmd Symbolic) !(resp Symbolic) ![Var]
 getCommand :: Command cmd resp -> cmd Symbolic
 getCommand (Command cmd _resp _vars) = cmd
 
-deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Command cmd resp)
-deriving instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Command cmd resp)
-deriving instance ((Eq (cmd Symbolic)), (Eq (resp Symbolic))) => Eq (Command cmd resp)
+deriving
+  stock
+  instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Command cmd resp)
+
+deriving
+  stock
+  instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Command cmd resp)
+
+deriving
+  stock
+  instance ((Eq (cmd Symbolic)), (Eq (resp Symbolic))) => Eq (Command cmd resp)
 
 newtype Commands cmd resp = Commands
   { unCommands :: [Command cmd resp] }
-  deriving (Semigroup, Monoid)
+  deriving newtype (Semigroup, Monoid)
 
-deriving instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Commands cmd resp)
-deriving instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Commands cmd resp)
-deriving instance ((Eq (cmd Symbolic)), (Eq (resp Symbolic))) => Eq (Commands cmd resp)
+deriving
+  stock
+  instance (Show (cmd Symbolic), Show (resp Symbolic)) => Show (Commands cmd resp)
+
+deriving
+  stock
+  instance (Read (cmd Symbolic), Read (resp Symbolic)) => Read (Commands cmd resp)
+
+deriving
+  stock
+  instance ((Eq (cmd Symbolic)), (Eq (resp Symbolic))) => Eq (Commands cmd resp)
 
 lengthCommands :: Commands cmd resp -> Int
 lengthCommands = length . unCommands
@@ -105,7 +121,7 @@ data Reason
   | InvariantBroken String
   | ExceptionThrown String
   | MockSemanticsMismatch
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 isOK :: Reason -> Bool
 isOK Ok = True
@@ -116,17 +132,21 @@ data ParallelCommandsF t cmd resp = ParallelCommands
   , suffixes :: [t (Commands cmd resp)]
   }
 
-deriving instance (Eq (cmd Symbolic), Eq (resp Symbolic), Eq (t (Commands cmd resp)))
+deriving
+  stock
+  instance (Eq (cmd Symbolic), Eq (resp Symbolic), Eq (t (Commands cmd resp)))
   => Eq (ParallelCommandsF t cmd resp)
 
-deriving instance (Show (cmd Symbolic), Show (resp Symbolic), Show (t (Commands cmd resp)))
+deriving
+  stock
+  instance (Show (cmd Symbolic), Show (resp Symbolic), Show (t (Commands cmd resp)))
   => Show (ParallelCommandsF t cmd resp)
 
 data Pair a = Pair
   { proj1 :: !a
   , proj2 :: !a
   }
-  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+  deriving stock (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 fromPair :: Pair a -> (a, a)
 fromPair (Pair x y) = (x, y)

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
@@ -49,15 +50,16 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 ------------------------------------------------------------------------
 
 newtype Var = Var Int
-  deriving (Eq, Ord, Show, Generic, ToExpr, Read)
+  deriving stock   (Eq, Ord, Show, Generic, Read)
+  deriving newtype (ToExpr)
 
 data Symbolic a where
   Symbolic :: Typeable a => Var -> Symbolic a
 
-deriving instance Show (Symbolic a)
-deriving instance Typeable a => Read (Symbolic a)
-deriving instance Eq   (Symbolic a)
-deriving instance Ord  (Symbolic a)
+deriving stock instance Show (Symbolic a)
+deriving stock instance Typeable a => Read (Symbolic a)
+deriving stock instance Eq   (Symbolic a)
+deriving stock instance Ord  (Symbolic a)
 
 instance Show1 Symbolic where
   liftShowsPrec _ _ p (Symbolic x) =
@@ -79,7 +81,7 @@ instance Ord1 Symbolic where
 data Concrete a where
   Concrete :: Typeable a => a -> Concrete a
 
-deriving instance Show a => Show (Concrete a)
+deriving stock instance Show a => Show (Concrete a)
 
 instance Show1 Concrete where
   liftShowsPrec sp _ p (Concrete x) =
@@ -99,9 +101,9 @@ instance ToExpr a => ToExpr (Concrete a) where
   toExpr (Concrete x) = toExpr x
 
 newtype Reference a r = Reference (r a)
-  deriving Generic
+  deriving stock Generic
 
-deriving instance Typeable a => Read (Reference a Symbolic)
+deriving stock instance Typeable a => Read (Reference a Symbolic)
 
 instance ToExpr (r a) => ToExpr (Reference a r)
 
@@ -138,7 +140,7 @@ opaque (Reference (Concrete (Opaque x))) = x
 
 newtype Opaque a = Opaque
   { unOpaque :: a }
-  deriving (Eq, Ord)
+  deriving stock (Eq, Ord)
 
 instance Show (Opaque a) where
   showsPrec _ (Opaque _) = showString "Opaque"

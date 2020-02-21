@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -----------------------------------------------------------------------------
@@ -32,7 +33,7 @@ import           Test.StateMachine.Types.References
 ------------------------------------------------------------------------
 
 newtype GenSym a = GenSym (State Counter a)
-  deriving (Functor, Applicative, Monad)
+  deriving newtype (Functor, Applicative, Monad)
 
 runGenSym :: GenSym a -> Counter -> (a, Counter)
 runGenSym (GenSym m) = runState m
@@ -44,7 +45,7 @@ genSym  = GenSym $ do
   return (Reference (Symbolic (Var i)))
 
 newtype Counter = Counter Int
-  deriving Show
+  deriving stock Show
 
 newCounter :: Counter
 newCounter = Counter 0

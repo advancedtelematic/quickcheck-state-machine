@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFunctor      #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -32,7 +33,7 @@ import           Test.StateMachine.Types
 
 -- | Event invocation or response.
 data EventType = Open | Close
-  deriving (Show)
+  deriving stock (Show)
 
 data Event = Event EventType Pid String
 
@@ -95,7 +96,7 @@ compilePrefix (cmd:res:prefix) = Top : Start cmd : Ret res : Bottom : compilePre
 compilePrefix [cmd] = error $ "compilePrefix: doesn't have response for cmd: " ++ cmd
 
 data Fork a = Fork a a a
-  deriving Functor
+  deriving stock Functor
 
 -- | Given a history, and output from processes generate Doc with boxes
 exec :: [(EventType, Pid)] -> Fork [String] -> Doc

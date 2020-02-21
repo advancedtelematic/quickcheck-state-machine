@@ -76,7 +76,6 @@ import           Data.Map.Strict
 import           Data.Maybe
                    (fromMaybe)
 import           Data.Monoid
-                   ((<>))
 import           Data.Proxy
                    (Proxy(..))
 import qualified Data.Set                          as S
