@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE PolyKinds          #-}
 
@@ -50,7 +51,7 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 -- The model keeps track of which disc is on which peg
 
 newtype Model (r :: Type -> Type) = Model (Array Int [Int])
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
 
 -- There are 3 pegs, so the bounds are (0, 2)
 
@@ -66,7 +67,8 @@ initModel discs = Model $ listArray pegsBounds [[1..discs], [], []]
 -- Allowed action is to move one disc from the top of one peg to the top of another
 
 data Command (r :: Type -> Type) = Move (Int,Int)
-  deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Show, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 instance Arbitrary (Command r) where
   arbitrary = do
@@ -75,7 +77,8 @@ instance Arbitrary (Command r) where
     return $ Move (x,y)
 
 data Response (r :: Type -> Type) = Done
-  deriving (Show, Generic1, Rank2.Foldable)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Foldable)
 
 ------------------------------------------------------------------------
 

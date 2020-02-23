@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE PolyKinds          #-}
@@ -57,10 +58,12 @@ data Command (r :: Type -> Type)
   | SmallIntoBig -- Pour the contents of the 3-liter jug
                  -- into 5-liter jug.
   | BigIntoSmall
-  deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Show, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response (r :: Type -> Type) = Done
-  deriving (Show, Generic1, Rank2.Foldable)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Foldable)
 
 ------------------------------------------------------------------------
 
@@ -70,9 +73,9 @@ data Response (r :: Type -> Type) = Done
 data Model (r :: Type -> Type) = Model
   { bigJug   :: Int
   , smallJug :: Int
-  } deriving (Show, Eq, Generic)
+  } deriving stock (Show, Eq, Generic)
 
-deriving instance ToExpr (Model Concrete)
+deriving anyclass instance ToExpr (Model Concrete)
 
 initModel :: Model r
 initModel = Model 0 0

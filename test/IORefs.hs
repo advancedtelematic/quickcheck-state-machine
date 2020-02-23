@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE DeriveFoldable      #-}
-{-# LANGUAGE DeriveTraversable   #-}
+{-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DeriveTraversable   #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -11,19 +12,23 @@
 
 module IORefs (prop_IORefs_sequential) where
 
-import Prelude
-import Control.Concurrent
-import Data.Coerce (coerce)
-import Data.Foldable (toList)
-import Data.IORef
-import Data.Map.Strict (Map)
-import GHC.Generics (Generic)
-import Test.QuickCheck
-import Test.StateMachine
+import           Control.Concurrent
+import           Data.Coerce
+                   (coerce)
+import           Data.Foldable
+                   (toList)
+import           Data.IORef
+import           Data.Map.Strict
+                   (Map)
+import           GHC.Generics
+                   (Generic)
+import           Prelude
+import           Test.QuickCheck
+import           Test.StateMachine
 
-import qualified Data.Map.Strict as Map
+import qualified Data.Map.Strict                   as Map
 
-import Test.StateMachine.Lockstep.Simple
+import           Test.StateMachine.Lockstep.Simple
 
 {-------------------------------------------------------------------------------
   Instantiate the simple API
@@ -32,16 +37,16 @@ import Test.StateMachine.Lockstep.Simple
 data T a
 
 data instance Cmd (T _) h = New | Read h | Update h
-  deriving (Show, Functor, Foldable, Traversable)
+  deriving stock (Show, Functor, Foldable, Traversable)
 
 data instance Resp (T a) h = Var h | Val a | Unit ()
-  deriving (Show, Eq, Functor, Foldable, Traversable)
+  deriving stock (Show, Eq, Functor, Foldable, Traversable)
 
 data instance MockHandle (T _) = MV Int
-  deriving (Show, Eq, Ord, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
 
 newtype instance RealHandle (T a) = RealVar (Opaque (IORef a))
-  deriving (Eq, Show, Generic)
+  deriving stock (Eq, Show, Generic)
 
 type instance MockState (T a) = Map (MockHandle (T a)) a
 

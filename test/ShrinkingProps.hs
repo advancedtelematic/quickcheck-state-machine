@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE DeriveTraversable   #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE ImplicitParams      #-}
@@ -35,12 +36,11 @@ import           Data.Foldable
                    (toList)
 import           Data.Functor.Classes
                    (Eq1, Show1)
-import           Data.List.Split (chunksOf)
+import           Data.List.Split
+                   (chunksOf)
 import           Data.Map.Strict
                    (Map)
 import qualified Data.Map.Strict               as Map
-import           Data.Monoid
-                   ((<>))
 import           Data.Proxy
 import           Data.Set
                    (Set)
@@ -60,9 +60,9 @@ import           Test.QuickCheck.Monadic
                    (monadicIO)
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
-                   (Gen, Property, choose, conjoin,
-                   counterexample, elements, forAllShrinkShow,
-                   oneof, property, testProperty, (===))
+                   (Gen, Property, choose, conjoin, counterexample,
+                   elements, forAllShrinkShow, oneof, property,
+                   testProperty, (===))
 
 import           Test.StateMachine
 import qualified Test.StateMachine.Parallel    as QSM
@@ -70,8 +70,10 @@ import qualified Test.StateMachine.Sequential  as QSM
 import qualified Test.StateMachine.Types       as QSM
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
-                   (Shrunk(..), shrinkListS',
-                   shrinkListS', shrinkListS'', shrinkPairS')
+                   (Shrunk(..), shrinkListS', shrinkListS',
+                   shrinkListS'', shrinkPairS')
+
+------------------------------------------------------------------------
 
 tests :: TestTree
 tests = testGroup "Shrinking properties" [
@@ -103,7 +105,7 @@ tests = testGroup "Shrinking properties" [
 --
 -- This is used when testing whether shrinking messes up references (see below)
 newtype CmdID = CmdID Int
-  deriving (Show, Eq, Ord, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
 
 -- | Commands
 --
@@ -123,13 +125,14 @@ data Cmd var =
 
     -- | Get the value of the specified variables
   | Read CmdID (Maybe (Model Symbolic)) [var]
-  deriving (Show, Eq, Functor, Foldable, Traversable, Generic1, CommandNames)
+  deriving stock (Show, Eq, Functor, Foldable, Traversable, Generic1)
+  deriving anyclass CommandNames
 
 data Resp var =
     Refs [var]
   | Unit ()
   | Vals [Int]
-  deriving (Show, Eq, Functor, Foldable, Traversable)
+  deriving stock (Show, Eq, Functor, Foldable, Traversable)
 
 cmdID :: Cmd var -> CmdID
 cmdID (CreateRef cid _ _) = cid
@@ -147,11 +150,11 @@ cmdModel (Read      _ m _) = m
 
 -- | Mock variable
 newtype MockVar = MockVar Int
-  deriving (Show, Eq, Ord, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
 
 -- | Mock system state
 newtype MockState = MockState (Map MockVar Int)
-  deriving (Show, Eq, Ord, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
 
 newVar :: State MockState MockVar
 newVar = state $ \(MockState m) ->
@@ -183,7 +186,7 @@ runMock (Read      _ _ xs) = first Vals . runState (mapM  readVar xs)
 -------------------------------------------------------------------------------}
 
 data IOVar = IOVar String (TVar Int)
-  deriving (Eq)
+  deriving stock Eq
 
 instance Show IOVar where
   show (IOVar l _) = "<" ++ l ++ ">"
@@ -207,7 +210,8 @@ runIO (Read      _   _ xs) = atomically $ Vals <$> mapM  readIOVar xs
 -------------------------------------------------------------------------------}
 
 newtype At f r = At (f (Reference IOVar r))
-  deriving (Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
+  deriving stock Generic1
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable)
 
 type (:@) f r = At f r
 
@@ -229,7 +233,7 @@ resolveRef refs r =
 --
 -- We include the CmdID so that we can reference it in the generator
 data Model r = Model MockState (KnownRefs r) CmdID
-  deriving (Generic, Eq)
+  deriving stock (Generic, Eq)
 
 initModel :: Model r
 initModel = Model (MockState Map.empty) [] (CmdID 0)
@@ -350,21 +354,21 @@ sm = QSM.StateMachine {
   The type class instances required by QSM
 -------------------------------------------------------------------------------}
 
-deriving instance Eq1 r => Eq (Cmd  :@ r)
-deriving instance Eq1 r => Eq (Resp :@ r)
+deriving stock instance Eq1 r => Eq (Cmd  :@ r)
+deriving stock instance Eq1 r => Eq (Resp :@ r)
 
-deriving instance Show1 r => Show (Cmd  :@ r)
-deriving instance Show1 r => Show (Resp :@ r)
-deriving instance Show1 r => Show (Model   r)
+deriving stock instance Show1 r => Show (Cmd  :@ r)
+deriving stock instance Show1 r => Show (Resp :@ r)
+deriving stock instance Show1 r => Show (Model   r)
 
 instance CommandNames (At Cmd) where
   cmdName  (At cmd) = cmdName cmd
   cmdNames _        = cmdNames (Proxy @(Cmd ()))
 
-deriving instance ToExpr (Model Concrete)
-deriving instance ToExpr MockState
-deriving instance ToExpr MockVar
-deriving instance ToExpr CmdID
+deriving anyclass instance ToExpr (Model Concrete)
+deriving anyclass instance ToExpr MockState
+deriving anyclass instance ToExpr MockVar
+deriving anyclass instance ToExpr CmdID
 
 instance ToExpr IOVar where
   toExpr = defaultExprViaShow
@@ -396,7 +400,7 @@ prop_3parallel = forAllNParallelCommands sm 3 $ \cmds -> monadicIO $
 -------------------------------------------------------------------------------}
 
 data ExplicitRef = ExplicitRef CmdID Int
-  deriving (Show, Eq, Ord)
+  deriving stock (Show, Eq, Ord)
 
 type RefGraph = Map CmdID (Set ExplicitRef)
 
@@ -453,7 +457,7 @@ data ShrinkSeqFailure = SSF {
     , ssfGrOrig   :: RefGraph
     , ssfGrShrunk :: RefGraph
     }
-  deriving (Show)
+  deriving stock Show
 
 -- | Test that sequential shrinking results in a program whose reference
 -- graph is a subgraph of the reference graph of the original program
@@ -482,8 +486,8 @@ data ShrinkParFailure t = SPF {
     , spfTrShrunk :: RefGraph
     }
 
-deriving instance Show (ShrinkParFailure QSM.Pair)
-deriving instance Show (ShrinkParFailure [])
+deriving stock instance Show (ShrinkParFailure QSM.Pair)
+deriving stock instance Show (ShrinkParFailure [])
 
 -- | Compute reference graph for a parallel program
 --
@@ -734,9 +738,9 @@ equalCmd _ _ = False
 
 equalResp :: Resp :@ Concrete -> Resp :@ Concrete -> Bool
 equalResp (At (Refs vs)) (At (Refs vs')) = eqVars vs vs'
-equalResp (At (Unit ())) (At (Unit ())) = True
+equalResp (At (Unit ())) (At (Unit ()))  = True
 equalResp (At (Vals ns)) (At (Vals ns')) = ns == ns'
-equalResp _ _ = False
+equalResp _ _                            = False
 
 cmpList :: (a -> a -> Bool) -> [a] -> [a] -> Bool
 cmpList _cmp [] [] = True

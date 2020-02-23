@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE NamedFieldPuns     #-}
@@ -72,11 +73,11 @@ type Bugs = [Bug]
 -- See 'unpropNoSizeCheck', 'unpropFullIsEmpty', 'unpropBadRem',
 -- and 'unpropStillBadRem'.
 data Bug = NoSizeCheck | FullIsEmpty | BadRem | StillBadRem
-  deriving (Eq, Enum)
+  deriving stock (Eq, Enum)
 
 -- | Switch to disable or enable testing of the 'lenBuffer' function.
 data Version = NoLen | YesLen
-  deriving Eq
+  deriving stock Eq
 
 ------------------------------------------------------------------------
 
@@ -147,14 +148,16 @@ data Action (r :: Type -> Type)
 
     -- | Get the number of elements in the buffer.
   | Len (Reference (Opaque Buffer) r)
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response (r :: Type -> Type)
   = NewR (Reference (Opaque Buffer) r)
   | PutR
   | GetR Int
   | LenR Int
-  deriving (Show, Generic1, Rank2.Foldable)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Foldable)
 
 ------------------------------------------------------------------------
 
@@ -166,7 +169,8 @@ data SpecBuffer = SpecBuffer
   { specSize     :: Int    -- ^ Maximum number of elements
   , specContents :: [Int]  -- ^ Contents of the buffer
   }
-  deriving (Generic, Show, ToExpr)
+  deriving stock (Generic, Show)
+  deriving anyclass (ToExpr)
 
 emptySpecBuffer :: Int -> SpecBuffer
 emptySpecBuffer n = SpecBuffer n []
@@ -181,9 +185,9 @@ removeSpecBuffer (SpecBuffer n xs) = (last xs, SpecBuffer n (init xs))
 
 -- | The model is a map from buffer references to their values.
 newtype Model r = Model [(Reference (Opaque Buffer) r, SpecBuffer)]
-  deriving (Generic, Show)
+  deriving stock (Generic, Show)
 
-deriving instance ToExpr (Model Concrete)
+deriving anyclass instance ToExpr (Model Concrete)
 
 -- | Initially, there are no references to buffers.
 initModel :: Model v

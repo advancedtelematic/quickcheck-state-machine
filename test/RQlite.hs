@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DeriveTraversable    #-}
+{-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PolyKinds            #-}
@@ -21,45 +23,54 @@ module RQlite (
 import           Control.Concurrent
                    (threadDelay)
 import           Control.Concurrent.MVar
-import           Control.Exception (bracketOnError, try)
-import           Control.Monad (void, when)
-import           Control.Monad.IO.Class  (liftIO)
-import           Data.Aeson hiding (Result)
+import           Control.Exception
+                   (bracketOnError, try)
+import           Control.Monad
+                   (void, when)
+import           Control.Monad.IO.Class
+                   (liftIO)
+import           Data.Aeson                         hiding
+                   (Result)
 import           Data.Foldable
 import           Data.Functor.Classes
 import           Data.Kind
 import           Data.List
-import           Data.Map (Map)
-import qualified Data.Map as M
+import           Data.Map
+                   (Map)
+import qualified Data.Map                           as M
 import           Data.Maybe
 import           Data.TreeDiff
 import           GHC.Generics
 import           Prelude
-import "hs-rqlite" Rqlite
-import "hs-rqlite" Rqlite.Status
+import           "hs-rqlite" Rqlite
+import           "hs-rqlite" Rqlite.Status
 import           System.Directory
 import           System.IO
 import           System.Process
 import           System.Random
-import           Test.QuickCheck hiding (Result)
+import           Test.QuickCheck                    hiding
+                   (Result)
 import           Test.QuickCheck.Monadic
 import           Test.StateMachine
 import           Test.StateMachine.DotDrawing
-import           Test.StateMachine.Types (ParallelCommandsF(..),
-                     History(..), interleavings)
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import           Test.StateMachine.Types
+                   (History(..), ParallelCommandsF(..), interleavings)
+import qualified Test.StateMachine.Types.Rank2      as Rank2
 import           Test.StateMachine.Types.References
 
-newtype At t r = At {unAt :: t (NodeRef r)}
-  deriving (Generic)
+------------------------------------------------------------------------
+
+newtype At t r = At { unAt :: t (NodeRef r) }
+  deriving stock (Generic)
 
 instance Show (t (NodeRef r)) => Show (At t r) where
-    show = show . unAt
+  show = show . unAt
 
-data Person = Person {
-    name :: String
+data Person = Person
+  { name :: String
   , age  :: Int
-} deriving (Show, Read, Eq, Generic)
+  }
+  deriving stock (Show, Read, Eq, Generic)
 
 -- HTTP requests utilities
 
@@ -92,7 +103,7 @@ data Container = Container {
       , cn       :: Int
       , nodeName :: String
       , cport    :: Int
-} deriving (Generic)
+} deriving stock (Generic)
 
 instance Eq Container where
     n1 == n2 = counter n1 == counter n2
@@ -274,7 +285,7 @@ type NodeRef =  Reference Container
 data Model r = Model {
         dbModel :: DBModel
       , nodes   :: [(NodeRef r, Int)]
-} deriving (Generic, Show)
+      } deriving stock (Generic, Show)
 
 data DBModel = DBModel {
       persons   :: [Person]
@@ -282,7 +293,7 @@ data DBModel = DBModel {
     , cutLines  :: [(Int, Int)]
     , cWhere    :: Int
     , cRef      :: Int
-    } deriving (Generic, Show)
+    } deriving stock (Generic, Show)
 
 type Join = Maybe Int
 
@@ -291,7 +302,7 @@ data Timeout =
     | Sec Int
 
 instance Show Timeout where
-    show (Ms n) = show n ++ "ms"
+    show (Ms n)  = show n ++ "ms"
     show (Sec n) = show n ++ "s"
 
 data Cmd node =
@@ -305,33 +316,33 @@ data Cmd node =
     | Pause node
     | UnPause node
     | Delay Int
-    deriving (Generic, Show, Functor, Foldable, Traversable)
+    deriving stock (Generic, Show, Functor, Foldable, Traversable)
 
 newtype Resp node = Resp (Either SomeError (Success node))
-    deriving (Show, Eq, Functor, Foldable, Traversable, Generic)
+    deriving stock (Show, Eq, Functor, Foldable, Traversable, Generic)
 
 newtype SomeError = SomeError String
-    deriving (Show, Eq)
+    deriving stock (Show, Eq)
 
 data Success node =
       Unit
     | Spawned node
     | Got [Person]
-    deriving (Show, Functor, Foldable, Traversable, Generic)
+    deriving stock (Show, Functor, Foldable, Traversable, Generic)
 
-deriving instance Generic1          (At Cmd)
-deriving instance Rank2.Functor     (At Cmd)
-deriving instance Rank2.Foldable    (At Cmd)
-deriving instance Rank2.Traversable (At Cmd)
+deriving stock    instance Generic1          (At Cmd)
+deriving anyclass instance Rank2.Functor     (At Cmd)
+deriving anyclass instance Rank2.Foldable    (At Cmd)
+deriving anyclass instance Rank2.Traversable (At Cmd)
 
-deriving instance ToExpr DBModel
-deriving instance ToExpr (Model Concrete)
-deriving instance ToExpr Person
+deriving anyclass instance ToExpr DBModel
+deriving anyclass instance ToExpr (Model Concrete)
+deriving anyclass instance ToExpr Person
 
-deriving instance Generic1          (At Resp)
-deriving instance Rank2.Functor     (At Resp)
-deriving instance Rank2.Foldable    (At Resp)
-deriving instance Rank2.Traversable (At Resp)
+deriving stock    instance Generic1          (At Resp)
+deriving anyclass instance Rank2.Functor     (At Resp)
+deriving anyclass instance Rank2.Foldable    (At Resp)
+deriving anyclass instance Rank2.Traversable (At Resp)
 
 instance Eq node => Eq (Success node) where
     Unit == Unit          = True
@@ -437,12 +448,14 @@ step (Model m@DBModel{..} nodes) (At cmd) = case cmd of
                         })
     Delay _           -> (unitResp, m)
 
-data NodeState = Running Int
-               | Disconnected Int
-               | Stopped Int
-               | Paused Int
-               | Done
-               deriving (Show, Generic, ToExpr)
+data NodeState
+  = Running Int
+  | Disconnected Int
+  | Stopped Int
+  | Paused Int
+  | Done
+  deriving stock (Show, Generic)
+  deriving anyclass ToExpr
 
 connectST :: NodeState -> Maybe NodeState
 connectST (Disconnected wh) = Just $ Running wh
@@ -450,19 +463,19 @@ connectST st = error $ "is not dicsonnected but " ++ show st
 
 disconnectST :: NodeState -> Maybe NodeState
 disconnectST (Running wh) = Just $ Disconnected wh
-disconnectST st = error $ "is not running but " ++ show st
+disconnectST st           = error $ "is not running but " ++ show st
 
 stopST :: NodeState -> Maybe NodeState
 stopST (Running wh) = Just $ Stopped wh
-stopST st = error $ "is not running but " ++ show st
+stopST st           = error $ "is not running but " ++ show st
 
 pauseST :: NodeState -> Maybe NodeState
 pauseST (Running wh) = Just $ Paused wh
-pauseST st = error $ "is not running but " ++ show st
+pauseST st           = error $ "is not running but " ++ show st
 
 unPauseST :: NodeState -> Maybe NodeState
 unPauseST (Paused wh) = Just $ Running wh
-unPauseST st = error $ "is not paused but " ++ show st
+unPauseST st          = error $ "is not paused but " ++ show st
 
 runsMp :: Int -> Map Int NodeState -> Bool
 runsMp n mp = case M.lookup n mp of
@@ -505,7 +518,7 @@ isStopped _           = False
 
 isDisconnected :: NodeState -> Bool
 isDisconnected (Disconnected _) = True
-isDisconnected _              = False
+isDisconnected _                = False
 
 initModel :: Model r
 initModel = Model (DBModel [] M.empty [] 0 0) []
@@ -724,7 +737,7 @@ joinNode avoid0 ndState =
             (True, rs', True) -> head rs'
 
 joinsRunning :: Maybe Int -> Map Int NodeState -> Bool
-joinsRunning Nothing _ = True
+joinsRunning Nothing _   = True
 joinsRunning (Just n) mp = elem n $ snd <$> getRunning mp
 
 initCmd :: Cmd node
@@ -733,7 +746,7 @@ initCmd = Spawn 0 (Sec 1) (Sec 1) Nothing
 mkSpawn :: Maybe Int -> Int -> Maybe Int -> Cmd node
 mkSpawn respawm n =
     (case respawm of
-        Nothing -> Spawn
+        Nothing  -> Spawn
         Just ref -> ReSpawn ref) n (Sec 1) (Sec 1)
 
 testPath :: String

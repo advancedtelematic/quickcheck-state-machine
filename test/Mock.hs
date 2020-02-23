@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE ExplicitNamespaces   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -30,29 +31,32 @@ import           Test.StateMachine
 import           Test.StateMachine.DotDrawing
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
+------------------------------------------------------------------------
 
 data Command r
   = Create
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-deriving instance Show (Command Symbolic)
-deriving instance Read (Command Symbolic)
-deriving instance Show (Command Concrete)
+deriving stock instance Show (Command Symbolic)
+deriving stock instance Read (Command Symbolic)
+deriving stock instance Show (Command Concrete)
 
 data Response r
   = Created (Reference Int r)
   | NotCreated
-  deriving (Eq, Generic1, Rank2.Foldable)
+  deriving stock (Eq, Generic1)
+  deriving anyclass Rank2.Foldable
 
-deriving instance Show (Response Symbolic)
-deriving instance Read (Response Symbolic)
-deriving instance Show (Response Concrete)
+deriving stock instance Show (Response Symbolic)
+deriving stock instance Read (Response Symbolic)
+deriving stock instance Show (Response Concrete)
 
 data Model r = Model {
       refs :: [Reference Int r]
     , c    :: Int
     }
-  deriving (Generic, Show)
+  deriving stock (Generic, Show)
 
 instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)

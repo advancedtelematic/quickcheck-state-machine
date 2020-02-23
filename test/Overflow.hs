@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE ExplicitNamespaces   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -16,7 +17,8 @@ module Overflow
   , prop_nparallel_overflow
   ) where
 
-import           Control.Concurrent (threadDelay)
+import           Control.Concurrent
+                   (threadDelay)
 import           Control.Concurrent.MVar
 import           Control.Monad
 import           Data.Int
@@ -26,11 +28,13 @@ import           Prelude
 import           System.Random
                    (randomRIO)
 import           Test.QuickCheck
-import           Test.QuickCheck.Monadic (monadicIO)
+import           Test.QuickCheck.Monadic
+                   (monadicIO)
 import           Test.StateMachine
 import           Test.StateMachine.DotDrawing
-import           Test.StateMachine.Types(Reference(..), Symbolic(..))
 import qualified Test.StateMachine.Types.Rank2 as Rank2
+
+------------------------------------------------------------------------
 
 -- The Model is a set of references of Int8. Command BackAndForth picks a random reference and adds a
 -- constant number (in an atomic way) and then substract the same number (in an atomic way).
@@ -40,24 +44,26 @@ data Command r
   = Create
   | Check (Reference (Opaque (MVar Int8)) r)
   | BackAndForth Int (Reference (Opaque (MVar Int8)) r)
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-deriving instance Show (Command Symbolic)
-deriving instance Read (Command Symbolic)
-deriving instance Show (Command Concrete)
+deriving stock instance Show (Command Symbolic)
+deriving stock instance Read (Command Symbolic)
+deriving stock instance Show (Command Concrete)
 
 data Response r
     = Created (Reference (Opaque (MVar Int8)) r)
     | IsNegative Bool
     | Unit
-    deriving (Eq, Generic1, Rank2.Foldable)
+    deriving stock (Eq, Generic1)
+    deriving anyclass (Rank2.Foldable)
 
-deriving instance Show (Response Symbolic)
-deriving instance Read (Response Symbolic)
-deriving instance Show (Response Concrete)
+deriving stock instance Show (Response Symbolic)
+deriving stock instance Read (Response Symbolic)
+deriving stock instance Show (Response Concrete)
 
 newtype Model r = Model [(Reference (Opaque (MVar Int8)) r, Int8)]
-  deriving (Generic, Show)
+  deriving stock (Generic, Show)
 
 getVars :: Model r -> [Reference (Opaque (MVar Int8)) r]
 getVars (Model ls) = fst <$> ls

@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE PolyKinds          #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -25,8 +26,6 @@ import           Test.QuickCheck.Monadic
                    (monadicIO)
 
 import           Test.StateMachine
-import           Test.StateMachine.Types
-                   (Reference(..), Symbolic(..))
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Z
 
@@ -46,25 +45,27 @@ data Command r
   = Create
   | Read  (Reference (Opaque (IORef Int)) r)
   | Write (Reference (Opaque (IORef Int)) r) Int
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-deriving instance Show (Command Symbolic)
-deriving instance Show (Command Concrete)
+deriving stock instance Show (Command Symbolic)
+deriving stock instance Show (Command Concrete)
 
 data Response r
   = Created (Reference (Opaque (IORef Int)) r)
   | ReadValue Int
   | Written
   | WriteFailed
-  deriving (Generic1, Rank2.Foldable)
+  deriving stock (Generic1)
+  deriving anyclass (Rank2.Foldable)
 
-deriving instance Show (Response Symbolic)
-deriving instance Show (Response Concrete)
+deriving stock instance Show (Response Symbolic)
+deriving stock instance Show (Response Concrete)
 
 data Model r
   = Model [(Reference (Opaque (IORef Int)) r, Int)]
   | ErrorEncountered
-  deriving (Generic, Show)
+  deriving stock (Generic, Show)
 
 instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)

@@ -15,7 +15,7 @@ extra-deps:
   - persistent-2.10.3
   - persistent-sqlite-2.10.2
   - persistent-postgresql-2.10.1
-  - persistent-template-2.8.0
+  - persistent-template-2.8.2.3
 allow-newer: true
 nix:
   enable: false

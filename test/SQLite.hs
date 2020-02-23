@@ -1,19 +1,21 @@
-{-# LANGUAGE GADTs                   #-}
-{-# LANGUAGE ScopedTypeVariables     #-}
-{-# LANGUAGE OverloadedStrings       #-}
-{-# LANGUAGE MultiParamTypeClasses   #-}
-{-# LANGUAGE PolyKinds               #-}
-{-# LANGUAGE TypeFamilies            #-}
-{-# LANGUAGE TypeOperators           #-}
-{-# LANGUAGE TemplateHaskell         #-}
-{-# LANGUAGE QuasiQuotes             #-}
-{-# LANGUAGE UndecidableInstances    #-}
-{-# LANGUAGE FlexibleContexts        #-}
-{-# LANGUAGE FlexibleInstances       #-}
-{-# LANGUAGE DeriveGeneric           #-}
-{-# LANGUAGE RecordWildCards         #-}
-{-# LANGUAGE StandaloneDeriving      #-}
-{-# LANGUAGE DeriveAnyClass          #-}
+{-# LANGUAGE DeriveAnyClass            #-}
+{-# LANGUAGE DeriveGeneric             #-}
+{-# LANGUAGE DerivingStrategies        #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE OverloadedStrings         #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE QuasiQuotes               #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE StandaloneDeriving        #-}
+{-# LANGUAGE TemplateHaskell           #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 {-# OPTIONS_GHC -fno-warn-orphans    #-}
 {-# OPTIONS_GHC -fno-warn-identities #-}
 
@@ -25,25 +27,31 @@ module SQLite
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Exception
-import           Control.Monad.IO.Class  (MonadIO, liftIO)
-import           Control.Monad.IO.Unlift (MonadUnliftIO, withRunInIO)
+import           Control.Monad.IO.Unlift
+                   (MonadUnliftIO, withRunInIO)
 import           Control.Monad.Logger
 import           Control.Monad.Reader
 import           Data.Bifoldable
 import           Data.Bifunctor
-import qualified Data.Bifunctor.TH as TH
+import qualified Data.Bifunctor.TH             as TH
 import           Data.Bitraversable
 import           Data.Functor.Classes
-import           Data.Kind (Type)
-import           Data.List hiding (insert)
-import           Data.Maybe (fromMaybe)
+import           Data.Kind
+                   (Type)
+import           Data.List                     hiding
+                   (insert)
+import           Data.Maybe
+                   (fromMaybe)
 import           Data.Pool
-import           Data.Text (Text)
+import           Data.Text
+                   (Text)
 import           Data.TreeDiff.Expr
 import           Database.Persist
 import           Database.Persist.Sqlite
-import           Database.Sqlite hiding (step)
-import           GHC.Generics (Generic, Generic1)
+import           Database.Sqlite               hiding
+                   (step)
+import           GHC.Generics
+                   (Generic, Generic1)
 import           Prelude
 import           System.Directory
 import           Test.QuickCheck
@@ -55,46 +63,49 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 import           Schema
 
+------------------------------------------------------------------------
+
 newtype At t r = At {unAt :: t (PRef r) (CRef r)}
-    deriving (Generic)
+  deriving stock (Generic)
 
 type PRef = Reference (Key Person)
 type CRef = Reference (Key Car)
 
-deriving instance Show1 r => Show (At Resp r)
-deriving instance Show1 r => Show (At Cmd r)
-deriving instance Eq1   r => Eq   (At Resp r)
+deriving stock instance Show1 r => Show (At Resp r)
+deriving stock instance Show1 r => Show (At Cmd r)
+deriving stock instance Eq1   r => Eq   (At Resp r)
 
-data TableEntity = TPerson Person
-                 | TCar Car
-                 deriving (Eq, Show, Ord)
+data TableEntity
+  = TPerson Person
+  | TCar Car
+  deriving stock (Eq, Show, Ord)
 
 data Tag = SPerson | SCar
-    deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data Cmd kp kh =
       Insert TableEntity
     | SelectList Tag
-    deriving (Show, Generic1)
+    deriving stock (Show, Generic1)
 
 data Model (r :: Type -> Type) = Model
-    { dbModel :: DBModel
+    { dbModel     :: DBModel
     , knownPerson :: [(PRef r, Int)]
     , knownCars   :: [(CRef r, Int)]
-    } deriving (Generic, Show)
+    } deriving stock (Generic, Show)
 
 data DBModel = DBModel {
-            persons       :: [(Int, Person)]
-          , nextPerson    :: Int
-          , cars          :: [(Int, Car)]
-          , nextCar       :: Int
-          } deriving (Generic, Show)
+            persons    :: [(Int, Person)]
+          , nextPerson :: Int
+          , cars       :: [(Int, Car)]
+          , nextCar    :: Int
+          } deriving stock (Generic, Show)
 
 initModelImpl :: Model r
 initModelImpl = Model (DBModel [] 0 [] 0) [] []
 
 newtype Resp kp kc = Resp (Either SqliteException (Success kp kc))
-    deriving (Show, Generic1)
+    deriving stock (Show, Generic1)
 
 instance (Eq kp, Eq kc) => Eq (Resp kp kc) where
     (Resp (Left e1)) == (Resp (Left e2)) = seError e1 == seError e2
@@ -103,18 +114,18 @@ instance (Eq kp, Eq kc) => Eq (Resp kp kc) where
 
 getPers :: Resp kp kc -> [kp]
 getPers (Resp (Right (InsertedPerson kp))) = [kp]
-getPers _ = []
+getPers _                                  = []
 
 getCars :: Resp kp kc -> [kc]
 getCars (Resp (Right (InsertedCar kc))) = [kc]
-getCars _ = []
+getCars _                               = []
 
 data Success kp kc =
     Unit ()
   | InsertedPerson kp
   | InsertedCar kc
   | List [TableEntity]
-  deriving (Show, Eq, Generic1)
+  deriving stock (Show, Eq, Generic1)
 
 data Event r = Event
   { eventBefore   :: Model  r
@@ -244,7 +255,7 @@ preconditionImpl Model{..} cmd = case unAt cmd of
 
 equalResp' :: (Eq kp, Eq kc, Show kp, Show kc) => Resp kp kc -> Resp kp kc -> Logic
 equalResp' (Resp (Right _)) (Resp (Right _)) = Top
-equalResp' r1 r2 = r1 .== r2
+equalResp' r1 r2                             = r1 .== r2
 
 postconditionImpl :: Model Concrete -> At Cmd Concrete -> At Resp Concrete -> Logic
 postconditionImpl model cmd resp =
@@ -255,8 +266,8 @@ postconditionImpl model cmd resp =
 transitionImpl :: (Show1 r, Ord1 r) => Model r -> At Cmd r -> At Resp r -> Model r
 transitionImpl model cmd =  eventAfter . lockstep model cmd
 
-deriving instance ToExpr DBModel
-deriving instance ToExpr (Model Concrete)
+deriving anyclass instance ToExpr DBModel
+deriving anyclass instance ToExpr (Model Concrete)
 
 sm :: MonadIO m => String -> AsyncWithPool SqlBackend -> MVar () -> StateMachine Model (At Cmd) m (At Resp)
 sm folder poolBackend lock = StateMachine {
@@ -291,13 +302,14 @@ instance Arbitrary Tag where
     arbitrary = frequency
         [(1, return SPerson), (1, return SCar)]
 
-deriving instance ToExpr Person
-deriving instance ToExpr (Key Person)
-deriving instance Generic (Key Person)
-deriving instance ToExpr Car
-deriving instance Generic Person
-deriving instance Generic Car
-deriving instance Generic (Key Car)
+deriving anyclass instance ToExpr Person
+deriving anyclass instance ToExpr (Key Person)
+deriving stock    instance Generic (Key Person)
+deriving anyclass instance ToExpr Car
+deriving stock    instance Generic Person
+deriving stock    instance Generic Car
+deriving stock    instance Generic (Key Car)
+
 instance ToExpr (Key Car) where
   toExpr key = App (show key) []
 
@@ -393,7 +405,7 @@ asyncQueueUsing doFork queueSize createResource = do
                 serve queue servesVar r
     res <- atomically $ takeTMVar resVar
     case res of
-        Left e -> throwIO e
+        Left e  -> throwIO e
         Right r -> return $ AsyncQueue t queue servesVar r
 
 serve :: TBQueue (AsyncAction r) -> TVar Bool -> r -> IO ()
@@ -415,7 +427,7 @@ waitQueue async action = do
         else throwSTM $ userError "Doesn't serve"
     ret <- atomically $ takeTMVar resp
     case ret of
-        Left e -> throwIO e
+        Left e  -> throwIO e
         Right a -> return a
 
 data AsyncWithPool r = AsyncWithPool {
