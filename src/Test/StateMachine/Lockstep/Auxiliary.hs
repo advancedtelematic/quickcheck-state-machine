@@ -9,7 +9,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Test.StateMachine.Lockstep.Aux (
+module Test.StateMachine.Lockstep.Auxiliary (
     Elem(..)
   , npAt
   , NTraversable(..)

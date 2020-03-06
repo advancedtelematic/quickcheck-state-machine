@@ -60,7 +60,7 @@ import qualified Data.TreeDiff                 as TD
 import qualified Test.StateMachine.Types       as QSM
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
-import Test.StateMachine.Lockstep.Aux
+import Test.StateMachine.Lockstep.Auxiliary
 
 {-------------------------------------------------------------------------------
   Test type-level parameters
