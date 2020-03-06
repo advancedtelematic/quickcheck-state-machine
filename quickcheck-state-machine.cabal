@@ -34,7 +34,7 @@ library
                      , Test.StateMachine.ConstructorName
                      , Test.StateMachine.DotDrawing
                      , Test.StateMachine.Labelling
-                     , Test.StateMachine.Lockstep.Aux
+                     , Test.StateMachine.Lockstep.Auxiliary
                      , Test.StateMachine.Lockstep.NAry
                      , Test.StateMachine.Lockstep.Simple
                      , Test.StateMachine.Logic

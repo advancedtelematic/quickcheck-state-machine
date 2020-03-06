@@ -40,7 +40,7 @@ import Data.SOP
 import Data.Typeable
 import Test.QuickCheck
 import Test.StateMachine
-import Test.StateMachine.Lockstep.Aux
+import Test.StateMachine.Lockstep.Auxiliary
 import Test.StateMachine.Lockstep.NAry (MockState)
 
 import qualified Test.StateMachine.Lockstep.NAry as NAry
