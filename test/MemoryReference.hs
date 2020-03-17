@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE ExplicitNamespaces   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -44,17 +45,19 @@ import           Test.QuickCheck.Monadic
 
 import           Test.StateMachine
 import           Test.StateMachine.Parallel
-                   (shrinkAndValidateNParallel, shrinkAndValidateParallel,
-                   shrinkCommands', shrinkNParallelCommands, shrinkParallelCommands)
-import           Test.StateMachine.Sequential (ShouldShrink (..))
+                   (shrinkAndValidateNParallel,
+                   shrinkAndValidateParallel, shrinkCommands',
+                   shrinkNParallelCommands, shrinkParallelCommands)
+import           Test.StateMachine.Sequential
+                   (ShouldShrink(..))
 import           Test.StateMachine.Types
                    (Commands(Commands), Reference(..), Symbolic(..),
                    Var(Var))
 import qualified Test.StateMachine.Types       as Types
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
-                   (Shrunk(..), shrinkListS, shrinkListS'', shrinkPairS,
-                   shrinkPairS' )
+                   (Shrunk(..), shrinkListS, shrinkListS'',
+                   shrinkPairS, shrinkPairS')
 import           Test.StateMachine.Z
 
 ------------------------------------------------------------------------
@@ -64,25 +67,27 @@ data Command r
   | Read  (Reference (Opaque (IORef Int)) r)
   | Write (Reference (Opaque (IORef Int)) r) Int
   | Increment (Reference (Opaque (IORef Int)) r)
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-deriving instance Show (Command Symbolic)
-deriving instance Read (Command Symbolic)
-deriving instance Show (Command Concrete)
+deriving stock instance Show (Command Symbolic)
+deriving stock instance Read (Command Symbolic)
+deriving stock instance Show (Command Concrete)
 
 data Response r
   = Created (Reference (Opaque (IORef Int)) r)
   | ReadValue Int
   | Written
   | Incremented
-  deriving (Eq, Generic1, Rank2.Foldable)
+  deriving stock (Eq, Generic1)
+  deriving anyclass Rank2.Foldable
 
-deriving instance Show (Response Symbolic)
-deriving instance Read (Response Symbolic)
-deriving instance Show (Response Concrete)
+deriving stock instance Show (Response Symbolic)
+deriving stock instance Read (Response Symbolic)
+deriving stock instance Show (Response Concrete)
 
 newtype Model r = Model [(Reference (Opaque (IORef Int)) r, Int)]
-  deriving (Generic, Show)
+  deriving stock (Generic, Show)
 
 instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)
@@ -126,7 +131,7 @@ data Bug
   | Race
   | Crash
   | CrashAndLogic
-  deriving Eq
+  deriving stock Eq
 
 semantics :: Bug -> Command Concrete -> IO (Response Concrete)
 semantics bug cmd = case cmd of

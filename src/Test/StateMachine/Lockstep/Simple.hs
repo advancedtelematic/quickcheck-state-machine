@@ -1,14 +1,16 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE DerivingStrategies        #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE RankNTypes                #-}
+{-# LANGUAGE RecordWildCards           #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE StandaloneDeriving        #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeOperators             #-}
 
 module Test.StateMachine.Lockstep.Simple (
     -- * Test type-level parameters
@@ -32,18 +34,20 @@ module Test.StateMachine.Lockstep.Simple (
   , fromSimple
   ) where
 
-import Prelude
-import Data.Bifunctor
-import Data.Functor.Classes
-import Data.Kind (Type)
-import Data.SOP
-import Data.Typeable
-import Test.QuickCheck
-import Test.StateMachine
-import Test.StateMachine.Lockstep.Auxiliary
-import Test.StateMachine.Lockstep.NAry (MockState)
+import           Data.Bifunctor
+import           Data.Functor.Classes
+import           Data.Kind
+                   (Type)
+import           Data.SOP
+import           Data.Typeable
+import           Prelude
+import           Test.QuickCheck
+import           Test.StateMachine
+import           Test.StateMachine.Lockstep.Auxiliary
+import           Test.StateMachine.Lockstep.NAry
+                   (MockState)
 
-import qualified Test.StateMachine.Lockstep.NAry as NAry
+import qualified Test.StateMachine.Lockstep.NAry      as NAry
 
 {-------------------------------------------------------------------------------
   Top-level parameters
@@ -195,8 +199,8 @@ instance ( Functor (Cmd t)
          ) => Show (NAry.Cmd (Simple t) (NAry.FlipRef r) '[RealHandle t]) where
   show (SimpleCmd r) = show (NAry.unFlipRef <$> r)
 
-deriving instance Eq   (MockHandle t) => Eq   (NAry.MockHandle (Simple t) (RealHandle t))
-deriving instance Show (MockHandle t) => Show (NAry.MockHandle (Simple t) (RealHandle t))
+deriving stock instance Eq   (MockHandle t) => Eq   (NAry.MockHandle (Simple t) (RealHandle t))
+deriving stock instance Show (MockHandle t) => Show (NAry.MockHandle (Simple t) (RealHandle t))
 
 instance Traversable (Resp t) => NTraversable (NAry.Resp (Simple t)) where
   nctraverse _ f (SimpleResp x) = SimpleResp <$> traverse (f ElemHead) x

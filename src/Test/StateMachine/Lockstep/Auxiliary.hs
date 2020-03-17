@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
@@ -20,12 +21,16 @@ module Test.StateMachine.Lockstep.Auxiliary (
   , nfoldMap
   ) where
 
-import Prelude
-import Control.Monad.State
-import Data.Kind (Type)
-import Data.Monoid (Monoid)
-import Data.Proxy
-import Data.SOP
+import           Control.Monad.State
+import           Data.Kind
+                   (Type)
+import           Prelude
+#if !MIN_VERSION_base(4,13,0)
+import           Data.Monoid
+                   (Monoid)
+#endif
+import           Data.Proxy
+import           Data.SOP
 
 {-------------------------------------------------------------------------------
   Auxiliary

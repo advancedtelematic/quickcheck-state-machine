@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE PolyKinds          #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -163,7 +164,7 @@ echoSM env = StateMachine
       mMock Empty Echo     = return ErrEmpty
       mMock (Buf str) Echo = return (Out str)
 
-deriving instance ToExpr (Model Concrete)
+deriving anyclass instance ToExpr (Model Concrete)
 
 -- | The model contains the last string that was communicated in an input
 -- action.
@@ -172,7 +173,7 @@ data Model (r :: Type -> Type)
       Empty
     | -- | Last input string (a buffer with size one).
       Buf String
-  deriving (Eq, Show, Generic)
+  deriving stock (Eq, Show, Generic)
 
 -- | Actions supported by the system.
 data Action (r :: Type -> Type)
@@ -180,7 +181,8 @@ data Action (r :: Type -> Type)
       In String
       -- | Request a string output.
     | Echo
-  deriving (Show, Generic1, Rank2.Foldable, Rank2.Traversable, Rank2.Functor, CommandNames)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Foldable, Rank2.Traversable, Rank2.Functor, CommandNames)
 
 -- | The system gives a single type of output response, containing a string
 -- with the input previously received.
@@ -194,4 +196,5 @@ data Response (r :: Type -> Type)
     | ErrFull
       -- | Output string.
     | Out String
-  deriving (Show, Generic1, Rank2.Foldable, Rank2.Traversable, Rank2.Functor)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Foldable, Rank2.Traversable, Rank2.Functor)

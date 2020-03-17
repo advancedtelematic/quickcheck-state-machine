@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE ExplicitNamespaces   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -29,24 +30,22 @@ import           Data.List
                    ((\\))
 import           Data.Map.Strict
                    (Map)
-import qualified Data.Map.Strict as Map
+import qualified Data.Map.Strict               as Map
+import           GHC.Generics
+                   (Generic, Generic1)
 import           Prelude
 import           System.Directory
 import           System.IO
+import           System.Random
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
-                  (monadicIO)
-import           GHC.Generics
-                   (Generic, Generic1)
+                   (monadicIO)
 import           Test.StateMachine
-import           Test.StateMachine.Types
-                   (Reference(..), Symbolic(..))
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 import           Test.StateMachine.Utils
                    (liftProperty, mkModel, whenFailM)
 import           Text.Show.Pretty
                    (ppShow)
-import           System.Random
 
 {-----------------------------------------------------------------------------------
   This example in mainly used to check how well cleanup of recourses works. In our
@@ -65,31 +64,33 @@ data Command r
   | Ls
   | Write Int
   | Increment
-  deriving (Eq, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
-deriving instance Show (Command Symbolic)
-deriving instance Read (Command Symbolic)
-deriving instance Show (Command Concrete)
+deriving stock instance Show (Command Symbolic)
+deriving stock instance Read (Command Symbolic)
+deriving stock instance Show (Command Concrete)
 
 data Response r
   = Created (Reference (Opaque FileRef) r)
   | Deleted
   | Contents [String]
   | ChangedValue Int
-  deriving (Eq, Generic1, Rank2.Foldable)
+  deriving stock (Eq, Generic1)
+  deriving anyclass (Rank2.Foldable)
 
-deriving instance Show (Response Symbolic)
-deriving instance Read (Response Symbolic)
-deriving instance Show (Response Concrete)
+deriving stock instance Show (Response Symbolic)
+deriving stock instance Read (Response Symbolic)
+deriving stock instance Show (Response Concrete)
 
 data Model r = Model {
-      files   :: Map (Reference (Opaque FileRef) r) String
-    , counter :: Int
+      files            :: Map (Reference (Opaque FileRef) r) String
+    , counter          :: Int
     , semanticsCounter :: Opaque (MVar Int)
-    , ref     :: Opaque (MVar Int)
-    , value   :: Int
+    , ref              :: Opaque (MVar Int)
+    , value            :: Int
   }
-  deriving (Generic, Show, Eq)
+  deriving stock (Generic, Show, Eq)
 
 instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)
@@ -108,11 +109,11 @@ transition m@Model {..} cmd resp = case (cmd, resp) of
 
 precondition :: Model Symbolic -> Command Symbolic -> Logic
 precondition Model {..} cmd = case cmd of
-    Create p   -> Boolean $ notElem p (Map.elems files)
-    Delete rf  -> Boolean $ Map.member rf files
-    Ls         -> Top
-    Write _    -> Top
-    Increment  -> Top
+    Create p  -> Boolean $ notElem p (Map.elems files)
+    Delete rf -> Boolean $ Map.member rf files
+    Ls        -> Top
+    Write _   -> Top
+    Increment -> Top
 
 sameElements :: Eq a => [a] -> [a] -> Bool
 sameElements x y = null (x \\ y) && null (y \\ x)
@@ -133,8 +134,8 @@ type FileRef = MVarC (String, Bool)
 removeFileRef :: DoubleCleanup -> FileRef -> IO ()
 removeFileRef dc (MVarC r _) = modifyMVar_ r $ \(file, isHere) -> do
       case (isHere, dc) of
-        (_, ReDo) -> removeFile file
-        (True, _) -> removeFile file
+        (_, ReDo)     -> removeFile file
+        (True, _)     -> removeFile file
         (False, NoOp) -> return ()
       return (file, False)
 
@@ -291,16 +292,16 @@ printFiles ls' =
 data Bug = NoBug
          | Exception
          | ExcAfter
-         deriving (Eq, Show)
+         deriving stock (Eq, Show)
 
 data DoubleCleanup = NoOp
                    | ReDo
-                   deriving (Eq, Show)
+                   deriving stock (Eq, Show)
 
 data FinalTest = Regular
                | Files
                | Eq Bool
-                 deriving (Eq, Show)
+                 deriving stock (Eq, Show)
 
 -- | This is meant to be used, in order to test equality of two
 -- Models, created by two different executions of the same program.

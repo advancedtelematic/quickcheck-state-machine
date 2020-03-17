@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE PolyKinds          #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -29,8 +30,6 @@ import           Data.Functor.Classes
                    (Eq1(..))
 import           Data.IORef
                    (IORef, newIORef, readIORef, writeIORef)
-import           Data.TreeDiff
-                   (ToExpr)
 import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude
@@ -81,7 +80,8 @@ data Command r
   = New Int
   | Find (Ref r)
   | Union (Ref r) (Ref r)
-  deriving (Eq, Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Eq, Show, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response r
   = -- | New element was created.
@@ -90,10 +90,11 @@ data Response r
   | Found (Ref r)
     -- | Command 'Union' was successful.
   | United
-  deriving (Generic1, Rank2.Foldable)
+  deriving stock Generic1
+  deriving anyclass Rank2.Foldable
 
-deriving instance Show (Response Symbolic)
-deriving instance Show (Response Concrete)
+deriving stock instance Show (Response Symbolic)
+deriving stock instance Show (Response Concrete)
 
 ------------------------------------------------------------------------
 
@@ -101,7 +102,7 @@ deriving instance Show (Response Concrete)
 -- in section 12 of the paper.
 
 newtype Model r = Model [(Ref r, Ref r)]
-    deriving (Generic, Eq, Show)
+    deriving stock (Generic, Eq, Show)
 
 instance ToExpr (Model Symbolic)
 instance ToExpr (Model Concrete)

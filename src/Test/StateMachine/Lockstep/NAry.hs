@@ -1,6 +1,7 @@
-{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
@@ -40,27 +41,28 @@ module Test.StateMachine.Lockstep.NAry (
   , prop_parallel
   ) where
 
-import Prelude
-import Data.Functor.Classes
-import Data.Kind (Type)
-import Data.Maybe (fromJust)
-import Data.SOP
-import Data.Typeable
-import GHC.Generics (Generic)
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
-import Test.StateMachine
+import           Data.Functor.Classes
+import           Data.Kind
+                   (Type)
+import           Data.Maybe
+                   (fromJust)
+import           Data.Semigroup                       hiding
+                   (All)
+import           Data.SOP
+import           Data.Typeable
+import           GHC.Generics
+                   (Generic)
+import           Prelude
+import           Test.QuickCheck
+import           Test.QuickCheck.Monadic
+import           Test.StateMachine
 
-#if !MIN_VERSION_base(4,11,0)
-import Data.Semigroup (Semigroup(..))
-#endif
+import qualified Data.Monoid                          as M
+import qualified Data.TreeDiff                        as TD
+import qualified Test.StateMachine.Types              as QSM
+import qualified Test.StateMachine.Types.Rank2        as Rank2
 
-import qualified Data.Monoid                   as M
-import qualified Data.TreeDiff                 as TD
-import qualified Test.StateMachine.Types       as QSM
-import qualified Test.StateMachine.Types.Rank2 as Rank2
-
-import Test.StateMachine.Lockstep.Auxiliary
+import           Test.StateMachine.Lockstep.Auxiliary
 
 {-------------------------------------------------------------------------------
   Test type-level parameters
@@ -79,10 +81,15 @@ type family RealMonad   t   :: Type -> Type
 
 -- | Relation between real and mock references for single handle type @a@
 newtype Refs t r a = Refs { unRefs :: [(Reference a r, MockHandle t a)] }
-  deriving (Semigroup, Monoid, Generic)
+  deriving newtype (Semigroup, Monoid, Generic)
 
-deriving instance (Show1 r, Show a, Show (MockHandle t a)) => Show (Refs t r a)
-deriving instance (ToExpr a, ToExpr (MockHandle t a)) => ToExpr (Refs t Concrete a)
+deriving
+  stock
+  instance (Show1 r, Show a, Show (MockHandle t a)) => Show (Refs t r a)
+
+deriving
+  newtype
+  instance (ToExpr a, ToExpr (MockHandle t a)) => ToExpr (Refs t Concrete a)
 
 -- | Relation between real and mock references for /all/ handle types
 newtype Refss t r = Refss { unRefss :: NP (Refs t r) (RealHandles t) }
@@ -125,14 +132,16 @@ type family Test (f :: (Type -> Type) -> [Type] -> Type) :: Type where
   Test (Resp t) = t
 
 newtype FlipRef r h = FlipRef { unFlipRef :: Reference h r }
-  deriving (Show)
+  deriving stock (Show)
 
 -- @f@ will be instantiated with @Cmd@ or @Resp@
 -- @r@ will be instantiated with 'Symbolic' or 'Concrete'
 newtype At f r = At { unAt :: f (FlipRef r) (RealHandles (Test f)) }
 type    f :@ r = At f r
 
-deriving instance (Show (f (FlipRef r) (RealHandles (Test f)))) => Show (At f r)
+deriving
+  stock
+  instance (Show (f (FlipRef r) (RealHandles (Test f)))) => Show (At f r)
 
 {-------------------------------------------------------------------------------
   Model
@@ -142,12 +151,12 @@ data Model t r = Model {
       modelState :: MockState t
     , modelRefss :: Refss t r
     }
-  deriving (Generic)
+  deriving stock (Generic)
 
-deriving instance ( Show1 r
-                  , Show (MockState t)
-                  , All (And Show (Compose Show (MockHandle t))) (RealHandles t)
-                  ) => Show (Model t r)
+deriving stock instance ( Show1 r
+                        , Show (MockState t)
+                        , All (And Show (Compose Show (MockHandle t))) (RealHandles t)
+                        ) => Show (Model t r)
 
 instance ( ToExpr (MockState t)
          , All (And ToExpr (Compose ToExpr (MockHandle t))) (RealHandles t)

@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts   #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
@@ -44,26 +45,26 @@ import           Test.StateMachine.Types.References
 newtype History cmd resp = History
   { unHistory :: History' cmd resp }
 
-deriving instance (Eq (cmd Concrete), Eq (resp Concrete)) =>
+deriving stock instance (Eq (cmd Concrete), Eq (resp Concrete)) =>
   Eq (History cmd resp)
 
-deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
+deriving stock instance (Show (cmd Concrete), Show (resp Concrete)) =>
   Show (History cmd resp)
 
 type History' cmd resp = [(Pid, HistoryEvent cmd resp)]
 
 newtype Pid = Pid { unPid :: Int }
-  deriving (Eq, Show, Ord)
+  deriving stock (Eq, Show, Ord)
 
 data HistoryEvent cmd resp
   = Invocation !(cmd  Concrete) !(Set Var)
   | Response   !(resp Concrete)
   | Exception  !String
 
-deriving instance (Eq (cmd Concrete), Eq (resp Concrete)) =>
+deriving stock instance (Eq (cmd Concrete), Eq (resp Concrete)) =>
   Eq (HistoryEvent cmd resp)
 
-deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
+deriving stock instance (Show (cmd Concrete), Show (resp Concrete)) =>
   Show (HistoryEvent cmd resp)
 
 ------------------------------------------------------------------------
@@ -88,7 +89,7 @@ data Operation cmd resp
   = Operation (cmd Concrete) (resp Concrete) Pid
   | Crash     (cmd Concrete) String Pid
 
-deriving instance (Show (cmd Concrete), Show (resp Concrete)) =>
+deriving stock instance (Show (cmd Concrete), Show (resp Concrete)) =>
   Show (Operation cmd resp)
 
 -- | Given a sequential history, group invocation and response events into
@@ -125,7 +126,7 @@ operationsPath :: Forest (Operation cmd resp) -> [Operation cmd resp]
 operationsPath = go []
     where
       go :: [a] -> Forest a -> [a]
-      go acc [] = reverse acc
+      go acc []             = reverse acc
       go acc (Node a f : _) = go (a:acc) f
 
 ------------------------------------------------------------------------

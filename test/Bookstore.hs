@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -14,52 +15,54 @@ module Bookstore
   )
   where
 
-import Control.Concurrent
-         (threadDelay)
-import Control.Monad.Reader
-         (ReaderT, ask, runReaderT)
-import Database.PostgreSQL.Simple as PS
-         (ConnectInfo, Connection, Query,
-         close, connect, connectDatabase, connectHost,
-         connectPassword, connectPort, connectUser,
-         defaultConnectInfo, execute, execute_, query)
-import Database.PostgreSQL.Simple.FromRow
-         (FromRow (fromRow), field )
-import Database.PostgreSQL.Simple.Errors
-         (ConstraintViolation (..), catchViolation)
-import Data.Int
-         (Int64)
-import Data.List
-         (dropWhileEnd, group, inits, isInfixOf, sort, tails)
-import Data.Kind
-         (Type)
-import Data.Maybe
-         (fromJust)
-import GHC.Generics
-         (Generic, Generic1)
-import Network.Socket as Sock
-         (AddrInfoFlag(AI_NUMERICSERV, AI_NUMERICHOST),
-         Socket, SocketType(Stream), addrAddress, addrFamily,
-         addrFlags, addrProtocol, addrSocketType, close,
-         connect, defaultHints, getAddrInfo, socket)
-import Prelude
-import System.Process
-         (callProcess, readProcess)
-import Test.QuickCheck
-         (Arbitrary (arbitrary), Gen, Property,
-         arbitraryPrintableChar, choose, elements, frequency,
-         ioProperty, listOf, oneof, shrink, suchThat,
-         vectorOf, (===))
-import Test.QuickCheck.Monadic
-         (monadic)
-import UnliftIO
-         (IOException, bracket, catch, liftIO, onException,
-         throwIO)
+import           Control.Concurrent
+                   (threadDelay)
+import           Control.Monad.Reader
+                   (ReaderT, ask, runReaderT)
+import           Data.Int
+                   (Int64)
+import           Data.Kind
+                   (Type)
+import           Data.List
+                   (dropWhileEnd, group, inits, isInfixOf, sort, tails)
+import           Data.Maybe
+                   (fromJust)
+import           Database.PostgreSQL.Simple         as PS
+                   (ConnectInfo, Connection, Query, close, connect,
+                   connectDatabase, connectHost, connectPassword,
+                   connectPort, connectUser, defaultConnectInfo,
+                   execute, execute_, query)
+import           Database.PostgreSQL.Simple.Errors
+                   (ConstraintViolation(..), catchViolation)
+import           Database.PostgreSQL.Simple.FromRow
+                   (FromRow(fromRow), field)
+import           GHC.Generics
+                   (Generic, Generic1)
+import           Network.Socket                     as Sock
+                   (AddrInfoFlag(AI_NUMERICHOST, AI_NUMERICSERV),
+                   Socket, SocketType(Stream), addrAddress, addrFamily,
+                   addrFlags, addrProtocol, addrSocketType, close,
+                   connect, defaultHints, getAddrInfo, socket)
+import           Prelude
+import           System.Process
+                   (callProcess, readProcess)
+import           Test.QuickCheck
+                   (Arbitrary(arbitrary), Gen, Property,
+                   arbitraryPrintableChar, choose, elements, frequency,
+                   ioProperty, listOf, oneof, shrink, suchThat,
+                   vectorOf, (===))
+import           Test.QuickCheck.Monadic
+                   (monadic)
+import           UnliftIO
+                   (IOException, bracket, catch, liftIO, onException,
+                   throwIO)
 
 import           Test.StateMachine
-import qualified Test.StateMachine.Types.Rank2 as Rank2
+import qualified Test.StateMachine.Types.Rank2      as Rank2
 import           Test.StateMachine.Z
                    (codomain, domain)
+
+------------------------------------------------------------------------
 
 -- Based on Bookstore case study from:
 -- https://propertesting.com/book_case_study_stateful_properties_with_a_bookstore.html
@@ -72,7 +75,7 @@ data Book = Book {
   , author :: String
   , owned  :: Int
   , avail  :: Int
-  } deriving (Eq, Show, Generic)
+  } deriving stock (Eq, Show, Generic)
 
 instance ToExpr Book where
 
@@ -86,7 +89,7 @@ handleViolations
 handleViolations fn cn = catchViolation catcher (Just <$> fn cn)
   where
     catcher _ (UniqueViolation _) = return Nothing
-    catcher e _ = throwIO e
+    catcher e _                   = throwIO e
 
 setupTable :: Connection -> IO (Maybe Int64)
 setupTable = handleViolations $ \cn ->
@@ -161,14 +164,14 @@ withConnection connInfo = bracket (PS.connect connInfo) PS.close
 -- Modeling
 
 newtype Model r = Model [(Isbn, Book)]
-  deriving (Generic, Show)
+  deriving stock (Generic, Show)
 
 instance ToExpr (Model Concrete) where
 
 initModel :: Model v
 initModel = Model []
 
-newtype Isbn = Isbn { getString :: String } deriving (Eq, Show)
+newtype Isbn = Isbn { getString :: String } deriving stock (Eq, Show)
 
 instance ToExpr Isbn where
   toExpr = toExpr . show
@@ -212,7 +215,7 @@ data Tag
   | Unavail
   | Taken
   | Full
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data Command (r :: Type -> Type)
   = NewBook      Tag Isbn String String
@@ -222,7 +225,7 @@ data Command (r :: Type -> Type)
   | FindByAuthor Tag String
   | FindByTitle  Tag String
   | FindByIsbn   Tag Isbn
-  deriving (Show, Generic1)
+  deriving stock (Show, Generic1)
 
 instance Rank2.Foldable    Command where
 instance Rank2.Functor     Command where
@@ -235,7 +238,7 @@ data Response (r :: Type -> Type)
   | NotFound
   | UniqueError
   | OtherError
-  deriving (Eq, Show, Generic1)
+  deriving stock (Eq, Show, Generic1)
 
 instance Rank2.Foldable Response where
 
@@ -328,7 +331,7 @@ postconditions (Model m) cmd resp = case cmd of
   FindByTitle  Invalid _ -> resp .== Rows []
   FindByIsbn Exist key -> case lookup key m of
     Just x -> Rows [x] .== resp
-    _ -> error "Should not happen"
+    _      -> error "Should not happen"
   FindByAuthor Exist x -> case resp of
     Rows rs -> Forall rs (Boolean . isInfixOf x . author) .&&
                Forall rs (\b -> Just b .== lookup (Isbn $ isbn b) m)
@@ -356,7 +359,7 @@ transitions (Model m) cmd _ = Model $ case cmd of
 
 -- Semantics
 
-data Bug = Bug | NoBug | Injection deriving Eq
+data Bug = Bug | NoBug | Injection deriving stock Eq
 
 semantics :: Bug -> Command Concrete -> ReaderT ConnectInfo IO (Response Concrete)
 semantics bug cmd = do

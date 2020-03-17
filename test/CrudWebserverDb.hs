@@ -1,21 +1,21 @@
-{-# LANGUAGE DataKinds                     #-}
-{-# LANGUAGE DeriveGeneric                 #-}
-{-# LANGUAGE DerivingStrategies            #-}
-{-# LANGUAGE FlexibleContexts              #-}
-{-# LANGUAGE FlexibleInstances             #-}
-{-# LANGUAGE GADTs                         #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving    #-}
-{-# LANGUAGE LambdaCase                    #-}
-{-# LANGUAGE MultiParamTypeClasses         #-}
-{-# LANGUAGE OverloadedStrings             #-}
-{-# LANGUAGE PolyKinds                     #-}
-{-# LANGUAGE QuasiQuotes                   #-}
-{-# LANGUAGE ScopedTypeVariables           #-}
-{-# LANGUAGE StandaloneDeriving            #-}
-{-# LANGUAGE TemplateHaskell               #-}
-{-# LANGUAGE TypeFamilies                  #-}
-{-# LANGUAGE TypeOperators                 #-}
-{-# LANGUAGE UndecidableInstances          #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE QuasiQuotes                #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- NOTE: Make sure NOT to use DeriveAnyClass, or persistent-template
@@ -82,7 +82,6 @@ import           Data.Kind
 import           Data.List
                    (dropWhileEnd)
 import           Data.Monoid
-                   ((<>))
 import           Data.Proxy
                    (Proxy(Proxy))
 import           Data.String.Conversions
@@ -94,9 +93,8 @@ import           Data.TreeDiff
                    (Expr(App))
 import           Database.Persist.Class
 import           Database.Persist.Postgresql
-                   (ConnectionPool, ConnectionString, Key, SqlBackend,
-                   delete, get, getJust, insert, liftSqlPersistMPool,
-                   replace, runMigrationQuiet, runSqlPool, update,
+                   (ConnectionPool, ConnectionString, SqlBackend,
+                   liftSqlPersistMPool, runMigrationQuiet, runSqlPool,
                    withPostgresqlPool, (+=.))
 import           Database.Persist.TH
                    (mkMigrate, mkPersist, persistLowerCase, share,
@@ -241,7 +239,7 @@ data Action (r :: Type -> Type)
   | GetUser    (Reference (Key User) r)
   | IncAgeUser (Reference (Key User) r)
   | DeleteUser (Reference (Key User) r)
-  deriving (Show, Generic1)
+  deriving stock (Show, Generic1)
 
 instance Rank2.Functor     Action where
 instance Rank2.Foldable    Action where
@@ -253,7 +251,7 @@ data Response (r :: Type -> Type)
   | GotUser    (Maybe User)
   | IncedAgeUser
   | DeletedUser
-  deriving (Show, Generic1)
+  deriving stock (Show, Generic1)
 
 instance Rank2.Foldable Response where
 
@@ -262,7 +260,7 @@ instance Rank2.Foldable Response where
 
 
 newtype Model r = Model [(Reference (Key User) r, User)]
-  deriving (Generic, Show)
+  deriving stock (Generic, Show)
 
 instance ToExpr (Model Concrete) where
 

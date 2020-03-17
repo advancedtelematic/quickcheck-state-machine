@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -44,8 +45,8 @@ import           Control.Arrow
 import           Data.List
                    (foldl')
 import           Test.QuickCheck
-                   (Arbitrary, Gen, Property, resize, shrink,
-                   shrinkList, sized, whenFail, collect)
+                   (Arbitrary, Gen, Property, collect, resize, shrink,
+                   shrinkList, sized, whenFail)
 import           Test.QuickCheck.Monadic
                    (PropertyM(MkPropertyM))
 import           Test.QuickCheck.Property
@@ -111,7 +112,7 @@ collects = repeatedly collect
 -- >    , Shrunk False [(1,3),(2,4)]  -- the original unchanged list
 -- >    ]
 data Shrunk a = Shrunk { wasShrunk :: Bool, shrunk :: a }
-  deriving (Eq, Show, Functor)
+  deriving stock (Eq, Show, Functor)
 
 shrinkS :: Arbitrary a => a -> [Shrunk a]
 shrinkS a = map (Shrunk True) (shrink a) ++ [Shrunk False a]

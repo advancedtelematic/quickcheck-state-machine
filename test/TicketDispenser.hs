@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -70,12 +71,14 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 data Action (r :: Type -> Type)
   = TakeTicket
   | Reset
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Response (r :: Type -> Type)
   = GotTicket Int
   | ResetOk
-  deriving (Show, Generic1, Rank2.Foldable)
+  deriving stock (Show, Generic1)
+  deriving anyclass Rank2.Foldable
 
 -- Which correspond to taking a ticket and getting the next number, and
 -- resetting the number counter of the dispenser.
@@ -85,9 +88,9 @@ data Response (r :: Type -> Type)
 -- The dispenser has to be reset before use, hence the maybe integer.
 
 newtype Model (r :: Type -> Type) = Model (Maybe Int)
-  deriving (Eq, Show, Generic)
+  deriving stock (Eq, Show, Generic)
 
-deriving instance ToExpr (Model Concrete)
+deriving anyclass instance ToExpr (Model Concrete)
 
 initModel :: Model r
 initModel = Model Nothing

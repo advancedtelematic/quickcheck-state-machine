@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor       #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE Rank2Types          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -16,22 +17,27 @@ import           Data.GraphViz.Attributes.Complete
 import           Data.GraphViz.Commands
 import           Data.GraphViz.Exception
 import           Data.GraphViz.Types.Canonical
-import           Data.List (uncons)
+import           Data.List
+                   (uncons)
 import           Data.List.Split
-import           Data.Map hiding (null)
+import           Data.Map                          hiding
+                   (null)
 import           Data.Maybe
-import           Data.Text.Lazy (pack)
+import           Data.Text.Lazy
+                   (pack)
 import           Prelude
 import           Test.StateMachine.Types.History
+
+------------------------------------------------------------------------
 
 data GraphOptions = GraphOptions {
       filePath       :: FilePath       --  Where to store the graph
                                        --  (note: file extensions are not checked)
     , graphvizOutput :: GraphvizOutput --  output formats (like Jpeg, Png ..)
-}
+    }
 
 data Rose a = Rose a (Map Pid a)
-    deriving(Functor, Show)
+    deriving stock (Functor, Show)
 
 printDotGraph :: GraphOptions -> Rose [String] -> IO ()
 printDotGraph GraphOptions{..} (Rose pref sfx) = do
@@ -125,8 +131,8 @@ byTwoUnsafe str ls = fromMaybe (error $ "couldn't split " ++ if null str then " 
 byTwo :: [a] -> Maybe [(a,a)]
 byTwo = go []
   where
-    go acc [] = Just $ reverse acc
-    go _acc [_] = Nothing
+    go acc []            = Just $ reverse acc
+    go _acc [_]          = Nothing
     go acc (a: b : rest) = go ((a,b) : acc) rest
 
 connectNodes :: [DotNode a] -> [DotEdge a]

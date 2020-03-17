@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -35,7 +36,6 @@ import           Data.Map
                    (Map)
 import qualified Data.Map                           as M
 import           Data.Semigroup
-                   (Semigroup)
 import           Data.Typeable
                    (Proxy(Proxy), TypeRep, typeRep)
 import           Prelude
@@ -49,13 +49,14 @@ import           Test.StateMachine.Types.References
 newtype Environment = Environment
   { unEnvironment :: Map Var Dynamic
   }
-  deriving (Semigroup, Monoid, Show)
+  deriving stock   (Show)
+  deriving newtype (Semigroup, Monoid)
 
 -- | Environment errors.
 data EnvironmentError
   = EnvironmentValueNotFound !Var
   | EnvironmentTypeError !TypeRep !TypeRep
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 -- | Create an empty environment.
 emptyEnvironment :: Environment

@@ -67,7 +67,7 @@ import           GHC.Generics
                    (Generic, Generic1)
 import           Prelude
 import           System.IO.Error
-                   (IOError, ioeGetErrorString)
+                   (ioeGetErrorString)
 import           System.IO.Unsafe
                    (unsafePerformIO)
 import           System.Random
@@ -201,8 +201,8 @@ data Action (r :: Type -> Type)
   | BadUnregister Name
   | WhereIs Name
   | Exit
-  deriving (Show, Generic1, Rank2.Functor, Rank2.Foldable, Rank2.Traversable,
-            CommandNames)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Functor, Rank2.Foldable, Rank2.Traversable, CommandNames)
 
 data Action_
   = Spawn_
@@ -213,7 +213,7 @@ data Action_
   | BadUnregister_
   | WhereIs_
   | Exit_
-  deriving (Show, Eq, Ord, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
 
 constructor :: Action r -> Action_
 constructor act = case act of
@@ -238,7 +238,8 @@ data Success (r :: Type -> Type)
   | Unregistered
   | HereIs (Reference Pid r)
   | Exited
-  deriving (Show, Generic1, Rank2.Foldable)
+  deriving stock (Show, Generic1)
+  deriving anyclass (Rank2.Foldable)
 
 data Error
   = NameAlreadyRegisteredError
@@ -246,7 +247,7 @@ data Error
   | PidDeadRegisterError
   | NameNotRegisteredError
   | UnknownError
-  deriving Show
+  deriving stock Show
 
 success :: Success r -> Response r
 success = Response . Right
@@ -260,7 +261,7 @@ data Model (r :: Type -> Type) = Model
   , killed   :: [Reference Pid r]
   , stop     :: Bool
   }
-  deriving (Show, Generic)
+  deriving stock (Show, Generic)
 
 instance ToExpr (Model Concrete)
 
@@ -354,10 +355,10 @@ data Fin2
   = Zero
   | One
   | Two
-  deriving (Enum, Bounded, Show, Eq, Read, Ord)
+  deriving stock (Enum, Bounded, Show, Eq, Read, Ord)
 
 data State = Fin2 :*: Fin2 | Stop
-  deriving (Show, Eq, Ord, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
 
 partition :: Model r -> State
 partition Model {..}
@@ -476,7 +477,8 @@ data Req
   | WHE001
   | WHE002
   | DIE001
-  deriving (Eq, Ord, Show, Generic, ToExpr)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (ToExpr)
 
 type EventPred r = Predicate (Event Model Action Response r) Req
 
