@@ -11,7 +11,7 @@
 -- Copyright   :  (C) 2017-2019, ATS Advanced Telematic Systems GmbH
 -- License     :  BSD-style (see the file LICENSE)
 --
--- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>,
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@strath.ac.uk>,
 --                Momoko Hattori <momohatt10@gmail.com>
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)

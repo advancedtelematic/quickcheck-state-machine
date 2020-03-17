@@ -1,14 +1,15 @@
 name:                quickcheck-state-machine
-version:             0.6.0
+version:             0.7.0
 synopsis:            Test monadic programs using state machine based models
 description:         See README at <https://github.com/advancedtelematic/quickcheck-state-machine#readme>
 homepage:            https://github.com/advancedtelematic/quickcheck-state-machine#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Stevan Andjelkovic
-maintainer:          Stevan Andjelkovic <stevan.andjelkovic@here.com>
+maintainer:          Stevan Andjelkovic <stevan.andjelkovic@strath.ac.uk>
 copyright:           Copyright (C) 2017-2018, ATS Advanced Telematic Systems GmbH;
-                                   2018-2019, HERE Europe B.V.
+                                   2018-2019, HERE Europe B.V.;
+                                   2019-2020, Stevan Andjelkovic.
 category:            Testing
 build-type:          Simple
 extra-source-files:  README.md

@@ -11,7 +11,7 @@
 -- Copyright   :  (C) 2019, Edsko de Vries
 -- License     :  BSD-style (see the file LICENSE)
 --
--- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@strath.ac.uk>
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --

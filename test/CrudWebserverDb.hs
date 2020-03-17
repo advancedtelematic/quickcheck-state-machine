@@ -28,7 +28,7 @@
 --                (C) 2017-2018, Stevan Andjelkovic
 -- License     :  BSD-style (see the file LICENSE)
 --
--- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@here.com>
+-- Maintainer  :  Stevan Andjelkovic <stevan.andjelkovic@strath.ac.uk>
 -- Stability   :  provisional
 -- Portability :  non-portable (GHC extensions)
 --
