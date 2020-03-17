@@ -1,23 +1,32 @@
-#### 0.7.0
+#### 0.7.0 (2020-3-17)
 
-  * forAllParallelCommands now gets another argument with type Maybe Int,
-    indicating the minimum number of commands we want a test-case to have.
-    `Nothing` provides old functionality.
+  * Add Stack resolver lts-15 and drop lts-11;
 
-  * Add Stack resolver lts-14 and drop lts-11.
+  * High-level interface to the state machine API (PR #355) -- this
+    captures the patterns described in
+    http://www.well-typed.com/blog/2019/01/qsm-in-depth/ as a proper
+    Haskell abstraction;
 
-  * Fixed a bug in the parallel case for the mock function (PR #348) and other
-    bugs related to references in the parallel case.
+  * Experimental support for Markov chain-base command generation and
+    reliability calculations;
 
-  * Add a new field in the StateMachine called cleanup. This function can be
-    used to ensure recourses are cleaned between tests. `noCleanup` can be
-    used to achieve the older functionality.
+  * forAllParallelCommands now gets another argument with type Maybe
+    Int, indicating the minimum number of commands we want a test case
+    to have. `Nothing` provides old functionality;
 
-  * Improved labelling.
+  * Fixed a bug in the parallel case for the mock function (PR #348) and
+    other bugs related to references in the parallel case;
 
-  * Generalize parallelism, so that more than 2 threads can be used (PR #324).
+  * Add a new field in the StateMachine called cleanup. This function
+    can be used to ensure resources are cleaned between tests.
+    `noCleanup` can be used to achieve the older functionality;
 
-  * Option to print dot visualisation of failed examples.
+  * Improved labelling;
+
+  * Generalize parallelism, so that more than two threads can be used
+    (PR #324);
+
+  * Option to print dot visualisation of failed examples;
 
   * Handle exceptions better and provide better output.
 
