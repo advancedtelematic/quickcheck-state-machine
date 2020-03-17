@@ -470,21 +470,23 @@ interactively.
 
 More examples from the "real world":
 
-  * Adjoint's implementation of the Raft consensus algorithm, contains state
-    machine
-    [tests](https://github.com/adjoint-io/raft/blob/master/test/QuickCheckStateMachine.hs)
-    combined with fault injection (node and network failures);
-
-  * IOHK are using a state machine model to
-    [test](https://github.com/input-output-hk/ouroboros-network/blob/master/ouroboros-consensus/test-storage/Test/Ouroboros/Storage/FS/StateMachine.hs)
-    a mock file system that they in turn use to simulate file system errors when
-    testing a blockchain database. The following blog
+  * IOHK are using a state machine models in several
+    [places](https://github.com/search?l=Haskell&q=org%3Ainput-output-hk+Test.StateMachine&type=Code).
+    For example
+    [here](https://github.com/input-output-hk/ouroboros-network/blob/master/ouroboros-consensus/test-storage/Test/Ouroboros/Storage/FS/StateMachine.hs)
+    is a test of a mock file system that they in turn use to simulate file
+    system errors when testing a blockchain database. The following blog
     [post](http://www.well-typed.com/blog/2019/01/qsm-in-depth/) describes their
     tests in more detail;
 
   * Wire are using a state machine model to
     [test](https://github.com/wireapp/wire-server/blob/master/services/gundeck/test/unit/ThreadBudget.hs)
-    the lower bound of running threads in their push notification system.
+    the lower bound of running threads in their push notification system;
+
+  * Adjoint's (now abandoned?) implementation of the Raft consensus algorithm,
+    contains state machine
+    [tests](https://github.com/stevana/raft/blob/master/test/QuickCheckStateMachine.hs)
+    combined with fault injection (node and network failures).
 
 ### How to contribute
 
