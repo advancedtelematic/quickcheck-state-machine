@@ -39,6 +39,8 @@ module Test.StateMachine.Lockstep.NAry (
     -- * Running the tests
   , prop_sequential
   , prop_parallel
+  -- * Translate to state machine model
+  , toStateMachine
   ) where
 
 import           Data.Functor.Classes
